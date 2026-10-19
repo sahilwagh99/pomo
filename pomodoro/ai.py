@@ -3,7 +3,7 @@
 Calls Claude through the official Anthropic SDK. Replies stream; the model is
 Claude Opus 5.5 unless the user picks another in Settings; server-side refusal
 fallbacks are on. Nothing is sent until the user asks something, and then only
-the conversation plus a short FocusOrb context summary (timer, focus stats,
+the conversation plus a short Pomo context summary (timer, focus stats,
 task names and agent activity).
 """
 from __future__ import annotations
@@ -18,13 +18,13 @@ from .stats import fmt_clock, fmt_day, fmt_hm, fmt_hour, streaks, summarize, sum
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 NO_FALLBACK_MODELS = ("claude-haiku-5-5",)  # Haiku has no server-side fallback
 
-SYSTEM_PROMPT = """You are Pomo, the focus buddy inside FocusOrb, a Pomodoro timer for Windows. You look like a small matcha mochi with a sakura blossom, and you sit on the user's timer.
+SYSTEM_PROMPT = """You are Pomo, the focus buddy inside Pomo, a Pomodoro timer for Windows. You look like a small matcha mochi with a sakura blossom, and you sit on the user's timer.
 
 Help the user plan focused work, reflect on their focus habits and keep their momentum. Keep replies short and warm (usually under 120 words), practical, and never guilt-tripping. Markdown is rendered, so short paragraphs and simple lists work well.
 
 When planning, break the work into steps that each fit one focus session at the user's focus length, as a numbered list, and say which one to start now.
 
-After each user message you get a FocusOrb context message with live facts: the time, the timer, today's and this week's focus stats, the current task, and what their coding agents (Claude Code sessions) did today. Use it for facts and never invent numbers. If something you need isn't there, say so or ask."""
+After each user message you get a Pomo context message with live facts: the time, the timer, today's and this week's focus stats, the current task, and what their coding agents (Claude Code sessions) did today. Use it for facts and never invent numbers. If something you need isn't there, say so or ask."""
 
 QUICK_ACTIONS = (
     ("plan", "Plan my task"),
@@ -95,7 +95,7 @@ def build_context(ctrl, now: datetime | None = None) -> str:
         lines.append(f"Agent sessions right now: {live}.")
     elif not agents.sessions:
         lines.append("Coding agents: no activity recorded today.")
-    return "FocusOrb context for this message:\n- " + "\n- ".join(lines)
+    return "Pomo context for this message:\n- " + "\n- ".join(lines)
 
 
 class ChatWorker(QThread):
@@ -145,7 +145,7 @@ class ChatWorker(QThread):
             else:
                 self.completed.emit(final)
         except anthropic.AuthenticationError:
-            self.failed.emit("Anthropic didn't accept your API key. Check it in Settings > AI.")
+            self.failed.emit("Anthropic didn't accept your API key. Tap **Key** above to check or replace it.")
         except anthropic.PermissionDeniedError:
             self.failed.emit("Your API key isn't allowed to use this model. Pick another in Settings > AI.")
         except anthropic.NotFoundError:
@@ -160,6 +160,50 @@ class ChatWorker(QThread):
         except anthropic.APIConnectionError:
             self.failed.emit("Can't reach Anthropic. Check your internet connection.")
         except anthropic.AnthropicError:
-            self.failed.emit("No API key yet. Add one in Settings > AI.")
+            self.failed.emit("No API key yet. Tap **Key** above to add yours.")
         except Exception as exc:  # keep the chat usable whatever happens
             self.failed.emit(f"Something went wrong: {exc}")
+
+
+KEYS_URL = "https://console.anthropic.com/settings/keys"
+
+
+class KeyCheckWorker(QThread):
+    """Checks a key with a free Models API lookup (no tokens are used).
+
+    result(status, message): status is "ok", "warn" (key works with a caveat), "bad" (key rejected)
+    or "error" (couldn't tell, e.g. offline).
+    """
+
+    result = Signal(str, str)
+
+    def __init__(self, api_key: str | None, model: str, parent=None):
+        super().__init__(parent)
+        self.api_key = api_key
+        self.model = model
+
+    def run(self) -> None:
+        try:
+            import anthropic
+        except ImportError:
+            self.result.emit("error", "The Anthropic SDK is not installed (pip install anthropic).")
+            return
+        try:
+            client = anthropic.Anthropic(api_key=self.api_key, max_retries=1, timeout=20.0) if self.api_key \
+                else anthropic.Anthropic(max_retries=1, timeout=20.0)
+            client.models.retrieve(self.model)
+            self.result.emit("ok", "Your key works. Pomo is ready to chat.")
+        except anthropic.AuthenticationError:
+            self.result.emit("bad", "Anthropic didn't accept that key. Check that you copied all of it.")
+        except anthropic.PermissionDeniedError:
+            self.result.emit("bad", "That key isn't allowed to use the API. Check it in the Anthropic Console.")
+        except anthropic.NotFoundError:
+            self.result.emit("warn", f"Your key works, but it can't use {self.model}. Pick another model in Settings > AI.")
+        except anthropic.RateLimitError:
+            self.result.emit("warn", "Your key works. Anthropic is busy right now, so replies may be slow.")
+        except anthropic.APIStatusError as exc:
+            self.result.emit("error", f"Anthropic answered with an error ({exc.status_code}). Try again shortly.")
+        except anthropic.APIConnectionError:
+            self.result.emit("error", "Can't reach Anthropic. Check your internet connection.")
+        except anthropic.AnthropicError:
+            self.result.emit("bad", "No API key found. Paste your key to get started.")

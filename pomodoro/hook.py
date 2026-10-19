@@ -1,10 +1,10 @@
-"""Claude Code hook client, run as `FocusOrb.exe --focusorb-hook` (see claude_hooks.py).
+"""Claude Code hook client, run as `Pomo.exe --pomo-hook` (see claude_hooks.py).
 
 Claude Code starts this for each hook event with the event JSON on stdin. It
-forwards a compact summary to the running FocusOrb over a local named pipe.
+forwards a compact summary to the running Pomo over a local named pipe.
 
-For PermissionRequest it waits for the user's answer in FocusOrb and prints the
-decision JSON Claude Code expects. In every other case (FocusOrb not running,
+For PermissionRequest it waits for the user's answer in Pomo and prints the
+decision JSON Claude Code expects. In every other case (Pomo not running,
 "answer in terminal", no answer in time, anything unexpected) it prints nothing,
 so Claude Code shows its normal permission prompt. It always exits 0: a hook
 must never break the agent.
@@ -20,7 +20,8 @@ import socket
 import sys
 import time
 
-MARKER = "--focusorb-hook"
+MARKER = "--pomo-hook"
+LEGACY_MARKERS = ("--focusorb-hook",)  # written by 1.1, when the app was called FocusOrb
 PROTOCOL = 1
 CLIP = 300
 CLIP_APPROVAL = 1200  # show the whole command when the user is asked to approve it
@@ -28,7 +29,7 @@ CLIP_APPROVAL = 1200  # show the whole command when the user is asked to approve
 
 def pipe_name() -> str:
     """Server name for QLocalServer; also the Windows pipe name. Tests can override it."""
-    return os.environ.get("FOCUSORB_AGENT_PIPE") or f"FocusOrb-agents-{getpass.getuser()}"
+    return os.environ.get("POMO_AGENT_PIPE") or f"Pomo-agents-{getpass.getuser()}"
 
 
 def _clip(text, limit: int = CLIP) -> str:
@@ -82,7 +83,7 @@ def edit_size(tool: str, tool_input) -> tuple[int, int]:
 
 
 def summarize(event: dict) -> dict:
-    """The compact message FocusOrb receives: no file contents, clipped text."""
+    """The compact message Pomo receives: no file contents, clipped text."""
     name = str(event.get("hook_event_name", ""))
     tool = str(event.get("tool_name") or "")
     tool_input = event.get("tool_input")
@@ -116,13 +117,13 @@ def summarize(event: dict) -> dict:
 
 
 def decision_output(reply: dict) -> dict | None:
-    """Claude Code's PermissionRequest output for FocusOrb's reply, or None to stay silent."""
+    """Claude Code's PermissionRequest output for Pomo's reply, or None to stay silent."""
     decision = reply.get("decision") if isinstance(reply, dict) else None
     if decision == "allow":
         return {"hookSpecificOutput": {"hookEventName": "PermissionRequest",
                                        "decision": {"behavior": "allow"}}}
     if decision == "deny":
-        message = _clip(reply.get("message") or "Denied from FocusOrb.", 300)
+        message = _clip(reply.get("message") or "Denied from Pomo.", 300)
         return {"hookSpecificOutput": {"hookEventName": "PermissionRequest",
                                        "decision": {"behavior": "deny", "message": message, "interrupt": False}}}
     return None
@@ -130,7 +131,7 @@ def decision_output(reply: dict) -> dict | None:
 
 # ------------------------------------------------------------------ transport
 def _connect(timeout: float = 1.5):
-    """A binary file-like connection to FocusOrb, or None if it isn't running."""
+    """A binary file-like connection to Pomo, or None if it isn't running."""
     deadline = time.monotonic() + timeout
     while True:
         try:
@@ -140,7 +141,7 @@ def _connect(timeout: float = 1.5):
             sock.connect(os.path.join(os.environ.get("TMPDIR", "/tmp"), pipe_name()))
             return sock.makefile("rwb", buffering=0)
         except FileNotFoundError:
-            return None  # nothing listening: FocusOrb is not running
+            return None  # nothing listening: Pomo is not running
         except OSError:
             if time.monotonic() >= deadline:  # all pipe instances busy for too long
                 return None
@@ -186,6 +187,6 @@ def run() -> int:
         if out is not None and stdout is not None:
             stdout.write(json.dumps(out).encode("utf-8"))
             stdout.flush()
-    except Exception:  # never break the agent because of FocusOrb
+    except Exception:  # never break the agent because of Pomo
         pass
     return 0

@@ -1,5 +1,5 @@
 @echo off
-rem Runs FocusOrb from source without a console window.
+rem Runs Pomo from source without a console window.
 cd /d "%~dp0"
 if not exist .venv\Scripts\pythonw.exe (
     py -3 -m venv .venv

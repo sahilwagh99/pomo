@@ -120,7 +120,91 @@ DARK = Theme(  # "Cocoa"
     label="Cocoa (dark)",
 )
 
-THEMES = {"light": LIGHT, "dark": DARK}
+SAKURA = Theme(
+    key="sakura",
+    dark=False,
+    page="#fbf1f1",
+    surface="#fffafa",
+    raised="#f8e9ea",
+    hover="#f2dcdf",
+    orb_face="#fffafa",
+    orb_edge="#efd6da",
+    ink="#4a2a33",
+    ink_2="#7a5560",
+    muted="#a68b92",
+    grid="#f3e3e5",
+    axis="#e3cbd0",
+    border_rgba=(74, 42, 51, 30),
+    success="#4f7f43",
+    danger="#b5544e",
+    on_accent="#4a2a33",
+    focus="#eea4b4",
+    short="#a8d5b0",
+    long="#c3b3e6",
+    chart="#c96b80",
+    heat=("#fbe1e6", "#f5c3ce", "#eb9fb0", "#dc7f95", "#c4607a"),
+    heat_empty="#f5e8ea",
+    shadow_alpha=40,
+    label="Sakura (light)",
+)
+
+LAVENDER = Theme(
+    key="lavender",
+    dark=False,
+    page="#f4f2fa",
+    surface="#fdfcff",
+    raised="#efecf7",
+    hover="#e6e1f2",
+    orb_face="#fdfcff",
+    orb_edge="#e0daf0",
+    ink="#352f4a",
+    ink_2="#5f5878",
+    muted="#928ba8",
+    grid="#ece8f5",
+    axis="#d9d2ea",
+    border_rgba=(53, 47, 74, 30),
+    success="#4f7f43",
+    danger="#b5544e",
+    on_accent="#352f4a",
+    focus="#b3a4e6",
+    short="#f3b7c6",
+    long="#9fd0d9",
+    chart="#7b68c8",
+    heat=("#ebe6fa", "#d4caf3", "#b8a8ea", "#9a87dc", "#7b68c8"),
+    heat_empty="#efecf6",
+    shadow_alpha=40,
+    label="Lavender (light)",
+)
+
+BLUEBERRY = Theme(
+    key="blueberry",
+    dark=True,
+    page="#1e2130",
+    surface="#262a3b",
+    raised="#2f3447",
+    hover="#383e54",
+    orb_face="#2a2f42",
+    orb_edge="#3d4459",
+    ink="#eef0f8",
+    ink_2="#c4c8da",
+    muted="#8f95ad",
+    grid="#343a4e",
+    axis="#454c63",
+    border_rgba=(238, 240, 248, 26),
+    success="#a9cf8f",
+    danger="#ec9b94",
+    on_accent="#1e2130",
+    focus="#9fb8ef",
+    short="#f2b6c6",
+    long="#c4b5ef",
+    chart="#6a8ee0",
+    heat=("#2f3a5c", "#3c5084", "#4d68ad", "#6a8ee0", "#a5bdf2"),
+    heat_empty="#30364a",
+    shadow_alpha=110,
+    label="Blueberry (dark)",
+)
+
+THEMES = {t.key: t for t in (LIGHT, SAKURA, LAVENDER, DARK, BLUEBERRY)}
 
 
 def theme_for(key: str) -> Theme:
@@ -179,9 +263,11 @@ def _render_png(path: Path, size: int, draw) -> None:
 
 
 def ensure_qss_assets(theme: Theme, asset_dir: Path) -> dict[str, str]:
-    """Small PNGs the stylesheet references (check mark, chevrons)."""
+    """Small PNGs the stylesheet references (toggle switches, check mark, chevrons)."""
     asset_dir.mkdir(parents=True, exist_ok=True)
     paths = {
+        "switch_on": asset_dir / f"switch_on_{theme.key}.png",
+        "switch_off": asset_dir / f"switch_off_{theme.key}.png",
         "check": asset_dir / f"check_{theme.key}.png",
         "down": asset_dir / f"chev_down_{theme.key}.png",
         "up": asset_dir / f"chev_up_{theme.key}.png",
@@ -204,6 +290,29 @@ def ensure_qss_assets(theme: Theme, asset_dir: Path) -> dict[str, str]:
             p.drawPath(path)
         return draw
 
+    def switch(on: bool):
+        def draw(p: QPainter, w: int, h: int) -> None:
+            track = QColor(theme.focus if on else theme.axis)
+            p.setPen(Qt.NoPen)
+            p.setBrush(track)
+            p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), (h - 1) / 2, (h - 1) / 2)
+            r = h / 2 - h * 0.12
+            cx = w - h / 2 if on else h / 2
+            p.setBrush(QColor(0, 0, 0, 28))
+            p.drawEllipse(QPointF(cx, h / 2 + h * 0.04), r, r)
+            p.setBrush(QColor("#ffffff"))
+            p.drawEllipse(QPointF(cx, h / 2), r, r)
+        return draw
+
+    for key, on in (("switch_on", True), ("switch_off", False)):
+        for scale, path in ((1, paths[key]), (2, paths[key].with_name(paths[key].stem + "@2x.png"))):
+            pm = QPixmap(34 * scale, 20 * scale)
+            pm.fill(Qt.transparent)
+            painter = QPainter(pm)
+            painter.setRenderHint(QPainter.Antialiasing)
+            switch(on)(painter, 34 * scale, 20 * scale)
+            painter.end()
+            pm.save(str(path), "PNG")
     _render_png(paths["check"], 16, check)
     _render_png(paths["down"], 12, chevron(False))
     _render_png(paths["up"], 12, chevron(True))
@@ -268,9 +377,10 @@ QComboBox QAbstractItemView {{ background: {t.surface}; color: {t.ink}; border: 
     selection-background-color: {t.hover}; selection-color: {t.ink}; outline: none; padding: 4px; }}
 
 QCheckBox {{ color: {t.ink}; spacing: 8px; }}
-QCheckBox::indicator {{ width: 16px; height: 16px; border-radius: 4px; border: 1px solid {t.axis}; background: {t.raised}; }}
-QCheckBox::indicator:hover {{ border-color: {acc}; }}
-QCheckBox::indicator:checked {{ background: {acc}; border-color: {acc}; image: url("{assets['check']}"); }}
+QCheckBox::indicator {{ width: 34px; height: 20px; border: none; background: transparent;
+    image: url("{assets['switch_off']}"); }}
+QCheckBox::indicator:checked {{ image: url("{assets['switch_on']}"); }}
+QCheckBox:disabled {{ color: {t.muted}; }}
 
 QSlider::groove:horizontal {{ height: 4px; background: {t.grid}; border-radius: 2px; }}
 QSlider::sub-page:horizontal {{ background: {acc}; border-radius: 2px; }}

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSlider,
     QSpinBox,
     QTabWidget,
@@ -26,9 +27,10 @@ from PySide6.QtWidgets import (
 )
 
 from . import APP_NAME, APP_VERSION, claude_hooks, keystore
-from .config import AI_MODELS, ORB_SIZES, SOUND_NAMES, Settings
+from .ai import KEYS_URL, KeyCheckWorker
+from .config import AI_MODELS, ORB_SIZES, OUTFITS, SOUND_NAMES, Settings
 from .stats import plural
-from .theme import DARK, LIGHT, theme_for
+from .theme import THEMES, theme_for
 from .winutil import set_dark_title_bar
 
 
@@ -201,15 +203,19 @@ class SettingsDialog(QDialog):
     def _appearance_tab(self) -> QWidget:
         page, form = _form()
         self.theme_box = QComboBox()
-        self.theme_box.addItems([LIGHT.label, DARK.label])
+        for theme in THEMES.values():
+            self.theme_box.addItem(theme.label, theme.key)
+        self.outfit_box = QComboBox()
+        for key, label in OUTFITS.items():
+            self.outfit_box.addItem(label, key)
         self.style_box = QComboBox()
         self.style_box.addItems(["Floating orb", "Top island"])
         self.buddy = QCheckBox("Show Pomo, your focus buddy")
-        self.island_autohide = QCheckBox("Shrink the island to a sliver when no timer is running")
+        self.island_autohide = QCheckBox("Tuck the island away when idle")
         self.size_box = QComboBox()
         self.size_box.addItems(list(ORB_SIZES))
         opacity_box, self.opacity = _slider(30, 100)
-        self.fade = QCheckBox("Fade the timer while focusing, until you hover over it")
+        self.fade = QCheckBox("Fade while focusing, until hovered")
         self.on_top = QCheckBox("Keep the timer above other windows")
         self.show_task = QCheckBox("Show the current task on the timer")
         theme = theme_for(self.ctrl.settings.theme)
@@ -224,6 +230,7 @@ class SettingsDialog(QDialog):
         form.addRow("Theme", self.theme_box)
         form.addRow("Timer style", self.style_box)
         form.addRow("", self.buddy)
+        form.addRow("Pomo's outfit", self.outfit_box)
         form.addRow("", self.island_autohide)
         form.addRow("Orb size", self.size_box)
         form.addRow("Opacity", opacity_box)
@@ -248,13 +255,13 @@ class SettingsDialog(QDialog):
         self.hooks_button = QPushButton()
         self.hooks_button.setCursor(Qt.PointingHandCursor)
         self.hooks_button.clicked.connect(self._toggle_hooks)
-        self.approvals = QCheckBox("Answer permission requests in FocusOrb")
+        self.approvals = QCheckBox("Answer permission requests in Pomo")
         self.approval_wait = _spin(15, 300, " s")
         self.notify_finish = QCheckBox("Tell me when an agent finishes a long task")
         self.notify_after = _spin(0, 3600, " s")
         form.addRow("Claude Code", self.hooks_status)
         form.addRow("", self.hooks_button)
-        form.addRow("", _hint("Connecting adds FocusOrb hooks to\n"
+        form.addRow("", _hint("Connecting adds Pomo hooks to\n"
                               f"{claude_hooks.default_settings_path()}\n"
                               "Your other settings are kept, and a backup is\n"
                               "saved next to the file the first time."))
@@ -272,11 +279,11 @@ class SettingsDialog(QDialog):
         listening = self.ctrl.agents.listening
         text = {
             "connected": "Connected. Pomo can see your Claude Code sessions.",
-            "outdated": "Connected to an older FocusOrb location. Reconnect to update.",
+            "outdated": "Connected to an older Pomo location. Reconnect to update.",
             "off": "Not connected.",
         }[state]
         if not listening:
-            text += "\nAnother FocusOrb is already receiving agent events, so this one can't."
+            text += "\nAnother Pomo is already receiving agent events, so this one can't."
         self.hooks_status.setText(text)
         self.hooks_button.setText({"connected": "Disconnect Claude Code", "outdated": "Reconnect Claude Code",
                                    "off": "Connect Claude Code"}[state])
@@ -290,8 +297,8 @@ class SettingsDialog(QDialog):
             else:
                 answer = QMessageBox.question(
                     self, "Connect Claude Code",
-                    f"FocusOrb will add its hooks to\n{path}\n\nClaude Code will then send FocusOrb a short "
-                    "summary of what each session does (prompts, tools, file names), and ask FocusOrb before "
+                    f"Pomo will add its hooks to\n{path}\n\nClaude Code will then send Pomo a short "
+                    "summary of what each session does (prompts, tools, file names), and ask Pomo before "
                     "showing a permission prompt. New Claude Code sessions pick this up.",
                     QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Ok)
                 if answer != QMessageBox.Ok:
@@ -305,65 +312,112 @@ class SettingsDialog(QDialog):
         page, form = _form()
         self.key_status = QLabel()
         self.key_status.setWordWrap(True)
+        # without this the form squeezes the label to its narrowest wrap and clips the second line
+        self.key_status.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.key_input = QLineEdit()
         self.key_input.setEchoMode(QLineEdit.Password)
-        self.key_input.setPlaceholderText("sk-ant-…")
+        self.key_input.setPlaceholderText("Paste your key (sk-ant-…)")
         save_key = QPushButton("Save key")
         save_key.clicked.connect(self._save_key)
-        remove_key = QPushButton("Remove")
-        remove_key.setObjectName("ghost")
-        remove_key.clicked.connect(self._remove_key)
         key_row = QWidget()
         lay = QHBoxLayout(key_row)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.addWidget(self.key_input, 1)
         lay.addWidget(save_key)
-        lay.addWidget(remove_key)
+        self.check_key = QPushButton("Check key")
+        self.check_key.clicked.connect(self._check_key)
+        get_key = QPushButton("Get a key")
+        get_key.setObjectName("ghost")
+        get_key.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(KEYS_URL)))
+        self.remove_key = QPushButton("Remove")
+        self.remove_key.setObjectName("ghost")
+        self.remove_key.clicked.connect(self._remove_key)
+        key_actions = QWidget()
+        lay = QHBoxLayout(key_actions)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.check_key)
+        lay.addWidget(get_key)
+        lay.addWidget(self.remove_key)
+        lay.addStretch(1)
         self.model_box = QComboBox()
         for model_id, label in AI_MODELS.items():
             self.model_box.addItem(label, model_id)
         open_chat = QPushButton("Open Ask Pomo")
         open_chat.clicked.connect(self.ctrl.open_chat)
-        form.addRow("API key", self.key_status)
+        form.addRow("Your key", self.key_status)
         form.addRow("", key_row)
-        form.addRow("", _hint("Get a key at console.anthropic.com. It is stored encrypted for your\n"
-                              "Windows account. Without one, FocusOrb uses ANTHROPIC_API_KEY if set."))
+        form.addRow("", key_actions)
+        form.addRow("", _hint("Bring your own key: Ask Pomo uses your Anthropic API key, so you\n"
+                              "only pay Anthropic for what you use. The key is stored encrypted for\n"
+                              "your Windows account and is only ever sent to Anthropic."))
         form.addRow("Model", self.model_box)
         form.addRow("", _hint("Ask Pomo sends your question and a short summary of your focus\n"
                               "stats, task names and agent activity to Anthropic. Nothing is sent\n"
                               "until you ask something."))
         form.addRow("", open_chat)
+        self._key_check: KeyCheckWorker | None = None
         self._refresh_key_status()
         return page
 
-    def _refresh_key_status(self) -> None:
+    def _refresh_key_status(self, text: str = "", tone: str | None = None) -> None:
         key = self.ctrl.ai_key()
-        if key:
-            self.key_status.setText(f"Saved ({keystore.mask(key)}).")
-        elif self.ctrl.has_ai_key():
-            self.key_status.setText("Using the key from your environment.")
-        else:
-            self.key_status.setText("No key yet.")
+        if not text:
+            if key:
+                text = f"Saved ({keystore.mask(key)})."
+            elif self.ctrl.has_ai_key():
+                text = "Using the key from your environment (ANTHROPIC_API_KEY)."
+            else:
+                text = "No key yet. Paste yours below to chat with Pomo."
+        color = {"good": self.ctrl.theme.success, "bad": self.ctrl.theme.danger}.get(tone)
+        self.key_status.setStyleSheet(f"color: {color};" if color else "")
+        self.key_status.setText(text)
+        self.remove_key.setVisible(bool(key))
+        self.check_key.setEnabled(self.ctrl.has_ai_key() and self._key_check is None)
+        if getattr(self.ctrl, "chat", None) is not None:
+            self.ctrl.chat.refresh_key()
 
-    def _save_key(self) -> None:
+    def _save_key(self) -> bool:
         key = self.key_input.text().strip()
         if not key:
-            return
+            return False
         try:
             keystore.save_key(self.ctrl.ai_key_path, key)
         except OSError as exc:
             QMessageBox.warning(self, "API key", str(exc))
-            return
+            return False
         self.key_input.clear()
-        self._refresh_key_status()
+        self._check_key()
+        return True
+
+    def _check_key(self) -> None:
+        if self._key_check is not None or not self.ctrl.has_ai_key():
+            return
+        # parented to the app, not this dialog, which is deleted when it closes
+        self._key_check = worker = KeyCheckWorker(self.ctrl.ai_key(), self.model_box.currentData(), self.ctrl)
+        worker.result.connect(self._on_key_checked)
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+        self._refresh_key_status("Checking your key with Anthropic…")
+
+    def _on_key_checked(self, status: str, message: str) -> None:
+        self._key_check = None
+        if status == "bad" and self.ctrl.ai_key():
+            keystore.delete_key(self.ctrl.ai_key_path)  # don't keep a key Anthropic rejected
+        self._refresh_key_status(message, "good" if status in ("ok", "warn") else "bad")
 
     def _remove_key(self) -> None:
         keystore.delete_key(self.ctrl.ai_key_path)
         self._refresh_key_status()
 
+    def done(self, result: int) -> None:
+        if self._key_check is not None:
+            self._key_check.result.disconnect(self._on_key_checked)  # it may finish after this dialog is gone
+            self._key_check = None
+        super().done(result)
+
     def _general_tab(self) -> QWidget:
         page, form = _form()
-        self.autostart = QCheckBox(f"Start {APP_NAME} when Windows starts")
+        self.autostart = QCheckBox(f"Run {APP_NAME} on startup")
         corner = QPushButton("Move timer to the bottom-right corner")
         corner.clicked.connect(self._move_to_corner)
         folder = QPushButton("Open data folder")
@@ -375,7 +429,8 @@ class SettingsDialog(QDialog):
         clear.clicked.connect(self._clear_history)
         for button in (corner, folder, export, clear):
             button.setCursor(Qt.PointingHandCursor)
-        form.addRow("", self.autostart)
+        form.addRow("Startup", self.autostart)
+        form.addRow("", _hint(f"Starts {APP_NAME} when you sign in to Windows."))
         form.addRow("Position", corner)
         form.addRow("Data", folder)
         form.addRow("", export)
@@ -401,7 +456,8 @@ class SettingsDialog(QDialog):
         self.volume.setValue(s.volume)
         self.repeat.setValue(s.sound_repeat)
         self.idle.setValue(s.idle_reminder_min)
-        self.theme_box.setCurrentIndex(1 if s.theme == "dark" else 0)
+        self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(s.theme)))
+        self.outfit_box.setCurrentIndex(max(0, self.outfit_box.findData(s.pomo_outfit)))
         self.style_box.setCurrentIndex(1 if s.display_mode == "island" else 0)
         self.buddy.setChecked(s.show_buddy)
         self.island_autohide.setChecked(s.island_autohide)
@@ -437,7 +493,8 @@ class SettingsDialog(QDialog):
         s.volume = self.volume.value()
         s.sound_repeat = self.repeat.value()
         s.idle_reminder_min = self.idle.value()
-        s.theme = "dark" if self.theme_box.currentIndex() == 1 else "light"
+        s.theme = self.theme_box.currentData()
+        s.pomo_outfit = self.outfit_box.currentData()
         s.display_mode = "island" if self.style_box.currentIndex() == 1 else "orb"
         s.show_buddy = self.buddy.isChecked()
         s.island_autohide = self.island_autohide.isChecked()
@@ -458,6 +515,11 @@ class SettingsDialog(QDialog):
         return s
 
     def _save(self) -> None:
+        if self.key_input.text().strip():  # Enter in the key field lands here too
+            try:
+                keystore.save_key(self.ctrl.ai_key_path, self.key_input.text().strip())
+            except OSError as exc:
+                QMessageBox.warning(self, "API key", str(exc))
         self.ctrl.apply_settings(self._collect())
         self.accept()
 
@@ -474,7 +536,7 @@ class SettingsDialog(QDialog):
         self.ctrl.save_position()
 
     def _export(self) -> None:
-        default = str(Path.home() / f"focusorb-history-{date.today().isoformat()}.csv")
+        default = str(Path.home() / f"pomo-history-{date.today().isoformat()}.csv")
         path, _ = QFileDialog.getSaveFileName(self, "Export history", default, "CSV files (*.csv)")
         if path:
             n = self.ctrl.storage.export_csv(Path(path))

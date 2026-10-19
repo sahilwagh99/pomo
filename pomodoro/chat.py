@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QPointF, Qt, QTimer
-from PySide6.QtGui import QColor, QPainter, QTextDocument
+from PySide6.QtCore import QPointF, Qt, QTimer, QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QPainter, QTextDocument
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
@@ -16,21 +17,25 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .ai import QUICK_ACTIONS, ChatWorker, build_context, quick_prompt
+from . import keystore
+from .ai import KEYS_URL, QUICK_ACTIONS, ChatWorker, KeyCheckWorker, build_context, quick_prompt
 from .config import AI_MODELS
 from .pomo import BODY_RY, Pomo
 from .winutil import set_dark_title_bar
 
 GREETING = ("Hi, I'm Pomo! Ask me to plan your work into pomodoros, look at how your focus is going, "
             "or catch you up on what your coding agents did today.")
-NO_KEY = "To chat, add your Anthropic API key in **Settings > AI**."
+KEY_TITLE = "Bring your own key"
+KEY_TEXT = ("Pomo chats with Claude using your own Anthropic API key, so you only pay Anthropic for what you "
+            "use. The key is stored encrypted for your Windows account and is only ever sent to Anthropic.")
 
 
 class PomoAvatar(QWidget):
     def __init__(self, size: int = 64, parent: QWidget | None = None):
         super().__init__(parent)
         self.pomo = Pomo()
-        self.setFixedSize(size + 16, size + 10)
+        self.outfit_source = None  # callable returning the current outfit
+        self.setFixedSize(size + 16, size + 22)
         self._last = time.monotonic()
         self._timer = QTimer(self)
         self._timer.setInterval(33)
@@ -51,6 +56,8 @@ class PomoAvatar(QWidget):
         anchor, size = self._anchor()
         cursor = QPointF(self.mapFromGlobal(self.cursor().pos())) - anchor
         self.pomo.update(dt, (cursor.x() / size, cursor.y() / size))
+        if self.outfit_source is not None:
+            self.pomo.outfit = self.outfit_source()
         self.update()
 
     def _anchor(self) -> tuple[QPointF, float]:
@@ -142,6 +149,7 @@ class ChatWindow(QWidget):
 
         head = QHBoxLayout()
         self.avatar = PomoAvatar(58)
+        self.avatar.outfit_source = lambda: self.ctrl.settings.pomo_outfit
         head.addWidget(self.avatar)
         titles = QVBoxLayout()
         titles.setSpacing(0)
@@ -154,11 +162,17 @@ class ChatWindow(QWidget):
         titles.addWidget(self.subtitle)
         titles.addStretch(1)
         head.addLayout(titles, 1)
+        key_button = QPushButton("Key")
+        key_button.setObjectName("ghost")
+        key_button.setToolTip("Your Anthropic API key")
+        key_button.clicked.connect(lambda: self._show_key_panel(not self.key_panel.isVisible()))
+        head.addWidget(key_button, 0, Qt.AlignTop)
         clear = QPushButton("New chat")
         clear.setObjectName("ghost")
         clear.clicked.connect(self.new_chat)
         head.addWidget(clear, 0, Qt.AlignTop)
         root.addLayout(head)
+        root.addWidget(self._build_key_panel())
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
@@ -204,6 +218,113 @@ class ChatWindow(QWidget):
         root.addWidget(self.privacy)
 
         self.new_chat()
+        self._show_key_panel(not self.ctrl.has_ai_key())
+
+    # -------------------------------------------------------------- your key
+    def _build_key_panel(self) -> QFrame:
+        self.key_panel = panel = QFrame()
+        panel.setObjectName("card")
+        lay = QVBoxLayout(panel)
+        lay.setContentsMargins(16, 14, 16, 14)
+        lay.setSpacing(8)
+        title = QLabel(KEY_TITLE)
+        title.setProperty("role", "title")
+        text = QLabel(KEY_TEXT)
+        text.setProperty("role", "secondary")
+        text.setWordWrap(True)
+        row = QHBoxLayout()
+        self.key_input = QLineEdit()
+        self.key_input.setEchoMode(QLineEdit.Password)
+        self.key_input.setPlaceholderText("Paste your key (sk-ant-\u2026)")
+        self.key_input.returnPressed.connect(self._save_key)
+        self.key_save = QPushButton("Save key")
+        self.key_save.setObjectName("primary")
+        self.key_save.clicked.connect(self._save_key)
+        row.addWidget(self.key_input, 1)
+        row.addWidget(self.key_save)
+        links = QHBoxLayout()
+        get_key = QPushButton("Get a key")
+        get_key.setObjectName("ghost")
+        get_key.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(KEYS_URL)))
+        self.key_remove = QPushButton("Remove saved key")
+        self.key_remove.setObjectName("ghost")
+        self.key_remove.clicked.connect(self._remove_key)
+        links.addWidget(get_key)
+        links.addWidget(self.key_remove)
+        links.addStretch(1)
+        self.key_status = QLabel()
+        self.key_status.setProperty("role", "muted")
+        self.key_status.setWordWrap(True)
+        lay.addWidget(title)
+        lay.addWidget(text)
+        lay.addLayout(row)
+        lay.addLayout(links)
+        lay.addWidget(self.key_status)
+        self._key_check: KeyCheckWorker | None = None
+        return panel
+
+    def _show_key_panel(self, show: bool) -> None:
+        saved = self.ctrl.ai_key()
+        self.key_remove.setVisible(bool(saved))
+        if saved:
+            self._set_key_status(f"Using your saved key ({keystore.mask(saved)}). Paste a new one to replace it.")
+        elif self.ctrl.has_ai_key():
+            self._set_key_status("Using the key from your environment (ANTHROPIC_API_KEY).")
+        else:
+            self._set_key_status("")
+        self.key_panel.setVisible(show)
+        ready = self.ctrl.has_ai_key()
+        self.input.setEnabled(ready)
+        self.send_button.setEnabled(ready)
+        for chip in self.chip_buttons:
+            chip.setEnabled(ready and self.worker is None)
+        if show:
+            self.key_input.setFocus()
+
+    def refresh_key(self) -> None:
+        """The key changed elsewhere (Settings): ask for one only if there is none."""
+        self._show_key_panel(not self.ctrl.has_ai_key())
+
+    def _set_key_status(self, text: str, tone: str | None = None) -> None:
+        color = {"good": self.theme.success, "bad": self.theme.danger}.get(tone)
+        self.key_status.setStyleSheet(f"color: {color};" if color else "")
+        self.key_status.setText(text)
+        self.key_status.setVisible(bool(text))
+
+    def _save_key(self) -> None:
+        key = self.key_input.text().strip()
+        if not key or self._key_check is not None:
+            return
+        try:
+            keystore.save_key(self.ctrl.ai_key_path, key)
+        except OSError as exc:
+            self._set_key_status(str(exc), "bad")
+            return
+        self.key_input.clear()
+        self.key_save.setEnabled(False)
+        self._set_key_status("Checking your key with Anthropic\u2026")
+        self._key_check = KeyCheckWorker(key, self.ctrl.settings.ai_model, self)
+        self._key_check.result.connect(self._on_key_checked)
+        self._key_check.finished.connect(self._key_check_done)
+        self._key_check.start()
+
+    def _on_key_checked(self, status: str, message: str) -> None:
+        if status == "bad":
+            keystore.delete_key(self.ctrl.ai_key_path)  # don't keep a key Anthropic rejected
+        self._show_key_panel(True)
+        self._set_key_status(message, "good" if status in ("ok", "warn") else "bad")
+        if status in ("ok", "warn"):
+            self.avatar.pomo.celebrate()
+            self._add_bubble("Yay, thank you! Ask me anything, or tap one of the ideas below.", mine=False)
+            QTimer.singleShot(1800, lambda: self._show_key_panel(False))
+
+    def _key_check_done(self) -> None:
+        self._key_check = None
+        self.key_save.setEnabled(True)
+
+    def _remove_key(self) -> None:
+        keystore.delete_key(self.ctrl.ai_key_path)
+        self._show_key_panel(True)
 
     # ----------------------------------------------------------------- state
     def showEvent(self, event) -> None:
@@ -221,10 +342,9 @@ class ChatWindow(QWidget):
         while self.thread.count() > 1:
             item = self.thread.takeAt(0)
             if item.widget():
+                item.widget().hide()  # gone now, not when deleteLater gets to it
                 item.widget().deleteLater()
         self._add_bubble(GREETING, mine=False)
-        if not self.ctrl.has_ai_key():
-            self._add_bubble(NO_KEY, mine=False)
 
     def _bubble_width(self) -> int:
         return min(380, int(self.scroll.viewport().width() * 0.82))
@@ -317,9 +437,11 @@ class ChatWindow(QWidget):
     def _set_busy(self, busy: bool) -> None:
         self.send_button.setText("Stop" if busy else "Send")
         for chip in self.chip_buttons:
-            chip.setEnabled(not busy)
+            chip.setEnabled(not busy and self.ctrl.has_ai_key())
 
     def shutdown(self) -> None:
         if self.worker is not None:
             self.worker.cancel()
             self.worker.wait(2000)
+        if self._key_check is not None:
+            self._key_check.wait(2000)

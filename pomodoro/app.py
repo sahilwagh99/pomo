@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 from datetime import date
 from pathlib import Path
@@ -10,9 +11,9 @@ from PySide6.QtCore import QObject, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QSystemTrayIcon
 
-from . import APP_NAME, keystore
+from . import APP_NAME, claude_hooks, keystore
 from .agents import AgentHub, Approval
-from .config import Settings
+from .config import OUTFITS, Settings
 from .engine import Mode, State, TimerEngine
 from .icons import app_icon, render_tray_icon
 from .island import IslandWidget
@@ -20,7 +21,7 @@ from .notifier import Notifier
 from .orb import OrbWidget
 from .stats import fmt_clock, plural
 from .storage import Storage
-from .theme import build_palette, build_qss, ensure_qss_assets, mode_color, theme_for
+from .theme import THEMES, build_palette, build_qss, ensure_qss_assets, mode_color, theme_for
 from .toast import ToastCard
 from . import winutil
 
@@ -44,7 +45,7 @@ def _action(menu: QMenu, text: str, fn, *, checked: bool | None = None, enabled:
     return act
 
 
-class FocusOrbApp(QObject):
+class PomoApp(QObject):
     def __init__(self, qapp: QApplication, data_dir: Path, demo: bool = False):
         super().__init__()
         self.qapp = qapp
@@ -76,6 +77,7 @@ class FocusOrbApp(QObject):
         self.dashboard = None
         self.settings_dialog = None
         self.chat = None
+        self.game = None
         self.agents = AgentHub(self, self)
         self._approval_queue: list[Approval] = []
 
@@ -110,6 +112,7 @@ class FocusOrbApp(QObject):
         for view in (self.orb, self.island):
             view.dashboard_requested.connect(self.open_dashboard)
             view.settings_requested.connect(self.open_settings)
+            view.chat_requested.connect(self.open_chat)
             view.menu_requested.connect(self._show_view_menu)
             view.interacted.connect(self._on_view_interacted)
         self.orb.moved.connect(self.save_position)
@@ -125,6 +128,85 @@ class FocusOrbApp(QObject):
 
         self._apply_display_mode()
         self._on_engine_changed()
+        self._sync_integrations()
+        if not self.settings.welcomed:
+            QTimer.singleShot(1800, self._welcome)
+
+    def _welcome(self) -> None:
+        """First launch: Pomo says hi from the island and offers the orb instead."""
+        self.settings.welcomed = True
+        self.save_settings()
+        if not self.view.isVisible() or self._approval_on_screen():
+            return
+        accent = mode_color(self.theme, self.settings, "focus")
+        if self.settings.display_mode == "island":
+            body = ("I live in this little island at the top of your screen. Hover me for the controls, "
+                    "and feel free to poke me. Prefer a round timer you can drag anywhere?")
+            actions = [("Keep the island", lambda: None, True),
+                       ("Switch to orb", lambda: self.set_display_mode("orb"), False)]
+            self.island.pin(30.0)
+        else:
+            body = ("I sit on top of your timer. Hover it for the controls, and feel free to poke me. "
+                    "Prefer a slim island at the top of your screen?")
+            actions = [("Keep the orb", lambda: None, True),
+                       ("Switch to island", lambda: self.set_display_mode("island"), False)]
+        self.view.pomo.hello()
+        self.toast.show_message("Hi, I'm Pomo!", body, accent, actions, self.view.anchor_rect_global(),
+                                timeout_ms=30000)
+
+    def _sync_integrations(self) -> None:
+        """Keep Windows start-up and Claude Code hooks pointing at this copy of Pomo.
+
+        Pomo may have moved, been upgraded, or been renamed from FocusOrb since they were set up.
+        """
+        frozen = getattr(sys, "frozen", False)
+        on = self.settings.start_with_windows or winutil.starts_with_windows()
+        if on and frozen:  # a source checkout must never take over the installed app's entry
+            winutil.set_start_with_windows(True)
+        if on != self.settings.start_with_windows:
+            self.settings.start_with_windows = on
+            self.save_settings()
+        if frozen:
+            try:
+                claude_hooks.refresh()
+            except (claude_hooks.HookConfigError, OSError):
+                pass
+
+    def set_theme(self, key: str) -> None:
+        new = self.settings.copy()
+        new.theme = key
+        new.clamp()
+        self.apply_settings(new)
+
+    def set_outfit(self, key: str) -> None:
+        self.settings.pomo_outfit = key
+        self.settings.clamp()
+        self.save_settings()
+        self.view.pomo.outfit = key
+        self.view.pomo.hop(1.8)  # a little twirl to show it off
+
+    def feed_pomo(self) -> None:
+        if self.settings.treats <= 0:
+            return
+        self.settings.treats -= 1
+        self.settings.treats_fed += 1
+        self.save_settings()
+        self.view.pomo.munch()
+        self.view.update()
+
+    def open_game(self) -> None:
+        if self.game is None:
+            from .game import GameWindow
+            self.game = GameWindow(self)
+        self.game.show()
+        self.game.setWindowState(self.game.windowState() & ~Qt.WindowMinimized)
+        self.game.raise_()
+        self.game.activateWindow()
+
+    def set_start_with_windows(self, on: bool) -> None:
+        if winutil.set_start_with_windows(on):
+            self.settings.start_with_windows = on
+            self.save_settings()
 
     # ----------------------------------------------------------------- views
     @property
@@ -351,9 +433,16 @@ class FocusOrbApp(QObject):
                 checked=self.settings.display_mode == "orb")
         _action(style, "Top island", lambda: self.set_display_mode("island"),
                 checked=self.settings.display_mode == "island")
+        themes = styled_menu(menu.addMenu("Theme"))
+        for theme in THEMES.values():
+            _action(themes, theme.label, lambda k=theme.key: self.set_theme(k), checked=theme.key == self.settings.theme)
+        outfits = styled_menu(menu.addMenu("Pomo's outfit"))
+        for key, label in OUTFITS.items():
+            _action(outfits, label, lambda k=key: self.set_outfit(k), checked=key == self.settings.pomo_outfit)
         menu.addSeparator()
 
         _action(menu, "Ask Pomo…", self.open_chat)
+        _action(menu, "Play Petal Catch…", self.open_game)
         sessions = self.agents.live_sessions()
         agents = styled_menu(menu.addMenu(f"Coding agents ({len(sessions)})" if sessions else "Coding agents"))
         for session in sessions[:8]:
@@ -368,6 +457,8 @@ class FocusOrbApp(QObject):
         _action(menu, "Dashboard\tD", self.open_dashboard)
         _action(menu, "Settings…", self.open_settings)
         menu.addSeparator()
+        _action(menu, "Run on startup", lambda: self.set_start_with_windows(not self.settings.start_with_windows),
+                checked=self.settings.start_with_windows)
         if self.view.isVisible():
             _action(menu, "Hide timer", self.hide_timer, enabled=self.tray is not None)
         else:
@@ -461,6 +552,9 @@ class FocusOrbApp(QObject):
         view = self.view
         if finished is Mode.FOCUS:
             view.celebrate(big=count == goal)
+            if s.treats < 9:  # a dango for Pomo, fed from the badge beside him
+                s.treats += 1
+                self.save_settings()
         if auto_started:
             view.flash()
         if s.popup_card and view.isVisible() and not self._approval_on_screen():

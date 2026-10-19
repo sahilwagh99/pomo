@@ -41,19 +41,19 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FocusOrb-windows
+          name: Pomo-windows
           path: |
-            dist/FocusOrb-Setup.exe
-            dist/FocusOrb-portable.zip
+            dist/Pomo-Setup.exe
+            dist/Pomo-portable.zip
 
       # Asset names stay the same every release, so the README's
-      # releases/latest/download/FocusOrb-Setup.exe link always serves the newest installer.
+      # releases/latest/download/Pomo-Setup.exe link always serves the newest installer.
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          name: FocusOrb ${{ github.ref_name }}
+          name: Pomo ${{ github.ref_name }}
           files: |
-            dist/FocusOrb-Setup.exe
-            dist/FocusOrb-portable.zip
+            dist/Pomo-Setup.exe
+            dist/Pomo-portable.zip
           generate_release_notes: true

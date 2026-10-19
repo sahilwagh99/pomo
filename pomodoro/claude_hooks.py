@@ -1,6 +1,6 @@
-"""Register FocusOrb's hooks in Claude Code's user settings (~/.claude/settings.json).
+"""Register Pomo's hooks in Claude Code's user settings (~/.claude/settings.json).
 
-Only entries that run FocusOrb's hook (recognised by the --focusorb-hook argument)
+Only entries that run Pomo's hook (recognised by the --pomo-hook argument)
 are ever added or removed; everything else in the file is preserved. A one-time
 backup is written next to the file before the first change, and a file that
 does not parse as JSON is never overwritten.
@@ -13,7 +13,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from .hook import MARKER
+from .hook import LEGACY_MARKERS, MARKER
 
 # Watched without slowing Claude Code down: async hooks run in the background.
 OBSERVED_EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
@@ -31,7 +31,7 @@ def default_settings_path() -> Path:
 
 
 def hook_command() -> tuple[str, list[str]]:
-    """Executable and arguments that run FocusOrb's hook client."""
+    """Executable and arguments that run Pomo's hook client."""
     if getattr(sys, "frozen", False):
         return sys.executable, [MARKER]
     exe = Path(sys.executable)
@@ -44,9 +44,10 @@ def _is_ours(handler) -> bool:
     if not isinstance(handler, dict):
         return False
     args = handler.get("args")
-    if isinstance(args, list) and MARKER in args:
+    markers = (MARKER, *LEGACY_MARKERS)
+    if isinstance(args, list) and any(m in args for m in markers):
         return True
-    return MARKER in str(handler.get("command", ""))
+    return any(m in str(handler.get("command", "")) for m in markers)
 
 
 def _load(path: Path) -> dict:
@@ -63,10 +64,10 @@ def _load(path: Path) -> dict:
 
 def _write(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    backup = path.with_name(path.name + ".focusorb-backup")
+    backup = path.with_name(path.name + ".pomo-backup")
     if path.exists() and not backup.exists():
         shutil.copy2(path, backup)
-    tmp = path.with_name(path.name + ".focusorb-tmp")
+    tmp = path.with_name(path.name + ".pomo-tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, path)
 
@@ -129,7 +130,7 @@ def uninstall(path: Path | None = None) -> Path:
 
 
 def status(path: Path | None = None) -> str:
-    """'connected', 'outdated' (points at another FocusOrb location), or 'off'."""
+    """'connected', 'outdated' (points at another Pomo location), or 'off'."""
     path = path or default_settings_path()
     try:
         data = _load(path)
@@ -149,3 +150,15 @@ def status(path: Path | None = None) -> str:
                                       isinstance(g, dict) and any(_is_ours(h) for h in g.get("hooks") or [])
                                       for g in groups)})
     return "connected" if current and complete else "outdated"
+
+
+def refresh(path: Path | None = None) -> bool:
+    """Re-point existing hooks at this copy of Pomo (after a move, rename or upgrade).
+
+    Only acts when the user connected Claude Code before; returns True if it changed anything.
+    """
+    path = path or default_settings_path()
+    if status(path) != "outdated":
+        return False
+    install(path, approval_timeout=330)
+    return True

@@ -1,4 +1,4 @@
-"""Live view of Claude Code sessions, fed by FocusOrb's hook client (hook.py).
+"""Live view of Claude Code sessions, fed by Pomo's hook client (hook.py).
 
 Each hook run connects to a local named pipe and sends one JSON line. Approval
 requests keep the connection open until the user answers (or the wait runs out,
@@ -261,7 +261,7 @@ class AgentHub(QObject):
             return
         reply = {"decision": decision}
         if decision == "deny":
-            reply["message"] = "The user denied this in FocusOrb."
+            reply["message"] = "The user denied this in Pomo."
         sock.write((json.dumps(reply) + "\n").encode("utf-8"))
         sock.flush()
         sock.disconnectFromServer()

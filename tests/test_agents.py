@@ -9,7 +9,7 @@ from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
-os.environ["FOCUSORB_AGENT_PIPE"] = f"FocusOrb-agents-test-{os.getpid()}"
+os.environ["POMO_AGENT_PIPE"] = f"Pomo-agents-test-{os.getpid()}"
 
 from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
 
@@ -84,7 +84,7 @@ class ClaudeSettingsTests(unittest.TestCase):
         self.assertIn(MARKER, approval["hooks"][0]["args"])
         self.assertNotIn("async", approval["hooks"][0])  # approvals must block
         self.assertTrue(data["hooks"]["PreToolUse"][0]["hooks"][0]["async"])
-        self.assertTrue(self.path.with_name("settings.json.focusorb-backup").exists())
+        self.assertTrue(self.path.with_name("settings.json.pomo-backup").exists())
 
         claude_hooks.install(self.path)  # idempotent
         data = json.loads(self.path.read_text())
@@ -207,11 +207,62 @@ class HookRoundTripTests(unittest.TestCase):
         self.hub.resolve(asked[0].id, "terminal")
         self.assertEqual(self.finish(proc), (0, ""))
 
-    def test_hook_is_silent_when_focusorb_is_not_running(self):
+    def test_hook_is_silent_when_pomo_is_not_running(self):
         self.hub.shutdown()
         proc = self.run_hook({"hook_event_name": "PermissionRequest", "tool_name": "Bash",
                               "tool_input": {"command": "ls"}})
         self.assertEqual(self.finish(proc), (0, ""))
+
+
+
+class RenameMigrationTests(unittest.TestCase):
+    def test_hooks_from_focusorb_are_recognised_and_refreshed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "settings.json"
+            old = {"type": "command", "command": r"C:\old\FocusOrb.exe", "args": ["--focusorb-hook"], "async": True}
+            mine = {"type": "command", "command": "echo mine"}
+            path.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [old]}, {"hooks": [mine]}]}}))
+            self.assertEqual(claude_hooks.status(path), "outdated")
+            self.assertTrue(claude_hooks.refresh(path))
+            self.assertEqual(claude_hooks.status(path), "connected")
+            data = json.loads(path.read_text())
+            handlers = [h for g in data["hooks"]["Stop"] for h in g["hooks"]]
+            self.assertNotIn(old, handlers)
+            self.assertIn(mine, handlers)
+            self.assertFalse(claude_hooks.refresh(path))  # nothing left to do
+
+    def test_refresh_leaves_unconnected_users_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "settings.json"
+            path.write_text('{"model": "opus"}')
+            self.assertFalse(claude_hooks.refresh(path))
+            self.assertEqual(json.loads(path.read_text()), {"model": "opus"})
+
+    def test_data_folder_moves_from_focusorb_once(self):
+        from pomodoro import config
+
+        with tempfile.TemporaryDirectory() as tmp:
+            old_appdata = os.environ.get("APPDATA")
+            os.environ["APPDATA"] = tmp
+            try:
+                legacy = Path(tmp) / "FocusOrb"
+                (legacy / "cache").mkdir(parents=True)
+                (legacy / "settings.json").write_text('{"daily_goal": 6}')
+                (legacy / "history.db").write_bytes(b"db")
+                self.assertTrue(config.migrate_legacy_data())
+                new = Path(tmp) / "Pomo"
+                # settings carry over, and Pomo opens as the island with a hello, like a new install
+                self.assertEqual(json.loads((new / "settings.json").read_text()),
+                                 {"daily_goal": 6, "display_mode": "island", "island_autohide": False, "welcomed": False})
+                self.assertTrue((new / "history.db").exists())
+                self.assertFalse((new / "cache").exists())
+                self.assertTrue(legacy.exists())  # kept as a backup
+                self.assertFalse(config.migrate_legacy_data())  # only once
+            finally:
+                if old_appdata is None:
+                    del os.environ["APPDATA"]
+                else:
+                    os.environ["APPDATA"] = old_appdata
 
 
 if __name__ == "__main__":

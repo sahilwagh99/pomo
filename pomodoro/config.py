@@ -4,10 +4,11 @@ from __future__ import annotations
 import copy
 import json
 import os
+import shutil
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
-from . import APP_NAME
+from . import APP_NAME, LEGACY_NAME
 
 SOUND_NAMES = ("Chime", "Bell", "Digital", "Soft")
 AI_MODELS = {  # model id -> label; Opus is the default
@@ -15,13 +16,47 @@ AI_MODELS = {  # model id -> label; Opus is the default
     "claude-sonnet-5-5": "Claude Sonnet 5.5",
     "claude-haiku-5-5": "Claude Haiku 5.5",
 }
+OUTFITS = {  # Pomo's wardrobe: key -> label
+    "blossom": "Sakura blossom",
+    "headphones": "Headphones",
+    "beanie": "Cozy beanie",
+    "party": "Party hat",
+    "crown": "Crown",
+    "bow": "Ribbon bow",
+    "glasses": "Round glasses",
+    "none": "Nothing",
+}
 ORB_SIZES = {"Small": 150, "Medium": 190, "Large": 230}
 
 
-def default_data_dir() -> Path:
+def _appdata_root() -> Path:
     base = os.environ.get("APPDATA")
-    root = Path(base) if base else Path.home() / ".config"
-    return root / APP_NAME
+    return Path(base) if base else Path.home() / ".config"
+
+
+def default_data_dir() -> Path:
+    return _appdata_root() / APP_NAME
+
+
+def migrate_legacy_data() -> bool:
+    """Copy the data folder of FocusOrb (this app before 1.2) to Pomo's, once.
+
+    The old folder is left in place as a backup. Returns True if anything was copied.
+    """
+    new, old = default_data_dir(), _appdata_root() / LEGACY_NAME
+    if new.exists() or not old.is_dir():
+        return False
+    shutil.copytree(old, new, ignore=shutil.ignore_patterns("cache"))
+    # Pomo is a fresh start: open as the island and say hello once, like a new install
+    settings_file = new / "settings.json"
+    try:
+        data = json.loads(settings_file.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            data.update(display_mode="island", island_autohide=False, welcomed=False)
+            settings_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except (OSError, ValueError):
+        pass
+    return True
 
 
 @dataclass
@@ -45,10 +80,15 @@ class Settings:
     idle_reminder_min: int = 0  # 0 = off
 
     # Appearance
-    theme: str = "light"  # "light" = Matcha, "dark" = Cocoa
-    display_mode: str = "orb"  # "orb" (floating circle) | "island" (pill at the top of the screen)
+    theme: str = "light"  # light (Matcha), sakura, lavender, dark (Cocoa), blueberry
+    display_mode: str = "island"  # "island" (pill at the top of the screen, the first impression) | "orb"
     show_buddy: bool = True    # Pomo, the focus buddy
-    island_autohide: bool = True
+    pomo_outfit: str = "blossom"
+    treats: int = 0          # earned one per finished focus session, fed by clicking the dango
+    treats_fed: int = 0
+    game_best: int = 0       # Petal Catch high score
+    island_autohide: bool = False  # tuck into a sliver when idle (off: the pill stays visible)
+    welcomed: bool = False          # the first-run welcome card has been shown
     orb_size: int = 190
     opacity: int = 100
     fade_when_away: bool = True
@@ -59,7 +99,7 @@ class Settings:
     long_color: str = ""
 
     # Coding agents (Claude Code)
-    agent_approvals: bool = True      # answer permission requests from FocusOrb
+    agent_approvals: bool = True      # answer permission requests from Pomo
     approval_wait_s: int = 60         # then Claude Code asks in the terminal instead
     agent_notify_finish: bool = True
     agent_notify_after_s: int = 30    # only for turns at least this long
@@ -122,10 +162,13 @@ class Settings:
         self.orb_size = _clip(self.orb_size, 130, 260)
         if self.sound_name not in SOUND_NAMES:
             self.sound_name = SOUND_NAMES[0]
-        if self.theme not in ("dark", "light"):
+        if self.theme not in ("light", "dark", "sakura", "lavender", "blueberry"):
             self.theme = "light"
+        self.treats = _clip(self.treats, 0, 9)
+        if self.pomo_outfit not in OUTFITS:
+            self.pomo_outfit = "blossom"
         if self.display_mode not in ("orb", "island"):
-            self.display_mode = "orb"
+            self.display_mode = "island"
         self.approval_wait_s = _clip(self.approval_wait_s, 15, 300)
         self.agent_notify_after_s = _clip(self.agent_notify_after_s, 0, 3600)
         if self.ai_model not in AI_MODELS:

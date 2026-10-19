@@ -79,5 +79,113 @@ class PomoTests(unittest.TestCase):
         self.assertLessEqual(len(self.pomo.particles), 80)
 
 
+
+class WardrobeAndThemeTests(unittest.TestCase):
+    def test_every_outfit_and_mood_paints(self):
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QGuiApplication, QImage, QPainter
+
+        from pomodoro.config import OUTFITS
+        from pomodoro.pomo import FACES
+
+        app = QGuiApplication.instance() or QGuiApplication([])
+        img = QImage(200, 200, QImage.Format_ARGB32)
+        for outfit in OUTFITS:
+            for face in FACES:
+                pomo = Pomo(random.Random(2))
+                pomo.outfit = outfit
+                pomo.reaction = face
+                pomo.signal = "busy" if face == "focus" else "alert" if face == "ready" else None
+                img.fill(0)
+                p = QPainter(img)
+                pomo.paint(p, QPointF(100, 120), 90)
+                p.end()
+                self.assertNotEqual(img.pixel(100, 120) >> 24, 0, (outfit, face))  # something was drawn
+
+    def test_every_theme_builds_its_stylesheet(self):
+        import tempfile
+        from pathlib import Path
+
+        from PySide6.QtGui import QColor, QGuiApplication
+
+        from pomodoro.theme import THEMES, build_qss, ensure_qss_assets
+
+        app = QGuiApplication.instance() or QGuiApplication([])
+        with tempfile.TemporaryDirectory() as tmp:
+            for theme in THEMES.values():
+                assets = ensure_qss_assets(theme, Path(tmp))
+                self.assertTrue(Path(assets["switch_on"]).exists())
+                self.assertIn(theme.surface, build_qss(theme, QColor(theme.focus), assets))
+                self.assertTrue(theme.label)
+
+
+class PlayTests(unittest.TestCase):
+    def test_rubbing_back_and_forth_pets_him(self):
+        pomo = Pomo(random.Random(1))
+        loved = [pomo.rub(d) for d in (1, -1, 1, -1)]
+        self.assertEqual(loved, [False, False, False, True])
+        self.assertEqual(pomo.face, "love")
+        self.assertTrue(any(p.kind == "heart" for p in pomo.particles))
+
+    def test_slow_rubs_do_not_add_up(self):
+        pomo = Pomo(random.Random(1))
+        for d in (1, -1, 1, -1):
+            pomo.rub(d)
+            run(pomo, 0.6)
+        self.assertNotEqual(pomo.reaction, "love")
+
+    def test_twirl_and_munch(self):
+        pomo = Pomo(random.Random(1))
+        pomo.twirl()
+        self.assertEqual(pomo.face, "happy")
+        self.assertFalse(pomo.is_calm())
+        run(pomo, 2.0)
+        pomo.munch()
+        self.assertEqual(pomo.face, "munch")
+        run(pomo, 2.0)
+        self.assertIsNone(pomo.reaction)
+
+
+class PetalGameTests(unittest.TestCase):
+    def setUp(self):
+        from pomodoro.game import PetalGame
+        self.game = PetalGame(420, 540, random.Random(3))
+        self.game.start()
+        self.game._spawn_in = 999  # place petals by hand
+
+    def drop(self, x, golden=False):
+        from pomodoro.game import Petal
+        petal = Petal(x, self.game.pomo_y - 120, 100.0, 0.0, 0.0, golden, 0.0)
+        self.game.petals.append(petal)
+        return petal
+
+    def step(self, seconds):
+        events = []
+        for _ in range(int(seconds / 0.02)):
+            events += self.game.update(0.02)
+        return events
+
+    def test_catching_scores_and_golden_is_worth_three(self):
+        self.drop(self.game.pomo_x)
+        self.drop(self.game.pomo_x, golden=True)
+        events = self.step(2.0)
+        self.assertEqual([kind for kind, _ in events].count("catch"), 2)
+        self.assertEqual(self.game.score, 4)
+
+    def test_petals_away_from_pomo_are_missed(self):
+        self.game.move_to(40)
+        self.step(1.0)
+        self.drop(380)
+        events = self.step(3.0)
+        self.assertIn("miss", [kind for kind, _ in events])
+        self.assertEqual(self.game.score, 0)
+
+    def test_round_ends_after_thirty_seconds(self):
+        events = self.step(31.0)
+        self.assertIn("end", [kind for kind, _ in events])
+        self.assertFalse(self.game.running)
+        self.assertEqual(self.game.update(0.1), [])
+
+
 if __name__ == "__main__":
     unittest.main()

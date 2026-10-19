@@ -79,6 +79,7 @@ class ToastCard(QWidget):
         while self._buttons.count():
             item = self._buttons.takeAt(0)
             if item.widget():
+                item.widget().hide()  # gone now, not when deleteLater gets to it
                 item.widget().deleteLater()
         for text, fn, primary in actions:
             button = QPushButton(text)

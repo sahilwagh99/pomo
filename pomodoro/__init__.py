@@ -1,4 +1,5 @@
-"""FocusOrb: a floating circular Pomodoro timer with a focus dashboard."""
+"""Pomo: a cozy floating Pomodoro timer with a focus buddy and a focus dashboard."""
 
-APP_NAME = "FocusOrb"
-APP_VERSION = "1.1.0"
+APP_NAME = "Pomo"
+APP_VERSION = "1.2.0"
+LEGACY_NAME = "FocusOrb"  # the app's name before 1.2: its data folder and hooks are migrated

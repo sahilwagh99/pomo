@@ -59,7 +59,7 @@ class ContextTests(unittest.TestCase):
         self.assertIn("Last 7 days: 2 pomodoros", text)
         self.assertIn("Coding agents today: 1 session(s), 1 prompt(s), 1 tool calls, 1 file(s) edited (+3/-1 lines)", text)
         self.assertIn("pomo: add dark mode", text)
-        self.assertTrue(text.startswith("FocusOrb context"))
+        self.assertTrue(text.startswith("Pomo context"))
 
     def test_quick_prompts(self):
         self.assertIn('"Essay"', quick_prompt("plan", "Essay"))
@@ -113,7 +113,7 @@ class ChatWorkerTests(unittest.TestCase):
         anthropic.Anthropic = lambda **kw: real(api_key="test-key", max_retries=0, http_client=anthropic.DefaultHttpxClient(
             transport=httpx2.MockTransport(handler)))
         try:
-            messages = [{"role": "user", "content": "hello"}, {"role": "system", "content": "FocusOrb context: ..."}]
+            messages = [{"role": "user", "content": "hello"}, {"role": "system", "content": "Pomo context: ..."}]
             worker = ChatWorker("test-key", model, messages)
             chunks, finals, errors = [], [], []
             worker.text.connect(chunks.append)
@@ -147,6 +147,63 @@ class ChatWorkerTests(unittest.TestCase):
         _, chunks, finals, errors = self.run_worker("claude-opus-5-5", status=401)
         self.assertEqual((chunks, finals), ([], []))
         self.assertIn("API key", errors[0])
+
+
+class KeyCheckTests(unittest.TestCase):
+    """Bring your own key: the free Models API lookup, against a mock transport (no network)."""
+
+    def check(self, status: int | None):
+        import anthropic
+        import httpx2
+
+        from pomodoro.ai import KeyCheckWorker
+
+        paths = []
+
+        def handler(request):
+            paths.append((request.method, request.url.path))
+            if status is None:
+                raise httpx2.ConnectError("offline", request=request)
+            if status != 200:
+                kind = {401: "authentication_error", 404: "not_found_error"}.get(status, "api_error")
+                return httpx2.Response(status, json={"type": "error", "error": {"type": kind, "message": "nope"}})
+            return httpx2.Response(200, json={"type": "model", "id": "claude-opus-5-5", "display_name": "Claude Opus 5.5",
+                                              "created_at": "2026-01-01T00:00:00Z"})
+
+        real = anthropic.Anthropic
+        anthropic.Anthropic = lambda **kw: real(api_key="test-key", max_retries=0, http_client=anthropic.DefaultHttpxClient(
+            transport=httpx2.MockTransport(handler)))
+        try:
+            results = []
+            worker = KeyCheckWorker("test-key", "claude-opus-5-5")
+            worker.result.connect(lambda s, m: results.append((s, m)))
+            worker.run()  # synchronously, on this thread
+        finally:
+            anthropic.Anthropic = real
+        return paths, results
+
+    def test_working_key_costs_nothing(self):
+        paths, results = self.check(200)
+        self.assertEqual(paths, [("GET", "/v1/models/claude-opus-5-5")])  # no tokens: just a model lookup
+        self.assertEqual(results[0][0], "ok")
+
+    def test_rejected_key(self):
+        self.assertEqual(self.check(401)[1][0][0], "bad")
+
+    def test_key_without_the_model_still_works(self):
+        status, message = self.check(404)[1][0]
+        self.assertEqual(status, "warn")
+        self.assertIn("claude-opus-5-5", message)
+
+    def test_offline_is_not_a_bad_key(self):
+        self.assertEqual(self.check(None)[1][0][0], "error")
+
+    def test_first_run_opens_as_the_island(self):
+        s = Settings()
+        self.assertEqual((s.display_mode, s.island_autohide, s.welcomed), ("island", False, False))
+        s.display_mode = "bubble"
+        s.clamp()
+        self.assertEqual(s.display_mode, "island")
 
 
 if __name__ == "__main__":

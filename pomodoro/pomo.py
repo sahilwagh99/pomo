@@ -55,6 +55,8 @@ FACES = {
     "ouch": ("squeeze", "wobble", None),
     "grumpy": ("open", "frown", "angry"),
     "dizzy": ("spiral", "wobble", None),
+    "love": ("happy", "grin", None),
+    "munch": ("happy", "chomp", None),
 }
 
 
@@ -127,6 +129,11 @@ class Pomo:
         self._next_fidget = 3.0
         self.particles: list[Particle] = []
         self.signal: str | None = None  # coding agents: "busy" (thought bubble) or "alert" ("!")
+        self.outfit = "blossom"         # see config.OUTFITS
+        self._rub_dir = 0
+        self._rub_turns: list[float] = []
+        self._spin_start = -10.0
+        self._dance_until = -1.0
 
     # ---------------------------------------------------------------- events
     @property
@@ -163,6 +170,34 @@ class Pomo:
         self._react("happy", 1.1)
         self.hop(2.0)
         self._burst("spark", 4, 1.3, 0.6)
+
+    def rub(self, direction: int) -> bool:
+        """Cursor moving over him; back-and-forth rubbing pets him. Returns True when he loves it."""
+        if direction == 0 or direction == self._rub_dir:
+            return False
+        self._rub_dir = direction
+        now = self.t
+        self._rub_turns = [t for t in self._rub_turns if now - t < 1.4] + [now]
+        if len(self._rub_turns) >= 4 and self.reaction not in ("love", "munch", "dizzy"):
+            self._rub_turns.clear()
+            self._react("love", 1.8)
+            self.squish.kick(3.0)
+            self._burst("heart", 4, 1.0, 1.4)
+            return True
+        return False
+
+    def twirl(self) -> None:
+        self._react("happy", 1.3)
+        self.hop(2.6)
+        self._spin_start = self.t
+        self._burst("spark", 5, 1.5, 0.7)
+
+    def munch(self) -> None:
+        self._react("munch", 1.6)
+        self.squish.kick(4.0)
+        self._queued_hops.append((self.t + 1.4, 1.6))
+        self._burst("crumb", 6, 0.9, 0.9)
+        self._burst("heart", 2, 0.8, 1.6)
 
     def poke(self) -> str:
         now = self.t
@@ -270,6 +305,7 @@ class Pomo:
         """True when only slow breathing is going on, so a low frame rate looks the same."""
         return (self.reaction is None and not self.particles and not self._queued_hops
                 and self.signal != "alert"  # the "!" pulses; approvals are short-lived
+                and self.t > self._dance_until and self.t - self._spin_start > 0.7
                 and self.hop_y <= 0.0 and self.hop_v <= 0.0
                 and abs(self.squish.x) + abs(self.squish.v) < 0.03
                 and abs(self.leaf.x) + abs(self.leaf.v) < 1.5
@@ -286,6 +322,10 @@ class Pomo:
 
     def _fidget(self) -> None:
         mood = self.mood
+        if mood == "break" and self.rng.random() < 0.45:
+            self._dance_until = self.t + 3.2  # a little break-time dance
+            self._next_fidget = self.t + self.rng.uniform(8.0, 14.0)
+            return
         if mood == "ready":
             self.hop(1.3)
             self._next_fidget = self.t + 1.2
@@ -306,9 +346,12 @@ class Pomo:
             p.age += dt
             if p.age >= p.life:
                 continue
-            if p.kind == "confetti":
+            if p.kind in ("confetti", "crumb"):
                 p.vy += 3.4 * dt
                 p.vx *= 1.0 - 0.8 * dt
+            elif p.kind == "heart":
+                p.vx *= 1.0 - 2.0 * dt
+                p.vy = -0.35
             elif p.kind == "spark":
                 p.vx *= 1.0 - 2.5 * dt
                 p.vy *= 1.0 - 2.5 * dt
@@ -354,9 +397,19 @@ class Pomo:
             p.translate(c.x(), base_bottom)
             p.rotate(math.sin(self.t * 9.0) * 6.0)
             p.translate(-c.x(), -base_bottom)
+        if self.t < self._dance_until:  # sway side to side, tilting with the beat
+            beat = math.sin(self.t * 7.0)
+            p.translate(c.x() + beat * s * 0.05, base_bottom)
+            p.rotate(beat * 7.0)
+            p.translate(-c.x(), -base_bottom)
+        spin = (self.t - self._spin_start) / 0.6
+        if 0.0 <= spin < 1.0:  # twirl: one full turn while he hops
+            p.translate(c)
+            p.rotate(360.0 * (1 - (1 - spin) ** 2))
+            p.translate(-c)
         self._paint_body(p, c, rx, ry, s)
         self._paint_face(p, c, rx, ry, s)
-        self._paint_blossom(p, QPointF(c.x() + rx * 0.56, c.y() - ry * 0.74), s)
+        self._paint_outfit(p, c, rx, ry, s)
         p.restore()
 
         if self.signal:
@@ -433,7 +486,7 @@ class Pomo:
         x, y = c.x(), c.y()
 
         # striped blush
-        angry = self.face == "grumpy"
+        angry = self.face in ("grumpy", "love")  # rosier cheeks
         bw, bh = rx * 0.16, ry * 0.12
         for side in (-1, 1):
             bc = QPointF(x + side * rx * 0.6 + lx * 0.5, y + ry * 0.38 + ly * 0.5)
@@ -452,6 +505,8 @@ class Pomo:
             if brows:
                 self._paint_brow(p, brows, center, r, side, s)
         self._paint_mouth(p, mouth, QPointF(x + lx * 0.5, y + ry * 0.34 + ly * 0.5), s)
+        if self.outfit == "glasses":
+            self._paint_glasses(p, QPointF(x + lx, y + ry * 0.1 + ly), rx, r * 1.55, s)
 
     def _paint_eye(self, p: QPainter, kind: str, c: QPointF, r: float, side: int, s: float) -> None:
         line = QPen(EYE, max(1.0, s * 0.034), Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
@@ -548,12 +603,145 @@ class Pomo:
         elif kind == "frown":
             path.moveTo(x - w * 0.36, y + s * 0.045)
             path.quadTo(x, y - s * 0.018, x + w * 0.36, y + s * 0.045)
+        elif kind == "chomp":
+            if int(self.t * 7.0) % 2:  # mouth opens and closes while he chews
+                p.setPen(QPen(OUTLINE, max(0.8, s * 0.022)))
+                p.setBrush(MOUTH)
+                p.drawEllipse(QPointF(x, y + s * 0.02), w * 0.24, s * 0.035)
+                return
+            path.moveTo(x - w * 0.3, y + s * 0.01)
+            path.quadTo(x, y + s * 0.05, x + w * 0.3, y + s * 0.01)
         elif kind == "wobble":
             for i in range(13):
                 f = i / 12
                 point = QPointF(x - w * 0.42 + f * w * 0.84, y + s * 0.02 + math.sin(f * math.pi * 4) * s * 0.013)
                 path.moveTo(point) if i == 0 else path.lineTo(point)
         p.drawPath(path)
+
+    # ---------------------------------------------------------------- outfits
+    def _paint_outfit(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        outfit = self.outfit
+        if outfit in ("blossom", "glasses"):
+            self._paint_blossom(p, QPointF(c.x() + rx * 0.56, c.y() - ry * 0.74), s)
+            return
+        if outfit == "headphones":
+            self._paint_headphones(p, c, rx, ry, s)
+            return
+        if outfit not in ("beanie", "party", "crown", "bow"):
+            return
+        # hats wobble a little with the same spring as the blossom
+        base = QPointF(c.x(), c.y() - ry * 0.85)
+        p.save()
+        p.translate(base)
+        p.rotate(self.leaf.x * 0.35)
+        p.translate(-base)
+        getattr(self, f"_paint_{outfit}")(p, c, rx, ry, s)
+        p.restore()
+
+    @staticmethod
+    def _line(s: float, width: float = 0.026) -> QPen:
+        return QPen(OUTLINE, max(1.0, s * width), Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+
+    def _paint_headphones(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        band = QRectF(c.x() - rx * 0.98, c.y() - ry * 1.27, rx * 1.96, ry * 1.94)
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(OUTLINE, max(2.0, s * 0.085), Qt.SolidLine, Qt.RoundCap))
+        p.drawArc(band, 8 * 16, 164 * 16)
+        p.setPen(QPen(QColor("#c9c3ea"), max(1.0, s * 0.045), Qt.SolidLine, Qt.RoundCap))
+        p.drawArc(band, 8 * 16, 164 * 16)
+        w, h = s * 0.14, s * 0.25
+        for side in (-1, 1):
+            cup = QRectF(c.x() + side * rx * 0.98 - w / 2, c.y() - ry * 0.32, w, h)
+            p.setPen(self._line(s))
+            p.setBrush(QColor("#c9c3ea"))
+            p.drawRoundedRect(cup, w * 0.45, w * 0.45)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor("#f6b3c4"))
+            p.drawEllipse(cup.center(), w * 0.2, h * 0.22)
+
+    def _paint_beanie(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        x, y = c.x(), c.y()
+        hat = QPainterPath(QPointF(x - rx * 0.86, y - ry * 0.4))
+        hat.cubicTo(x - rx * 0.86, y - ry * 1.34, x + rx * 0.86, y - ry * 1.34, x + rx * 0.86, y - ry * 0.4)
+        hat.closeSubpath()
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#a9c7ee"))
+        p.drawPath(hat)
+        p.setPen(QPen(QColor(91, 44, 41, 60), max(0.8, s * 0.014)))
+        for k in (-0.45, -0.15, 0.15, 0.45):  # knit ribs
+            p.drawLine(QPointF(x + rx * k, y - ry * 0.5), QPointF(x + rx * k * 0.9, y - ry * 1.05))
+        cuff = QRectF(x - rx * 0.93, y - ry * 0.6, rx * 1.86, ry * 0.3)
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#8fb2e3"))
+        p.drawRoundedRect(cuff, ry * 0.12, ry * 0.12)
+        p.setBrush(QColor("#fffdf8"))
+        p.drawEllipse(QPointF(x, y - ry * 1.2), s * 0.075, s * 0.075)
+
+    def _paint_party(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        x, y = c.x(), c.y()
+        left, right, apex = QPointF(x - rx * 0.34, y - ry * 0.9), QPointF(x + rx * 0.36, y - ry * 0.86), QPointF(x + rx * 0.12, y - ry * 2.0)
+        cone = QPainterPath(left)
+        cone.lineTo(apex)
+        cone.lineTo(right)
+        cone.quadTo(x, y - ry * 0.78, left.x(), left.y())
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#f9dc8a"))
+        p.drawPath(cone)
+        p.save()
+        p.setClipPath(cone)
+        p.setPen(QPen(QColor("#f3a7b8"), s * 0.05))
+        for t in (0.3, 0.6):  # stripes across the cone
+            a = QPointF(left.x() + (apex.x() - left.x()) * t, left.y() + (apex.y() - left.y()) * t)
+            b = QPointF(right.x() + (apex.x() - right.x()) * t, right.y() + (apex.y() - right.y()) * t)
+            p.drawLine(a, b)
+        p.restore()
+        p.setPen(self._line(s))
+        p.setBrush(Qt.NoBrush)
+        p.drawPath(cone)
+        p.setBrush(QColor("#f3a7b8"))
+        p.drawEllipse(apex, s * 0.05, s * 0.05)
+
+    def _paint_crown(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        w, h = rx * 0.8, ry * 0.6
+        base, left, right = c.y() - ry * 0.84, c.x() - rx * 0.4, c.x() + rx * 0.4
+        crown = QPainterPath(QPointF(left, base))
+        for px, py in ((left, base - h * 0.62), (left + w * 0.25, base - h * 0.25), (c.x(), base - h),
+                       (right - w * 0.25, base - h * 0.25), (right, base - h * 0.62), (right, base)):
+            crown.lineTo(px, py)
+        crown.closeSubpath()
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#f5d77e"))
+        p.drawPath(crown)
+        p.setBrush(QColor("#f3a7b8"))
+        for px, py in ((left, base - h * 0.62), (c.x(), base - h), (right, base - h * 0.62)):
+            p.drawEllipse(QPointF(px, py), s * 0.03, s * 0.03)
+
+    def _paint_bow(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        center = QPointF(c.x() + rx * 0.5, c.y() - ry * 0.8)
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#f6a9bd"))
+        for side in (-1, 1):
+            tail = QPainterPath(QPointF(center.x(), center.y()))
+            tail.lineTo(center.x() + side * s * 0.09, center.y() + s * 0.13)
+            tail.lineTo(center.x() + side * s * 0.03, center.y() + s * 0.12)
+            tail.closeSubpath()
+            p.drawPath(tail)
+        for side in (-1, 1):
+            p.save()
+            p.translate(center.x() + side * s * 0.1, center.y() - s * 0.01)
+            p.rotate(side * 22)
+            p.drawEllipse(QPointF(0, 0), s * 0.11, s * 0.07)
+            p.restore()
+        p.drawEllipse(center, s * 0.04, s * 0.04)
+
+    def _paint_glasses(self, p: QPainter, center: QPointF, rx: float, r: float, s: float) -> None:
+        p.setPen(self._line(s, 0.024))
+        p.setBrush(QColor(255, 255, 255, 45))
+        gap = rx * 0.34
+        for side in (-1, 1):
+            p.drawEllipse(QPointF(center.x() + side * gap, center.y()), r, r)
+        p.setBrush(Qt.NoBrush)
+        p.drawLine(QPointF(center.x() - gap + r, center.y() - r * 0.15), QPointF(center.x() + gap - r, center.y() - r * 0.15))
 
     def _paint_blossom(self, p: QPainter, center: QPointF, s: float) -> None:
         sway_amount, sway_rate = (9.0, 1.1) if self.mood == "break" else (4.0, 1.6)
@@ -614,6 +802,22 @@ class Pomo:
                 p.setFont(font)
                 p.setPen(color)
                 p.drawText(QPointF(x, y), "z")
+            elif part.kind == "heart":
+                r = s * 0.05 * (0.6 + 0.4 * fade)
+                heart = QPainterPath(QPointF(x, y + r * 0.9))
+                heart.cubicTo(x - r * 1.6, y - r * 0.2, x - r * 0.7, y - r * 1.4, x, y - r * 0.45)
+                heart.cubicTo(x + r * 0.7, y - r * 1.4, x + r * 1.6, y - r * 0.2, x, y + r * 0.9)
+                color = QColor("#f28ba3")
+                color.setAlphaF(min(1.0, fade * 1.6))
+                p.setPen(Qt.NoPen)
+                p.setBrush(color)
+                p.drawPath(heart)
+            elif part.kind == "crumb":
+                color = QColor("#e8cfa0")
+                color.setAlphaF(min(1.0, fade * 2.0))
+                p.setPen(Qt.NoPen)
+                p.setBrush(color)
+                p.drawEllipse(QPointF(x, y + s * 0.3), s * 0.018, s * 0.018)
             elif part.kind == "anger":
                 pulse = 1.0 + 0.15 * math.sin(part.age * 14.0)
                 r, d = s * 0.035 * pulse, s * 0.04 * pulse

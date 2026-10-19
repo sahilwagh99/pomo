@@ -38,6 +38,10 @@ PIN_AFTER_SESSION = 5.0
 TIPS = {
     "reset": "Reset  (R)",
     "dashboard": "Dashboard",
+    "chat": "Ask Pomo",
+    "style": "Switch to the floating orb",
+    "feed": "Feed Pomo a treat (you earn one per focus session)",
+    "play": "Play Petal Catch with Pomo",
     "settings": "Settings",
     "pomo": "Pomo, your focus buddy. Poke him!",
     "time": "Double-click to type a time, scroll to adjust",
@@ -55,6 +59,7 @@ def _clamp01(x: float) -> float:
 class IslandWidget(QWidget):
     dashboard_requested = Signal()
     settings_requested = Signal()
+    chat_requested = Signal()
     menu_requested = Signal(QPoint)
     moved = Signal()  # unused; keeps the same interface as the orb
     interacted = Signal()
@@ -76,12 +81,13 @@ class IslandWidget(QWidget):
         self._wheel_acc = 0
         self._last_frame = time.monotonic()
         self._last_second = -1
+        self._last_move_x = 0.0
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint | Qt.NoDropShadowWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setMouseTracking(True)
-        self.setWindowTitle("FocusOrb island")
+        self.setWindowTitle("Pomo island")
         ew, eh, _ = EXPANDED
         self.setFixedSize(int(ew * 1.08 + 2 * (FLARE + PAD)), int(eh * 1.1 + PAD))
 
@@ -217,6 +223,7 @@ class IslandWidget(QWidget):
             e = self.engine
             self.pomo.set_mood(mood_for(e.state, e.mode.is_break, self.ctrl.idle_seconds()))
             self.pomo.signal = self.ctrl.agent_signal()
+            self.pomo.outfit = self.ctrl.settings.pomo_outfit
             anchor, size = self._pomo_place()
             cursor = QPointF(self.mapFromGlobal(QCursor.pos())) - anchor
             self.pomo.update(dt, (cursor.x() / size, cursor.y() / size))
@@ -283,6 +290,8 @@ class IslandWidget(QWidget):
     def _buttons(self) -> dict[str, tuple[QPointF, float]]:
         r = self._expanded_rect()
         return {
+            "style": (QPointF(r.right() - 122, r.top() + 28), 12.0),
+            "chat": (QPointF(r.right() - 92, r.top() + 28), 12.0),
             "dashboard": (QPointF(r.right() - 62, r.top() + 28), 12.0),
             "settings": (QPointF(r.right() - 32, r.top() + 28), 12.0),
             "reset": (QPointF(r.right() - 120, r.top() + 80), 15.0),
@@ -290,10 +299,20 @@ class IslandWidget(QWidget):
             "skip": (QPointF(r.right() - 32, r.top() + 80), 15.0),
         }
 
+    def _badges(self) -> dict[str, tuple[QPointF, float]]:
+        """Toys beside the big Pomo in the open island: treat (feed) and Petal Catch (play)."""
+        if not self._pomo_on or self._expand < 0.8:
+            return {}
+        r = self._expanded_rect()
+        out = {"play": (QPointF(r.left() + 104, r.top() + 114), 11.0)}
+        if self.ctrl.settings.treats > 0:
+            out["feed"] = (QPointF(r.left() + 20, r.top() + 114), 11.0)
+        return out
+
     def _button_at(self, pos: QPointF) -> str | None:
         if self._expand < 0.8 or self._editing:
             return None
-        for name, (center, radius) in self._buttons().items():
+        for name, (center, radius) in {**self._badges(), **self._buttons()}.items():
             if QLineF(pos, center).length() <= radius + 3:
                 return name
         return None
@@ -407,7 +426,8 @@ class IslandWidget(QWidget):
         p.drawEllipse(QPointF(x0 + 3, r.top() + 30), 3.2, 3.2)
         p.setFont(self._font(10.5, QFont.DemiBold, 1.2))
         p.setPen(QColor(t.ink_2))
-        p.drawText(QRectF(x0 + 12, r.top() + 22, 160, 16), Qt.AlignLeft | Qt.AlignVCenter, label)
+        p.drawText(QRectF(x0 + 12, r.top() + 22, 116, 16), Qt.AlignLeft | Qt.AlignVCenter,
+                   QFontMetricsF(p.font()).elidedText(label, Qt.ElideRight, 116))
 
         if not self._editing:
             text = fmt_clock(e.remaining)
@@ -444,7 +464,8 @@ class IslandWidget(QWidget):
             p.setBrush(accent)
             p.drawRoundedRect(QRectF(bar.left(), bar.top(), max(4.0, bar.width() * frac), bar.height()), 2, 2)
 
-        glyphs = {"reset": "reset", "skip": "skip", "dashboard": "chart", "settings": "gear"}
+        glyphs = {"reset": "reset", "skip": "skip", "dashboard": "chart", "chat": "chat", "settings": "gear",
+                  "style": "orb"}
         for name, (center, radius) in self._buttons().items():
             hot = name == self._hot
             if name == "toggle":
@@ -460,6 +481,21 @@ class IslandWidget(QWidget):
                 p.setBrush(QColor(t.hover))
                 p.drawEllipse(center, radius, radius)
             draw_glyph(p, glyphs[name], center, radius * 1.2, QColor(t.ink if hot else t.ink_2))
+
+        for name, (center, radius) in self._badges().items():
+            p.setPen(QPen(QColor(t.orb_edge), 1))
+            p.setBrush(QColor(t.hover if name == self._hot else t.raised))
+            p.drawEllipse(center, radius, radius)
+            draw_glyph(p, "dango" if name == "feed" else "petal", center, radius * 1.35, QColor(t.ink_2))
+            if name == "feed" and s.treats > 1:
+                dot = QPointF(center.x() + radius * 0.75, center.y() - radius * 0.75)
+                p.setPen(Qt.NoPen)
+                p.setBrush(QColor(t.short))
+                p.drawEllipse(dot, radius * 0.55, radius * 0.55)
+                p.setFont(self._font(9, QFont.DemiBold))
+                p.setPen(QColor(t.on_accent))
+                p.drawText(QRectF(dot.x() - radius, dot.y() - radius, 2 * radius, 2 * radius), Qt.AlignCenter,
+                           str(s.treats))
 
     # ------------------------------------------------------------------ input
     def _set_hot(self, name: str | None) -> None:
@@ -494,8 +530,12 @@ class IslandWidget(QWidget):
             hot = self._button_at(pos)
             if hot is None and self._on_pomo(pos):
                 hot = "pomo"
+                dx = pos.x() - self._last_move_x
+                if abs(dx) > 2:  # rubbing back and forth pets him
+                    self.pomo.rub(1 if dx > 0 else -1)
             elif hot is None and self._expand > 0.8 and self._time_rect().contains(pos):
                 hot = "time"
+            self._last_move_x = pos.x()
             self._set_hot(hot)
         else:
             self._open_timer.stop()
@@ -550,6 +590,9 @@ class IslandWidget(QWidget):
         pos = event.position()
         if event.button() == Qt.LeftButton and self._expand > 0.8 and self._time_rect().contains(pos):
             self.begin_edit()
+        elif event.button() == Qt.LeftButton and self._on_pomo(pos) and self._button_at(pos) is None:
+            self.pomo.twirl()
+            self.interacted.emit()
         else:
             self.mousePressEvent(event)
 
@@ -574,8 +617,16 @@ class IslandWidget(QWidget):
             self.engine.skip()
         elif name == "dashboard":
             self.dashboard_requested.emit()
+        elif name == "chat":
+            self.chat_requested.emit()
         elif name == "settings":
             self.settings_requested.emit()
+        elif name == "style":
+            self.ctrl.set_display_mode("orb")
+        elif name == "feed":
+            self.ctrl.feed_pomo()
+        elif name == "play":
+            self.ctrl.open_game()
 
     # ------------------------------------------------------------ inline edit
     def begin_edit(self) -> None:

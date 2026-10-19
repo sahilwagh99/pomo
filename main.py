@@ -1,14 +1,14 @@
-"""FocusOrb entry point.
+"""Pomo entry point.
 
     python main.py                   normal run
     python main.py --demo            separate data folder pre-filled with sample history
-    python main.py --focusorb-hook   Claude Code hook client (reads an event on stdin; no window)
+    python main.py --pomo-hook   Claude Code hook client (reads an event on stdin; no window)
 """
 from __future__ import annotations
 
 import sys
 
-HOOK_FLAG = "--focusorb-hook"
+HOOK_FLAGS = ("--pomo-hook", "--focusorb-hook")  # the second one is from 1.1 (FocusOrb)
 
 
 def main() -> int:
@@ -23,14 +23,16 @@ def main() -> int:
     from PySide6.QtWidgets import QApplication
 
     from pomodoro import APP_NAME, winutil
-    from pomodoro.app import FocusOrbApp
-    from pomodoro.config import default_data_dir
+    from pomodoro.app import PomoApp
+    from pomodoro.config import default_data_dir, migrate_legacy_data
     from pomodoro.theme import FONT_FAMILY
 
     parser = argparse.ArgumentParser(prog=APP_NAME, add_help=False)
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--data-dir", type=Path)
     args, _ = parser.parse_known_args()
+    if args.data_dir is None:
+        migrate_legacy_data()
     data_dir = args.data_dir or default_data_dir()
     if args.demo:
         data_dir = data_dir / "demo"
@@ -58,7 +60,7 @@ def main() -> int:
     server = QLocalServer()
     server.listen(server_name)
 
-    ctrl = FocusOrbApp(app, data_dir, demo=args.demo)
+    ctrl = PomoApp(app, data_dir, demo=args.demo)
 
     def on_ping() -> None:
         conn = server.nextPendingConnection()
@@ -72,7 +74,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    if HOOK_FLAG in sys.argv:
+    if any(flag in sys.argv for flag in HOOK_FLAGS):
         from pomodoro.hook import run
 
         sys.exit(run())

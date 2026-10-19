@@ -56,6 +56,10 @@ CALM_FRAME_MS = 125  # while he only breathes
 TIPS = {
     "reset": "Reset  (R)",
     "dashboard": "Dashboard  (D)",
+    "chat": "Ask Pomo",
+    "style": "Switch to the top island",
+    "feed": "Feed Pomo a treat (you earn one per focus session)",
+    "play": "Play Petal Catch with Pomo",
     "settings": "Settings",
     "pomo": "Pomo, your focus buddy. Poke him!",
     "time": "Double-click to type a time, scroll to adjust,\nright-click for more options",
@@ -149,6 +153,7 @@ class TimeEdit(QLineEdit):
 class OrbWidget(QWidget):
     dashboard_requested = Signal()
     settings_requested = Signal()
+    chat_requested = Signal()
     menu_requested = Signal(QPoint)
     moved = Signal()
     interacted = Signal()
@@ -176,13 +181,14 @@ class OrbWidget(QWidget):
         self._last_mode: Mode | None = None
         self._last_frame = time.monotonic()
         self._last_second = -1
+        self._last_move_x = 0.0
         self._bg: QPixmap | None = None
         self._bg_key: tuple | None = None
 
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.ClickFocus)
-        self.setWindowTitle("FocusOrb")
+        self.setWindowTitle("Pomo")
 
         self._hover_anim = self._animation(170, lambda v: self._set("_hover", float(v)))
         self._opacity_anim = self._animation(260, lambda v: self._set("_opacity", float(v)))
@@ -336,6 +342,7 @@ class OrbWidget(QWidget):
         e = self.engine
         self.pomo.set_mood(mood_for(e.state, e.mode.is_break, self.ctrl.idle_seconds()))
         self.pomo.signal = self.ctrl.agent_signal()
+        self.pomo.outfit = self.ctrl.settings.pomo_outfit
         anchor = self._pomo_anchor()
         size = POMO_SIZE * self._k()
         cursor = QPointF(self.mapFromGlobal(QCursor.pos())) - anchor
@@ -394,17 +401,41 @@ class OrbWidget(QWidget):
     def _button_geometry(self) -> dict[str, tuple[QPointF, float]]:
         c, k = self._center(), self._k()
         return {
-            "dashboard": (QPointF(c.x() - 17 * k, c.y() - 58 * k), 12 * k),
-            "settings": (QPointF(c.x() + 17 * k, c.y() - 58 * k), 12 * k),
+            "dashboard": (QPointF(c.x() - 37.5 * k, c.y() - 55 * k), 10.5 * k),
+            "chat": (QPointF(c.x() - 12.5 * k, c.y() - 55 * k), 10.5 * k),
+            "style": (QPointF(c.x() + 12.5 * k, c.y() - 55 * k), 10.5 * k),
+            "settings": (QPointF(c.x() + 37.5 * k, c.y() - 55 * k), 10.5 * k),
             "reset": (QPointF(c.x() - 40 * k, c.y() + 40 * k), 14 * k),
             "toggle": (QPointF(c.x(), c.y() + 40 * k), 19 * k),
             "skip": (QPointF(c.x() + 40 * k, c.y() + 40 * k), 14 * k),
         }
 
+    def _badges(self) -> dict[str, tuple[QPointF, float, float]]:
+        """Toys beside Pomo: name -> (center, radius, visibility 0..1).
+
+        The treat (feed) shows whenever he has treats; the petal (play) shows on hover and during breaks.
+        """
+        if not self._pomo_on:
+            return {}
+        anchor, size = self._pomo_anchor(), POMO_SIZE * self._k()
+        y, r = anchor.y() + 0.2 * size, 0.2 * size
+        out = {}
+        if self.ctrl.settings.treats > 0:
+            out["feed"] = (QPointF(anchor.x() - 0.84 * size, y), r, max(0.8, self._hover))
+        play = 1.0 if self.engine.mode.is_break else self._hover
+        if play > 0.05:
+            out["play"] = (QPointF(anchor.x() + 0.84 * size, y), r, play)
+        return out
+
     def _button_at(self, pos: QPointF) -> str | None:
-        if self._hover < 0.5 or self._editing:
+        if self._editing:
             return None
         slack = 3 * self._k()
+        for name, (center, r, seen) in self._badges().items():
+            if seen > 0.5 and QLineF(pos, center).length() <= r + slack:
+                return name
+        if self._hover < 0.5:
+            return None
         for name, (center, r) in self._button_geometry().items():
             if QLineF(pos, center).length() <= r + slack:
                 return name
@@ -557,7 +588,26 @@ class OrbWidget(QWidget):
         if self._pomo_on:
             p.setOpacity(self._opacity)
             self.pomo.paint(p, self._pomo_anchor(), POMO_SIZE * k)
+            self._paint_badges(p, k)
         p.end()
+
+    def _paint_badges(self, p: QPainter, k: float) -> None:
+        t = self.ctrl.theme
+        for name, (center, r, seen) in self._badges().items():
+            p.setOpacity(self._opacity * seen)
+            p.setPen(QPen(QColor(t.orb_edge), 1))
+            p.setBrush(QColor(t.hover if name == self._hot else t.orb_face))
+            p.drawEllipse(center, r, r)
+            draw_glyph(p, "dango" if name == "feed" else "petal", center, r * 1.35, QColor(t.ink_2))
+            if name == "feed" and self.ctrl.settings.treats > 1:
+                p.setFont(self._font(8.5 * k, QFont.DemiBold))
+                p.setPen(Qt.NoPen)
+                p.setBrush(QColor(t.short))
+                dot = QPointF(center.x() + r * 0.75, center.y() - r * 0.75)
+                p.drawEllipse(dot, r * 0.55, r * 0.55)
+                p.setPen(QColor(t.on_accent))
+                p.drawText(QRectF(dot.x() - r, dot.y() - r, 2 * r, 2 * r), Qt.AlignCenter, str(self.ctrl.settings.treats))
+        p.setOpacity(self._opacity)
 
     def _font(self, px: float, weight=QFont.Normal, spacing: float = 0.0) -> QFont:
         f = QFont(FONT_FAMILY)
@@ -637,7 +687,8 @@ class OrbWidget(QWidget):
 
     def _paint_controls(self, p: QPainter, k: float, accent: QColor) -> None:
         t, e = self.ctrl.theme, self.engine
-        glyphs = {"reset": "reset", "skip": "skip", "dashboard": "chart", "settings": "gear"}
+        glyphs = {"reset": "reset", "skip": "skip", "dashboard": "chart", "chat": "chat", "settings": "gear",
+                  "style": "island"}
         for name, (center, r) in self._button_geometry().items():
             hot = name == self._hot
             if name == "toggle":
@@ -693,7 +744,10 @@ class OrbWidget(QWidget):
         QToolTip.showText(QCursor.pos(), text, self)
 
     def _hit(self, pos: QPointF) -> bool:
-        return self._in_circle(pos) or self._on_pomo(pos)
+        if self._in_circle(pos) or self._on_pomo(pos):
+            return True
+        return any(seen > 0.5 and QLineF(pos, center).length() <= r
+                   for center, r, seen in self._badges().values())
 
     def enterEvent(self, event) -> None:
         self._set_inside(self._hit(event.position()))
@@ -737,8 +791,13 @@ class OrbWidget(QWidget):
         hot = self._button_at(pos)
         if hot is None and self._on_pomo(pos):
             hot = "pomo"
+            # rubbing back and forth over him pets him
+            dx = pos.x() - self._last_move_x
+            if abs(dx) > 2:
+                self.pomo.rub(1 if dx > 0 else -1)
         elif hot is None and self._time_rect().contains(pos) and not self._editing:
             hot = "time"
+        self._last_move_x = pos.x()
         self._set_hot(hot)
 
     def mouseReleaseEvent(self, event) -> None:
@@ -761,9 +820,12 @@ class OrbWidget(QWidget):
         if event.button() != Qt.LeftButton:
             return
         pos = event.position()
-        if self._button_at(pos) is not None or self._on_pomo(pos):
+        if self._button_at(pos) is not None:
             # the second click of a fast double-click still counts as a click
             self.mousePressEvent(event)
+        elif self._on_pomo(pos):
+            self.pomo.twirl()
+            self.interacted.emit()
         elif self._time_rect().contains(pos):
             self.begin_edit()
 
@@ -810,8 +872,16 @@ class OrbWidget(QWidget):
             self.engine.skip()
         elif name == "dashboard":
             self.dashboard_requested.emit()
+        elif name == "chat":
+            self.chat_requested.emit()
         elif name == "settings":
             self.settings_requested.emit()
+        elif name == "style":
+            self.ctrl.set_display_mode("island")
+        elif name == "feed":
+            self.ctrl.feed_pomo()
+        elif name == "play":
+            self.ctrl.open_game()
 
     # ------------------------------------------------------------ inline edit
     def _layout_edit(self) -> None:

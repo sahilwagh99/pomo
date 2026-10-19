@@ -4,7 +4,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from . import APP_NAME
+from . import APP_NAME, LEGACY_NAME
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
@@ -19,20 +19,35 @@ def launch_command() -> str:
 
 
 def set_start_with_windows(enabled: bool) -> bool:
+    """Register (or remove) Pomo in the current user's Run key. Also clears FocusOrb's old entry."""
     if sys.platform != "win32":
         return False
     import winreg
 
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
-            if enabled:
-                winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, launch_command())
-            else:
+            names = (LEGACY_NAME,) if enabled else (APP_NAME, LEGACY_NAME)
+            for name in names:
                 try:
-                    winreg.DeleteValue(key, APP_NAME)
+                    winreg.DeleteValue(key, name)
                 except FileNotFoundError:
                     pass
+            if enabled:
+                winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, launch_command())
         return True
+    except OSError:
+        return False
+
+
+def starts_with_windows() -> bool:
+    if sys.platform != "win32":
+        return False
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
+            value, _ = winreg.QueryValueEx(key, APP_NAME)
+        return bool(value)
     except OSError:
         return False
 
@@ -53,12 +68,12 @@ def set_dark_title_bar(widget, dark: bool) -> None:
 
 
 def set_app_user_model_id() -> None:
-    """Lets Windows group the taskbar and toasts under FocusOrb instead of python.exe."""
+    """Lets Windows group the taskbar and toasts under Pomo instead of python.exe."""
     if sys.platform != "win32":
         return
     try:
         import ctypes
 
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"{APP_NAME}.Pomodoro")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"{APP_NAME}.FocusTimer")
     except Exception:
         pass

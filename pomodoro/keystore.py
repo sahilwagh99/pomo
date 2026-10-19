@@ -11,7 +11,7 @@ import os
 import sys
 from pathlib import Path
 
-ENTROPY = b"FocusOrb/ai-key/v1"
+ENTROPY = b"FocusOrb/ai-key/v1"  # unchanged since 1.1 (as FocusOrb), so saved keys still decrypt
 
 
 def _dpapi(data: bytes, protect: bool) -> bytes:
@@ -29,7 +29,7 @@ def _dpapi(data: bytes, protect: bool) -> bytes:
     crypt32, kernel32 = ctypes.windll.crypt32, ctypes.windll.kernel32
     CRYPTPROTECT_UI_FORBIDDEN = 0x1
     if protect:
-        ok = crypt32.CryptProtectData(ctypes.byref(src), "FocusOrb", ctypes.byref(extra), None, None,
+        ok = crypt32.CryptProtectData(ctypes.byref(src), "Pomo", ctypes.byref(extra), None, None,
                                       CRYPTPROTECT_UI_FORBIDDEN, ctypes.byref(out))
     else:
         ok = crypt32.CryptUnprotectData(ctypes.byref(src), None, ctypes.byref(extra), None, None,

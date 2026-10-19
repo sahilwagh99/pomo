@@ -69,6 +69,53 @@ def draw_glyph(p: QPainter, name: str, c: QPointF, size: float, color: QColor) -
             a = math.radians(k * 45 + 22.5)
             p.drawLine(QPointF(c.x() + math.cos(a) * s * 0.3, c.y() + math.sin(a) * s * 0.3),
                        QPointF(c.x() + math.cos(a) * s * 0.42, c.y() + math.sin(a) * s * 0.42))
+    elif name == "chat":
+        w, h = s * 0.7, s * 0.48
+        rect = QRectF(c.x() - w / 2, c.y() - h / 2 - s * 0.06, w, h)
+        bubble = QPainterPath()
+        bubble.addRoundedRect(rect, h * 0.45, h * 0.45)
+        tail = QPainterPath(QPointF(rect.left() + w * 0.2, rect.bottom() - 1))
+        tail.lineTo(rect.left() + w * 0.12, rect.bottom() + s * 0.17)
+        tail.lineTo(rect.left() + w * 0.44, rect.bottom() - 1)
+        tail.closeSubpath()
+        p.setPen(_pen(color, stroke))
+        p.drawPath(bubble.united(tail))
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        for dx in (-0.17, 0.0, 0.17):
+            p.drawEllipse(QPointF(c.x() + dx * s, rect.center().y()), s * 0.045, s * 0.045)
+    elif name == "island":  # a screen with the island pill at its top edge
+        w, h = s * 0.82, s * 0.6
+        rect = QRectF(c.x() - w / 2, c.y() - h / 2, w, h)
+        p.setPen(_pen(color, stroke))
+        p.drawRoundedRect(rect, s * 0.08, s * 0.08)
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        p.drawRoundedRect(QRectF(c.x() - s * 0.17, rect.top(), s * 0.34, s * 0.13), s * 0.065, s * 0.065)
+    elif name == "orb":  # a round timer with its progress arc
+        r = s * 0.34
+        rect = QRectF(c.x() - r, c.y() - r, 2 * r, 2 * r)
+        p.setPen(_pen(color, stroke))
+        p.drawEllipse(rect)
+        p.setPen(_pen(color, stroke * 2.0))
+        p.drawArc(rect, 90 * 16, -200 * 16)
+    elif name == "dango":  # three mochi balls on a skewer (the treat)
+        p.setPen(_pen(color, stroke * 1.1))
+        p.drawLine(QPointF(c.x() + s * 0.38, c.y() + s * 0.38), QPointF(c.x() - s * 0.4, c.y() - s * 0.4))
+        p.setPen(_pen(color, max(1.0, stroke * 0.8)))
+        r = s * 0.15
+        for k, fill in ((-0.24, "#f6a9bd"), (0.0, "#fffdf8"), (0.24, "#a6cf92")):
+            p.setBrush(QColor(fill))
+            p.drawEllipse(QPointF(c.x() + k * s, c.y() + k * s), r, r)
+    elif name == "petal":  # a sakura petal, notched at the top
+        petal = QPainterPath(QPointF(c.x(), c.y() + s * 0.36))
+        petal.cubicTo(c.x() - s * 0.42, c.y() + s * 0.05, c.x() - s * 0.3, c.y() - s * 0.4, c.x() - s * 0.08, c.y() - s * 0.32)
+        petal.lineTo(c.x(), c.y() - s * 0.2)
+        petal.lineTo(c.x() + s * 0.08, c.y() - s * 0.32)
+        petal.cubicTo(c.x() + s * 0.3, c.y() - s * 0.4, c.x() + s * 0.42, c.y() + s * 0.05, c.x(), c.y() + s * 0.36)
+        p.setPen(_pen(color, max(1.0, stroke * 0.8)))
+        p.setBrush(QColor("#f6a9bd"))
+        p.drawPath(petal)
     elif name == "close":
         p.setPen(_pen(color, stroke))
         d = s * 0.26
@@ -84,8 +131,9 @@ def render_pomo_icon(size: int) -> QPixmap:
     pm = QPixmap(size, size)
     pm.fill(Qt.transparent)
     p = QPainter(pm)
-    body = size * 0.86
-    Pomo().paint(p, QPointF(size / 2, size - body * BODY_RY - size * 0.07), body, ground_shadow=False)
+    # Pomo plus his blossom is about 0.86 of his width tall; fill the square and centre that span
+    body = size * 0.94
+    Pomo().paint(p, QPointF(size / 2, size / 2 + body * 0.03), body, ground_shadow=False)
     p.end()
     return pm
 

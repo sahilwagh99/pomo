@@ -132,7 +132,7 @@ class Dashboard(QWidget):
         self.ctrl = ctrl
         self.theme = ctrl.theme
         self._dot_icons: dict[str, QIcon] = {}
-        self.setWindowTitle("FocusOrb · Dashboard")
+        self.setWindowTitle("Pomo · Dashboard")
         self.setWindowIcon(ctrl.icon)
         self.resize(1200, 900)
         self.setMinimumSize(900, 620)
@@ -278,7 +278,7 @@ class Dashboard(QWidget):
         self.refresh()
 
     def _export(self) -> None:
-        default = str(Path.home() / f"focusorb-history-{date.today().isoformat()}.csv")
+        default = str(Path.home() / f"pomo-history-{date.today().isoformat()}.csv")
         path, _ = QFileDialog.getSaveFileName(self, "Export history", default, "CSV files (*.csv)")
         if path:
             n = self.ctrl.storage.export_csv(Path(path))
