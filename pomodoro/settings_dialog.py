@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import APP_NAME, APP_VERSION, claude_hooks, keystore
+from . import APP_NAME, APP_VERSION, claude_hooks, keystore, media
 from .ai import KEYS_URL, KeyCheckWorker
 from .config import AI_MODELS, ORB_SIZES, OUTFITS, SOUND_NAMES, Settings
 from .stats import plural
@@ -429,8 +429,20 @@ class SettingsDialog(QDialog):
         clear.clicked.connect(self._clear_history)
         for button in (corner, folder, export, clear):
             button.setCursor(Qt.PointingHandCursor)
+        self.music_controls = QCheckBox("Show what's playing, with music controls")
+        self.pomo_listens = QCheckBox("Pomo listens along (headphones and a little sway)")
+        self.music_controls.toggled.connect(self.pomo_listens.setEnabled)
         form.addRow("Startup", self.autostart)
         form.addRow("", _hint(f"Starts {APP_NAME} when you sign in to Windows."))
+        form.addRow("Music", self.music_controls)
+        form.addRow("", self.pomo_listens)
+        if media.available():
+            form.addRow("", _hint("Works with Spotify, YouTube in your browser and any app in\n"
+                                  "Windows' media controls. Nothing leaves your PC."))
+        else:
+            self.music_controls.setEnabled(False)
+            self.pomo_listens.setEnabled(False)
+            form.addRow("", _hint("Music controls need Windows 10 or later."))
         form.addRow("Position", corner)
         form.addRow("Data", folder)
         form.addRow("", export)
@@ -470,6 +482,9 @@ class SettingsDialog(QDialog):
         for mode, button in self.colors.items():
             button.set_value(getattr(s, f"{mode}_color"))
         self.autostart.setChecked(s.start_with_windows)
+        self.music_controls.setChecked(s.music_controls)
+        self.pomo_listens.setChecked(s.pomo_listens)
+        self.pomo_listens.setEnabled(s.music_controls and media.available())
         self.approvals.setChecked(s.agent_approvals)
         self.approval_wait.setValue(s.approval_wait_s)
         self.notify_finish.setChecked(s.agent_notify_finish)
@@ -506,6 +521,8 @@ class SettingsDialog(QDialog):
         for mode, button in self.colors.items():
             setattr(s, f"{mode}_color", button.value)
         s.start_with_windows = self.autostart.isChecked()
+        s.music_controls = self.music_controls.isChecked()
+        s.pomo_listens = self.pomo_listens.isChecked()
         s.agent_approvals = self.approvals.isChecked()
         s.approval_wait_s = self.approval_wait.value()
         s.agent_notify_finish = self.notify_finish.isChecked()

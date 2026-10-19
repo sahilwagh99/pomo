@@ -172,6 +172,7 @@ class GameWindow(QWidget):
                 self._finish()
         s = self.ctrl.settings
         self.pomo.outfit = s.pomo_outfit
+        self.pomo.listening = self.ctrl.pomo_listening()
         self.pomo.set_mood("focus" if self.state == "playing" else "idle")
         target = self.game.next_petal()
         anchor = QPointF(self.game.pomo_x, self.game.pomo_y)

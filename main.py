@@ -3,6 +3,7 @@
     python main.py                   normal run
     python main.py --demo            separate data folder pre-filled with sample history
     python main.py --pomo-hook   Claude Code hook client (reads an event on stdin; no window)
+    python main.py --media-check     print what Pomo sees playing, as JSON (no window)
 """
 from __future__ import annotations
 
@@ -73,9 +74,25 @@ def main() -> int:
     return app.exec()
 
 
+def media_check() -> int:
+    """Print what Pomo sees playing (Spotify, a browser tab, ...) as JSON, for troubleshooting."""
+    import json
+
+    from pomodoro.hook import _std_stream
+    from pomodoro.media import check
+
+    out = _std_stream(1)
+    if out is not None:
+        out.write((json.dumps(check(), indent=2) + "\n").encode("utf-8"))
+        out.flush()
+    return 0
+
+
 if __name__ == "__main__":
     if any(flag in sys.argv for flag in HOOK_FLAGS):
         from pomodoro.hook import run
 
         sys.exit(run())
+    if "--media-check" in sys.argv:
+        sys.exit(media_check())
     sys.exit(main())

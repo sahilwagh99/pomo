@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QToolTip, QWidget
 
 from .engine import State
 from .icons import draw_glyph
+from .music_card import now_playing_tip, paint_cover
 from .orb import TimeEdit, apply_typed_time
 from .pomo import Pomo, mood_for
 from .stats import fmt_clock
@@ -27,10 +28,12 @@ from .theme import FONT_FAMILY, mode_color
 SLIVER = (110.0, 8.0, 4.0)       # width, height, bottom corner radius
 COMPACT = (212.0, 38.0, 19.0)
 EXPANDED = (392.0, 136.0, 28.0)
+MUSIC_H = 46.0                   # the now-playing row the open island grows while music plays or is paused
 FLARE = 10.0                     # concave shoulders where the pill meets the screen edge
 PAD = 30                         # room for spring overshoot and the shadow
 FRAME_MS = 33                    # while Pomo moves
 CALM_FRAME_MS = 125              # while he only breathes
+GROOVE_FRAME_MS = 50             # while he only sways to music
 OPEN_DELAY_MS = 120
 CLOSE_DELAY_MS = 450
 PIN_AFTER_SESSION = 5.0
@@ -45,7 +48,11 @@ TIPS = {
     "settings": "Settings",
     "pomo": "Pomo, your focus buddy. Poke him!",
     "time": "Double-click to type a time, scroll to adjust",
+    "m_prev": "Previous",
+    "m_next": "Next",
 }
+MUSIC_GLYPHS = {"m_prev": "previous", "m_next": "skip"}
+MUSIC_COMMANDS = {"m_prev": "previous", "m_toggle": "toggle", "m_next": "next"}
 
 
 def _lerp(a: float, b: float, t: float) -> float:
@@ -72,6 +79,7 @@ class IslandWidget(QWidget):
         self._pomo_on = True
         self._presence = 1.0
         self._expand = 0.0
+        self._music = 0.0  # 0 = no music row, 1 = the now-playing row is shown
         self._hover = False
         self._menu_open = False
         self._editing = False
@@ -89,10 +97,11 @@ class IslandWidget(QWidget):
         self.setMouseTracking(True)
         self.setWindowTitle("Pomo island")
         ew, eh, _ = EXPANDED
-        self.setFixedSize(int(ew * 1.08 + 2 * (FLARE + PAD)), int(eh * 1.1 + PAD))
+        self.setFixedSize(int(ew * 1.08 + 2 * (FLARE + PAD)), int((eh + MUSIC_H) * 1.1 + PAD))
 
         self._presence_anim = self._animation(lambda v: self._set("_presence", float(v)))
         self._expand_anim = self._animation(lambda v: self._set("_expand", float(v)))
+        self._music_anim = self._animation(lambda v: self._set("_music", float(v)))
         self._open_timer = self._single_shot(OPEN_DELAY_MS, lambda: self._set_hover(True))
         self._close_timer = self._single_shot(CLOSE_DELAY_MS, lambda: self._set_hover(False))
         self._tip_timer = self._single_shot(600, self._show_tip)
@@ -177,11 +186,20 @@ class IslandWidget(QWidget):
         approval_waiting = hub is not None and bool(hub.pending)
         expand = 1.0 if (self._hover or self._menu_open or self._editing or approval_waiting
                          or time.monotonic() < self._pinned_until) else 0.0
+        music = 1.0 if self._music_shown() else 0.0
         for anim, current, target in ((self._presence_anim, self._presence, presence),
-                                      (self._expand_anim, self._expand, expand)):
+                                      (self._expand_anim, self._expand, expand),
+                                      (self._music_anim, self._music, music)):
             running_to = anim.endValue() if anim.state() == QVariantAnimation.Running else None
             if running_to != target and abs(current - target) > 1e-3:
                 self._spring_to(anim, current, target)
+        self.update()
+
+    def _music_shown(self) -> bool:
+        return self.ctrl.settings.music_controls and getattr(self.ctrl, "track", None) is not None
+
+    def on_music_changed(self) -> None:
+        self._update_targets()
         self.update()
 
     def _set_hover(self, hover: bool) -> None:
@@ -224,12 +242,13 @@ class IslandWidget(QWidget):
             self.pomo.set_mood(mood_for(e.state, e.mode.is_break, self.ctrl.idle_seconds()))
             self.pomo.signal = self.ctrl.agent_signal()
             self.pomo.outfit = self.ctrl.settings.pomo_outfit
+            self.pomo.listening = self.ctrl.pomo_listening()
             anchor, size = self._pomo_place()
             cursor = QPointF(self.mapFromGlobal(QCursor.pos())) - anchor
             self.pomo.update(dt, (cursor.x() / size, cursor.y() / size))
             calm = self.pomo.is_calm()
             if not resizing and (self._presence > 0.3 or self._expand > 0.3):
-                if self.pomo.particles:
+                if any(part.kind != "note" for part in self.pomo.particles):  # notes stay in the box below
                     self.update()
                 else:
                     # body, leaf and the highest hop all fit in this box
@@ -237,19 +256,23 @@ class IslandWidget(QWidget):
         if self.engine.state is State.FINISHED and not resizing:
             self.update()  # the compact ring pulses
             calm = False
-        self._frames.setInterval(CALM_FRAME_MS if calm else FRAME_MS)
+        groove = not calm and self._pomo_on and self.pomo.is_grooving() and self.engine.state is not State.FINISHED
+        self._frames.setInterval(CALM_FRAME_MS if calm else GROOVE_FRAME_MS if groove else FRAME_MS)
 
     # --------------------------------------------------------------- geometry
     def _pill(self) -> tuple[QRectF, float]:
         p, e = self._presence, self._expand
         bw, bh, br = (_lerp(a, b, p) for a, b in zip(SLIVER, COMPACT))
-        ew, eh, er = EXPANDED
-        w, h, r = _lerp(bw, ew, e), _lerp(bh, eh, e), _lerp(br, er, e)
+        ew, _, er = EXPANDED
+        w, h, r = _lerp(bw, ew, e), _lerp(bh, self._expanded_h(), e), _lerp(br, er, e)
         return QRectF((self.width() - w) / 2, 0.0, w, h), r
 
+    def _expanded_h(self) -> float:
+        return EXPANDED[1] + MUSIC_H * max(0.0, self._music)
+
     def _expanded_rect(self) -> QRectF:
-        ew, eh, _ = EXPANDED
-        return QRectF((self.width() - ew) / 2, 0.0, ew, eh)
+        ew = EXPANDED[0]
+        return QRectF((self.width() - ew) / 2, 0.0, ew, self._expanded_h())
 
     def anchor_rect_global(self) -> QRect:
         r = self._expanded_rect().toRect()
@@ -309,12 +332,35 @@ class IslandWidget(QWidget):
             out["feed"] = (QPointF(r.left() + 20, r.top() + 114), 11.0)
         return out
 
+    def _music_buttons(self) -> dict[str, tuple[QPointF, float, bool]]:
+        """Previous, play/pause and next in the now-playing row: name -> (center, radius, enabled)."""
+        track = getattr(self.ctrl, "track", None)
+        if track is None or self._music < 0.05:
+            return {}
+        r = self._expanded_rect()
+        cy = r.top() + EXPANDED[1] + MUSIC_H / 2 - 5
+        return {
+            "m_prev": (QPointF(r.right() - 120, cy), 12.0, track.can_previous),
+            "m_toggle": (QPointF(r.right() - 76, cy), 15.0, track.can_toggle),
+            "m_next": (QPointF(r.right() - 32, cy), 12.0, track.can_next),
+        }
+
+    def _music_rect(self) -> QRectF:
+        """The cover and song: hover it for the full title."""
+        r = self._expanded_rect()
+        cy = r.top() + EXPANDED[1] + MUSIC_H / 2 - 5
+        return QRectF(r.left() + 20, cy - 17, r.right() - 140 - (r.left() + 20), 34)
+
     def _button_at(self, pos: QPointF) -> str | None:
         if self._expand < 0.8 or self._editing:
             return None
         for name, (center, radius) in {**self._badges(), **self._buttons()}.items():
             if QLineF(pos, center).length() <= radius + 3:
                 return name
+        if self._music > 0.8:
+            for name, (center, radius, enabled) in self._music_buttons().items():
+                if enabled and QLineF(pos, center).length() <= radius + 3:
+                    return name
         return None
 
     def _time_rect(self) -> QRectF:
@@ -453,7 +499,7 @@ class IslandWidget(QWidget):
             p.drawText(QRectF(x0 + 11, r.top() + 100, 126, 16), Qt.AlignLeft | Qt.AlignVCenter,
                        QFontMetricsF(font).elidedText(text, Qt.ElideRight, 126))
 
-        bar = QRectF(x0, r.bottom() - 17, r.right() - 22 - x0, 4)
+        bar = QRectF(x0, r.top() + EXPANDED[1] - 17, r.right() - 22 - x0, 4)
         track = QColor(accent)
         track.setAlpha(60)
         p.setPen(Qt.NoPen)
@@ -482,6 +528,9 @@ class IslandWidget(QWidget):
                 p.drawEllipse(center, radius, radius)
             draw_glyph(p, glyphs[name], center, radius * 1.2, QColor(t.ink if hot else t.ink_2))
 
+        if self._music > 0.01:
+            self._paint_music(p, accent)
+
         for name, (center, radius) in self._badges().items():
             p.setPen(QPen(QColor(t.orb_edge), 1))
             p.setBrush(QColor(t.hover if name == self._hot else t.raised))
@@ -497,6 +546,57 @@ class IslandWidget(QWidget):
                 p.drawText(QRectF(dot.x() - radius, dot.y() - radius, 2 * radius, 2 * radius), Qt.AlignCenter,
                            str(s.treats))
 
+    def _paint_music(self, p: QPainter, accent: QColor) -> None:
+        """The now-playing row: cover, song and artist, then previous, play/pause and next."""
+        track = self.ctrl.track
+        if track is None:
+            return
+        t = self.ctrl.theme
+        r = self._expanded_rect()
+        top = r.top() + EXPANDED[1]
+        p.save()
+        p.setOpacity(p.opacity() * _clamp01((self._music - 0.35) / 0.65))
+        line = QColor(t.ink_2)
+        line.setAlpha(30)
+        p.setPen(QPen(line, 1))
+        p.drawLine(QPointF(r.left() + 22, top - 3.5), QPointF(r.right() - 22, top - 3.5))
+
+        area = self._music_rect()
+        cover = QRectF(area.left() + 2, area.center().y() - 15, 30, 30)
+        paint_cover(p, cover, self.ctrl.track_art, accent, t)
+        x = cover.right() + 10
+        width = area.right() - x
+        title_font = self._font(12.5, QFont.DemiBold)
+        p.setFont(title_font)
+        p.setPen(QColor(t.ink))
+        p.drawText(QRectF(x, cover.top() - 1, width, 17), Qt.AlignLeft | Qt.AlignVCenter,
+                   QFontMetricsF(title_font).elidedText(track.title, Qt.ElideRight, width))
+        byline_font = self._font(11)
+        p.setFont(byline_font)
+        p.setPen(QColor(t.muted))
+        p.drawText(QRectF(x, cover.top() + 16, width, 15), Qt.AlignLeft | Qt.AlignVCenter,
+                   QFontMetricsF(byline_font).elidedText(track.byline, Qt.ElideRight, width))
+
+        for name, (center, radius, enabled) in self._music_buttons().items():
+            hot = name == self._hot
+            ink = QColor(t.ink if hot else t.ink_2)
+            if not enabled:
+                ink = QColor(t.muted)
+                ink.setAlpha(110)
+            if name == "m_toggle":
+                p.setPen(QPen(QColor(t.orb_edge), 1))
+                p.setBrush(QColor(t.hover if hot else t.raised))
+                p.drawEllipse(center, radius, radius)
+                nudge = QPointF(0 if track.playing else 1.2, 0)
+                draw_glyph(p, "pause" if track.playing else "play", center + nudge, radius * 1.0, ink)
+                continue
+            if hot:
+                p.setPen(Qt.NoPen)
+                p.setBrush(QColor(t.hover))
+                p.drawEllipse(center, radius, radius)
+            draw_glyph(p, MUSIC_GLYPHS[name], center, radius * 1.05, ink)
+        p.restore()
+
     # ------------------------------------------------------------------ input
     def _set_hot(self, name: str | None) -> None:
         if name == self._hot:
@@ -507,7 +607,7 @@ class IslandWidget(QWidget):
             self._tip_timer.start()
         else:
             self._tip_timer.stop()
-        self.setCursor(Qt.PointingHandCursor if name and name != "time" else Qt.ArrowCursor)
+        self.setCursor(Qt.PointingHandCursor if name and name not in ("time", "track") else Qt.ArrowCursor)
         self.update()
 
     def _show_tip(self) -> None:
@@ -516,6 +616,10 @@ class IslandWidget(QWidget):
             return
         if name == "toggle":
             text = "Pause" if self.engine.is_running else "Start"
+        elif name == "m_toggle":
+            text = "Pause the music" if self.ctrl.music_playing() else "Play the music"
+        elif name == "track":
+            text = now_playing_tip(self.ctrl)
         elif name == "skip":
             text = f"Skip to {self.engine.skip_target().label.lower()}"
         else:
@@ -535,6 +639,8 @@ class IslandWidget(QWidget):
                     self.pomo.rub(1 if dx > 0 else -1)
             elif hot is None and self._expand > 0.8 and self._time_rect().contains(pos):
                 hot = "time"
+            elif hot is None and self._expand > 0.8 and self._music > 0.8 and self._music_rect().contains(pos):
+                hot = "track"
             self._last_move_x = pos.x()
             self._set_hot(hot)
         else:
@@ -627,6 +733,8 @@ class IslandWidget(QWidget):
             self.ctrl.feed_pomo()
         elif name == "play":
             self.ctrl.open_game()
+        elif name in MUSIC_COMMANDS:
+            self.ctrl.media_command(MUSIC_COMMANDS[name])
 
     # ------------------------------------------------------------ inline edit
     def begin_edit(self) -> None:

@@ -13,6 +13,22 @@ def _pen(color: QColor, width: float) -> QPen:
     return QPen(color, width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
 
 
+def draw_equalizer(p: QPainter, c: QPointF, size: float, color: QColor, t: float, moving: bool = True) -> None:
+    """Three little level bars: bouncing while music plays, resting when it's paused."""
+    s = size
+    w = s * 0.16
+    base = c.y() + s * 0.32
+    p.save()
+    p.setPen(Qt.NoPen)
+    p.setBrush(color)
+    for k, (rate, phase, rest) in enumerate(((7.1, 0.0, 0.3), (9.3, 1.7, 0.5), (6.2, 3.1, 0.38))):
+        level = 0.22 + 0.42 * abs(math.sin(t * rate + phase)) if moving else rest
+        h = s * level
+        x = c.x() + (k - 1) * s * 0.26
+        p.drawRoundedRect(QRectF(x - w / 2, base - h, w, h), w * 0.45, w * 0.45)
+    p.restore()
+
+
 def draw_glyph(p: QPainter, name: str, c: QPointF, size: float, color: QColor) -> None:
     """Draw a line icon centered on c, fitting a size x size box."""
     s = size
@@ -45,16 +61,33 @@ def draw_glyph(p: QPainter, name: str, c: QPointF, size: float, color: QColor) -
         path.lineTo(tip)
         path.lineTo(tip.x() + h * 0.85, tip.y() + h * 0.8)
         p.drawPath(path)
-    elif name == "skip":
-        path = QPainterPath(QPointF(c.x() - s * 0.28, c.y() - s * 0.28))
-        path.lineTo(c.x() + s * 0.16, c.y())
-        path.lineTo(c.x() - s * 0.28, c.y() + s * 0.28)
+    elif name in ("skip", "previous"):  # previous is skip, mirrored
+        d = 1 if name == "skip" else -1
+        path = QPainterPath(QPointF(c.x() - d * s * 0.28, c.y() - s * 0.28))
+        path.lineTo(c.x() + d * s * 0.16, c.y())
+        path.lineTo(c.x() - d * s * 0.28, c.y() + s * 0.28)
         path.closeSubpath()
         p.setPen(_pen(color, s * 0.1))
         p.setBrush(color)
         p.drawPath(path)
         p.setPen(_pen(color, stroke * 1.1))
-        p.drawLine(QPointF(c.x() + s * 0.3, c.y() - s * 0.28), QPointF(c.x() + s * 0.3, c.y() + s * 0.28))
+        p.drawLine(QPointF(c.x() + d * s * 0.3, c.y() - s * 0.28), QPointF(c.x() + d * s * 0.3, c.y() + s * 0.28))
+    elif name == "note":  # an eighth note
+        head = QPointF(c.x() - s * 0.13, c.y() + s * 0.22)
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        p.save()
+        p.translate(head)
+        p.rotate(-24)
+        p.drawEllipse(QPointF(0, 0), s * 0.165, s * 0.12)
+        p.restore()
+        x = head.x() + s * 0.14
+        p.setPen(_pen(color, stroke))
+        p.drawLine(QPointF(x, head.y() - s * 0.03), QPointF(x, c.y() - s * 0.36))
+        flag = QPainterPath(QPointF(x, c.y() - s * 0.36))
+        flag.cubicTo(x + s * 0.04, c.y() - s * 0.2, x + s * 0.3, c.y() - s * 0.2, x + s * 0.2, c.y() + s * 0.03)
+        p.setBrush(Qt.NoBrush)
+        p.drawPath(flag)
     elif name == "chart":
         p.setPen(_pen(color, stroke * 1.15))
         base = c.y() + s * 0.32

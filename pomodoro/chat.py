@@ -35,6 +35,7 @@ class PomoAvatar(QWidget):
         super().__init__(parent)
         self.pomo = Pomo()
         self.outfit_source = None  # callable returning the current outfit
+        self.listening_source = None  # callable: is music playing for Pomo to listen to
         self.setFixedSize(size + 16, size + 22)
         self._last = time.monotonic()
         self._timer = QTimer(self)
@@ -58,6 +59,8 @@ class PomoAvatar(QWidget):
         self.pomo.update(dt, (cursor.x() / size, cursor.y() / size))
         if self.outfit_source is not None:
             self.pomo.outfit = self.outfit_source()
+        if self.listening_source is not None:
+            self.pomo.listening = self.listening_source()
         self.update()
 
     def _anchor(self) -> tuple[QPointF, float]:
@@ -150,6 +153,7 @@ class ChatWindow(QWidget):
         head = QHBoxLayout()
         self.avatar = PomoAvatar(58)
         self.avatar.outfit_source = lambda: self.ctrl.settings.pomo_outfit
+        self.avatar.listening_source = self.ctrl.pomo_listening
         head.addWidget(self.avatar)
         titles = QVBoxLayout()
         titles.setSpacing(0)

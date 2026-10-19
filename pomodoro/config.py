@@ -104,6 +104,10 @@ class Settings:
     agent_notify_finish: bool = True
     agent_notify_after_s: int = 30    # only for turns at least this long
 
+    # Music (whatever plays on this PC: Spotify, YouTube in a browser, ...)
+    music_controls: bool = True   # show what's playing, with play/pause and skip
+    pomo_listens: bool = True     # Pomo wears headphones and sways along while music plays
+
     # AI (Ask Pomo)
     ai_model: str = "claude-opus-5-5"
 

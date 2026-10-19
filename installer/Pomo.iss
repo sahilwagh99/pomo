@@ -7,7 +7,7 @@
 ; install is recognised, removed first (files and shortcuts), and replaced by Pomo.
 
 #ifndef AppVersion
-  #define AppVersion "1.2.0"
+  #define AppVersion "1.3.0"
 #endif
 #ifndef AppName
   #define AppName "Pomo"

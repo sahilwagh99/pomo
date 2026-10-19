@@ -42,6 +42,7 @@ Pomo used to be called FocusOrb. Run `Pomo-Setup.exe` and it removes FocusOrb fo
 - **Alerts when a session ends:** a Windows notification, a sound (four built in), a pop-up card with *Start break* / *Skip*, and a soft glow on the timer.
 - **Five pastel themes and eight outfits.** Pick your colors and dress Pomo up.
 - **Things to play with.** Pet Pomo, feed treats you earn by focusing, and play Petal Catch on your break.
+- **Music controls.** See what's playing on Spotify, YouTube or any other player, and play, pause or skip it from Pomo. Pomo puts on headphones and listens along.
 - **Dashboard.** KPIs, charts, your agents' activity, a session log and CSV export.
 - **Keeps an eye on your coding agents.** See when Claude Code is working, done, or needs you, and approve its requests from Pomo.
 - **Ask Pomo.** Chat with Claude, using your own API key, to plan your work into pomodoros or look back at your week.
@@ -86,6 +87,21 @@ Don't want a buddy? Turn off *Show Pomo* in *Settings > Appearance*.
 - **Petal Catch:** click the petal next to Pomo (it shows on hover and during breaks) for a 30-second game. Move Pomo with your mouse or the arrow keys to catch falling sakura petals. Golden petals are worth 3, and your best score is saved. Open it during a focus session and Pomo will suggest saving it for your break.
 
 <div align="center"><img src="docs/game.png" alt="Petal Catch: the start screen, and a round in progress" width="620"></div>
+
+## Listen along
+
+Playing music on Spotify, YouTube in your browser, or any app that shows up in Windows' media controls? Pomo shows what's playing and lets you control it without leaving your focus.
+
+<div align="center"><img src="docs/music_island.png" alt="The island with a now-playing row: the cover, the song and artist, and previous, pause and next buttons, while Pomo wears headphones" width="503"></div>
+
+- **On the island,** a now-playing row appears under the timer, with the cover, the song, and previous, play/pause and next.
+- **On the orb,** a little music badge sits on the rim, with dancing bars while a song plays. Click it for a mini player.
+- **From the right-click menu,** *Music* has the same controls.
+- **Pomo listens too.** While music plays, Pomo puts on headphones (under any hat), sways along, and little notes float up. A new song gets a happy bop.
+
+<div align="center"><img src="docs/music_orb.png" alt="The mini player next to the orb: cover, song, play and skip buttons, and Pomo listening with headphones" width="684"></div>
+
+Pomo reads what's playing through Windows' own media controls, and nothing leaves your PC. Turn either part off in *Settings > General*.
 
 ## Themes and outfits
 
@@ -147,7 +163,8 @@ The key is stored encrypted for your Windows account and is only ever sent to An
 | Dashboard, Ask Pomo, timer style, settings | The small buttons along the top of the timer (hover to see them) |
 | Move it | Drag the orb anywhere. The island stays at the top center. |
 | Play | Poke, pet or double-click Pomo; click the dango to feed a treat or the petal for Petal Catch |
-| Everything else | Right-click: switch mode, add time, set task, daily goal, timer style, theme, outfit, run on startup, coding agents, hide, quit |
+| Music | The now-playing row on the island, or the music badge on the orb: previous, play/pause, next |
+| Everything else | Right-click: switch mode, add time, set task, daily goal, timer style, theme, outfit, music, run on startup, coding agents, hide, quit |
 | Tray icon | Click to bring the timer back; double-click for the dashboard |
 
 ## Dashboard
@@ -172,7 +189,7 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 | Appearance | Theme, timer style (island or orb), show Pomo, Pomo's outfit, tuck the island away when idle, orb size, opacity, fade while focusing, always on top, show task, colors for each mode |
 | Agents | Connect or disconnect Claude Code, answer permission requests in Pomo, how long to wait for your answer, finish notifications |
 | AI | Your Anthropic API key (save, check, remove), model for Ask Pomo |
-| General | Run Pomo on startup, move the orb back to its corner, open the data folder, export CSV, clear history |
+| General | Run Pomo on startup, music controls, Pomo listening along, move the orb back to its corner, open the data folder, export CSV, clear history |
 
 Your data lives in `%APPDATA%\Pomo`: `settings.json`, `history.db` (pomodoros and agent activity) and, if you saved one, `ai_key.bin` (your API key, encrypted).
 
@@ -189,6 +206,8 @@ From the project folder, in PowerShell or Command Prompt:
 The first run creates a `.venv` and installs the dependencies (PySide6 and the Anthropic SDK). To try the dashboard with sample history (kept in a separate data folder), run `.\run.bat --demo`.
 
 Run the tests with `python -m unittest discover -s tests -t .`.
+
+Pomo doesn't see your music? Run `python main.py --media-check` (or `Pomo.exe --media-check | more` in an installed copy). It prints the media sessions Windows reports and the song Pomo would show.
 
 ### Build the installer locally
 
@@ -233,6 +252,8 @@ pomodoro/claude_hooks.py    connects / disconnects Pomo in Claude Code's setting
 pomodoro/ai.py              Ask Pomo: context, streaming replies and key checks through the Anthropic SDK
 pomodoro/chat.py            the Ask Pomo window, with the bring-your-own-key panel
 pomodoro/keystore.py        API key storage, encrypted with Windows DPAPI
+pomodoro/media.py           now playing: reads and controls Windows' media sessions (WinRT), on a background thread
+pomodoro/music_card.py      the mini player card, and cover drawing shared with the island
 pomodoro/dashboard.py       dashboard window
 pomodoro/charts.py          hand-painted charts (no matplotlib, keeps the build small)
 pomodoro/settings_dialog.py settings window

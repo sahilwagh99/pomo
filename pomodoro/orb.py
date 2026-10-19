@@ -39,7 +39,8 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QLineEdit, QToolTip, QWidget
 
 from .engine import Mode, State
-from .icons import draw_glyph
+from .icons import draw_equalizer, draw_glyph
+from .music_card import now_playing_tip
 from .pomo import BODY_RY, Pomo, mood_for
 from .stats import fmt_clock
 from .theme import FONT_FAMILY, mode_color
@@ -52,6 +53,7 @@ SNAP = 28
 EDGE_GAP = 16
 FRAME_MS = 33        # while Pomo moves
 CALM_FRAME_MS = 125  # while he only breathes
+GROOVE_FRAME_MS = 50  # while he only sways to music
 
 TIPS = {
     "reset": "Reset  (R)",
@@ -343,16 +345,25 @@ class OrbWidget(QWidget):
         self.pomo.set_mood(mood_for(e.state, e.mode.is_break, self.ctrl.idle_seconds()))
         self.pomo.signal = self.ctrl.agent_signal()
         self.pomo.outfit = self.ctrl.settings.pomo_outfit
+        self.pomo.listening = self.ctrl.pomo_listening()
         anchor = self._pomo_anchor()
         size = POMO_SIZE * self._k()
         cursor = QPointF(self.mapFromGlobal(QCursor.pos())) - anchor
         self.pomo.update(dt, (cursor.x() / size, cursor.y() / size))
-        if self.pomo.particles:
+        music = self._badges().get("music") if self.ctrl.music_playing() else None
+        if any(part.kind != "note" for part in self.pomo.particles):
             self.update()  # confetti can fall anywhere over the orb
         else:
-            # only Pomo's headroom changes: repaint just that strip
+            # only Pomo's headroom changes (music notes stay in it): repaint just that strip
             self.update(QRect(0, 0, self.width(), int(self._center().y() - self._diam / 2 + 14 * self._k())))
-        self._frames.setInterval(CALM_FRAME_MS if self.pomo.is_calm() else FRAME_MS)
+            if music is not None:  # and the little equalizer
+                center, r, _ = music
+                self.update(QRectF(center.x() - r - 2, center.y() - r - 2, 2 * r + 4, 2 * r + 4).toAlignedRect())
+        calm, groove = self.pomo.is_calm(), self.pomo.is_grooving()
+        if calm and music is None:
+            self._frames.setInterval(CALM_FRAME_MS)
+        else:
+            self._frames.setInterval(GROOVE_FRAME_MS if calm or groove else FRAME_MS)
 
     def _pomo_anchor(self) -> QPointF:
         k = self._k()
@@ -415,11 +426,16 @@ class OrbWidget(QWidget):
 
         The treat (feed) shows whenever he has treats; the petal (play) shows on hover and during breaks.
         """
+        out = {}
+        if self.ctrl.settings.music_controls and getattr(self.ctrl, "track", None) is not None:
+            # what's playing: a badge on the upper-left rim, opening the mini player
+            c, r = self._center(), 0.21 * POMO_SIZE * self._k()
+            d = (self._diam / 2 + r * 0.3) / math.sqrt(2)
+            out["music"] = (QPointF(c.x() - d, c.y() - d), r, 1.0)
         if not self._pomo_on:
-            return {}
+            return out
         anchor, size = self._pomo_anchor(), POMO_SIZE * self._k()
         y, r = anchor.y() + 0.2 * size, 0.2 * size
-        out = {}
         if self.ctrl.settings.treats > 0:
             out["feed"] = (QPointF(anchor.x() - 0.84 * size, y), r, max(0.8, self._hover))
         play = 1.0 if self.engine.mode.is_break else self._hover
@@ -585,10 +601,10 @@ class OrbWidget(QWidget):
             if self._hover > 0.01:
                 p.setOpacity(self._opacity * self._hover)
                 self._paint_controls(p, k, accent)
+        p.setOpacity(self._opacity)
         if self._pomo_on:
-            p.setOpacity(self._opacity)
             self.pomo.paint(p, self._pomo_anchor(), POMO_SIZE * k)
-            self._paint_badges(p, k)
+        self._paint_badges(p, k)
         p.end()
 
     def _paint_badges(self, p: QPainter, k: float) -> None:
@@ -598,6 +614,12 @@ class OrbWidget(QWidget):
             p.setPen(QPen(QColor(t.orb_edge), 1))
             p.setBrush(QColor(t.hover if name == self._hot else t.orb_face))
             p.drawEllipse(center, r, r)
+            if name == "music":
+                if self.ctrl.music_playing():
+                    draw_equalizer(p, center, r * 1.15, QColor(t.ink_2), time.monotonic())
+                else:
+                    draw_glyph(p, "note", center, r * 1.25, QColor(t.ink_2))
+                continue
             draw_glyph(p, "dango" if name == "feed" else "petal", center, r * 1.35, QColor(t.ink_2))
             if name == "feed" and self.ctrl.settings.treats > 1:
                 p.setFont(self._font(8.5 * k, QFont.DemiBold))
@@ -735,6 +757,8 @@ class OrbWidget(QWidget):
             text = "Pause  (Space)" if self.engine.is_running else "Start  (Space)"
         elif name == "skip":
             text = f"Skip to {self.engine.skip_target().label.lower()}  (S)"
+        elif name == "music":
+            text = now_playing_tip(self.ctrl) + "\nClick for the music controls"
         elif name == "pomo" and self.ctrl.agents.sessions:
             lines = [f"{a.project}: {a.status_text}" + (f" · {a.activity}" if a.status == "working" else "")
                      for a in self.ctrl.agents.live_sessions()[:5]]
@@ -882,6 +906,8 @@ class OrbWidget(QWidget):
             self.ctrl.feed_pomo()
         elif name == "play":
             self.ctrl.open_game()
+        elif name == "music":
+            self.ctrl.open_music_card()
 
     # ------------------------------------------------------------ inline edit
     def _layout_edit(self) -> None:

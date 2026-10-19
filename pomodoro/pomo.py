@@ -36,6 +36,7 @@ SNOOZE = QColor("#a7b3e3")
 ANGER = QColor("#e8707c")
 SHADOW = QColor(63, 42, 38)
 CONFETTI = ("#f0a3b1", "#95c283", "#f5d77e", "#a7b3e3", "#f7c59f")
+NOTES = ("#ee9aae", "#86b874", "#9aa7df")  # music notes: sakura, matcha, lavender
 
 BODY_RY = 0.40         # half-height of the body, in body widths
 POKE_WINDOW = 2.5      # seconds in which pokes add up
@@ -92,7 +93,7 @@ class Spring:
 
 @dataclass
 class Particle:
-    kind: str  # spark | confetti | z | anger
+    kind: str  # spark | confetti | z | anger | heart | crumb | note
     x: float
     y: float
     vx: float
@@ -134,6 +135,8 @@ class Pomo:
         self._rub_turns: list[float] = []
         self._spin_start = -10.0
         self._dance_until = -1.0
+        self.listening = False          # music is playing: headphones, a gentle sway and floating notes
+        self._next_note = 0.0
 
     # ---------------------------------------------------------------- events
     @property
@@ -199,6 +202,22 @@ class Pomo:
         self._burst("crumb", 6, 0.9, 0.9)
         self._burst("heart", 2, 0.8, 1.6)
 
+    def new_song(self) -> None:
+        """A song starts: a little bop and a few notes."""
+        self.hop(1.3)
+        self.leaf.kick(110.0)
+        for i, side in enumerate((-1, 1, -1)):
+            self._emit_note(side, delay=i * 0.28)
+        self._next_note = self.t + 1.2
+
+    def _emit_note(self, side: int | None = None, delay: float = 0.0) -> None:
+        side = side or self.rng.choice((-1, 1))
+        self.particles.append(Particle(
+            "note", side * self.rng.uniform(0.36, 0.5), self.rng.uniform(-0.3, -0.12),
+            side * self.rng.uniform(0.04, 0.14), -self.rng.uniform(0.26, 0.36), self.rng.uniform(1.7, 2.2),
+            age=-delay, spin=self.rng.uniform(0, 6.28), color=QColor(self.rng.choice(NOTES))))
+        del self.particles[:-MAX_PARTICLES]
+
     def poke(self) -> str:
         now = self.t
         self._pokes = [p for p in self._pokes if now - p < POKE_WINDOW] + [now]
@@ -258,6 +277,10 @@ class Pomo:
 
         if self.reaction is None and t >= self._next_fidget:
             self._fidget()
+        if self.listening and t >= self._next_note:
+            if self.face != "sleepy":
+                self._emit_note()
+            self._next_note = t + self.rng.uniform(1.2, 2.0)
 
         self.squish.step(dt)
         self.leaf.step(dt)
@@ -303,7 +326,15 @@ class Pomo:
 
     def is_calm(self) -> bool:
         """True when only slow breathing is going on, so a low frame rate looks the same."""
-        return (self.reaction is None and not self.particles and not self._queued_hops
+        return not self.listening and self._settled(notes_ok=False)
+
+    def is_grooving(self) -> bool:
+        """True when only the music groove moves (a slow sway and drifting notes): a medium frame rate is plenty."""
+        return self.listening and self._settled(notes_ok=True)
+
+    def _settled(self, notes_ok: bool) -> bool:
+        particles = all(p.kind == "note" for p in self.particles) if notes_ok else not self.particles
+        return (self.reaction is None and particles and not self._queued_hops
                 and self.signal != "alert"  # the "!" pulses; approvals are short-lived
                 and self.t > self._dance_until and self.t - self._spin_start > 0.7
                 and self.hop_y <= 0.0 and self.hop_v <= 0.0
@@ -355,6 +386,11 @@ class Pomo:
             elif p.kind == "spark":
                 p.vx *= 1.0 - 2.5 * dt
                 p.vy *= 1.0 - 2.5 * dt
+            elif p.kind == "note":
+                if p.age < 0.0:  # not out yet
+                    alive.append(p)
+                    continue
+                p.vx *= 1.0 - 0.7 * dt
             p.x += p.vx * dt
             p.y += p.vy * dt
             p.spin += dt * 7.0
@@ -402,6 +438,11 @@ class Pomo:
             p.translate(c.x() + beat * s * 0.05, base_bottom)
             p.rotate(beat * 7.0)
             p.translate(-c.x(), -base_bottom)
+        elif self.listening and self.face != "sleepy":  # nodding along to the music, gently
+            beat = math.sin(self.t * 5.2)
+            p.translate(c.x() + beat * s * 0.018, base_bottom)
+            p.rotate(beat * 3.5)
+            p.translate(-c.x(), -base_bottom)
         spin = (self.t - self._spin_start) / 0.6
         if 0.0 <= spin < 1.0:  # twirl: one full turn while he hops
             p.translate(c)
@@ -409,6 +450,8 @@ class Pomo:
             p.translate(-c)
         self._paint_body(p, c, rx, ry, s)
         self._paint_face(p, c, rx, ry, s)
+        if self.listening and self.outfit != "headphones":
+            self._paint_headphones(p, c, rx, ry, s)  # under any hat
         self._paint_outfit(p, c, rx, ry, s)
         p.restore()
 
@@ -768,9 +811,13 @@ class Pomo:
 
     def _paint_particles(self, p: QPainter, anchor: QPointF, s: float) -> None:
         for part in self.particles:
+            if part.age < 0.0:
+                continue
             fade = 1.0 - part.age / part.life
             x, y = anchor.x() + part.x * s, anchor.y() + part.y * s
-            if part.kind == "spark":
+            if part.kind == "note":
+                self._paint_note(p, QPointF(x + math.sin(part.age * 4.0 + part.spin) * s * 0.03, y), s, part, fade)
+            elif part.kind == "spark":
                 r = s * 0.075 * (0.4 + 0.6 * fade)
                 star = QPainterPath(QPointF(x, y - r))
                 for i in range(1, 8):
@@ -829,3 +876,30 @@ class Pomo:
                     toward_center = math.degrees(math.atan2(qy, -qx))
                     p.drawArc(QRectF(x + qx * d - r, y + qy * d - r, 2 * r, 2 * r),
                               int((toward_center - 55) * 16), int(110 * 16))
+
+    @staticmethod
+    def _paint_note(p: QPainter, c: QPointF, s: float, part: Particle, fade: float) -> None:
+        """A small eighth note, fading in, then out as it floats away."""
+        appear = min(1.0, part.age / 0.25)
+        color = QColor(part.color)
+        color.setAlphaF(min(1.0, fade * 1.6) * appear)
+        size = max(7.0, s * 0.2) * (0.75 + 0.25 * appear)
+        p.save()
+        p.translate(c)
+        p.rotate(math.sin(part.age * 3.0 + part.spin) * 12.0)
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        head = QPointF(-size * 0.13, size * 0.22)
+        p.save()
+        p.translate(head)
+        p.rotate(-24)
+        p.drawEllipse(QPointF(0, 0), size * 0.17, size * 0.125)
+        p.restore()
+        x = head.x() + size * 0.145
+        p.setPen(QPen(color, max(1.0, size * 0.1), Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.drawLine(QPointF(x, head.y() - size * 0.03), QPointF(x, -size * 0.36))
+        flag = QPainterPath(QPointF(x, -size * 0.36))
+        flag.cubicTo(x + size * 0.04, -size * 0.2, x + size * 0.3, -size * 0.2, x + size * 0.2, size * 0.03)
+        p.setBrush(Qt.NoBrush)
+        p.drawPath(flag)
+        p.restore()

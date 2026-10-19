@@ -4,14 +4,15 @@ from __future__ import annotations
 import os
 import sys
 import time
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon
+from PySide6.QtGui import QColor, QIcon, QImage
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QSystemTrayIcon
 
-from . import APP_NAME, claude_hooks, keystore
+from . import APP_NAME, claude_hooks, keystore, media
 from .agents import AgentHub, Approval
 from .config import OUTFITS, Settings
 from .engine import Mode, State, TimerEngine
@@ -78,6 +79,10 @@ class PomoApp(QObject):
         self.settings_dialog = None
         self.chat = None
         self.game = None
+        self.music_card = None
+        self.media: media.MediaWatcher | None = None
+        self.track: media.Track | None = None  # what's playing on this PC, if anything
+        self.track_art: QImage | None = None
         self.agents = AgentHub(self, self)
         self._approval_queue: list[Approval] = []
 
@@ -129,6 +134,7 @@ class PomoApp(QObject):
         self._apply_display_mode()
         self._on_engine_changed()
         self._sync_integrations()
+        self._sync_media()
         if not self.settings.welcomed:
             QTimer.singleShot(1800, self._welcome)
 
@@ -202,6 +208,59 @@ class PomoApp(QObject):
         self.game.setWindowState(self.game.windowState() & ~Qt.WindowMinimized)
         self.game.raise_()
         self.game.activateWindow()
+
+    # ----------------------------------------------------------------- music
+    def _sync_media(self) -> None:
+        """Watch what's playing while music controls are on (and Windows supports it)."""
+        want = self.settings.music_controls and media.available()
+        if want and self.media is None:
+            self.media = media.MediaWatcher(self)
+            self.media.changed.connect(self._on_track)
+            self.media.start()
+        elif not want and self.media is not None:
+            self.media.changed.disconnect(self._on_track)  # drop any update still on its way
+            self.media.stop()
+            self.media = None
+            self._on_track(None)
+
+    def _on_track(self, track) -> None:
+        if track is not None and self.media is None:
+            return  # music controls were just turned off
+        previous, self.track = self.track, track
+        if track is None or track.art is None:
+            self.track_art = None
+        elif previous is None or previous.art != track.art:
+            image = QImage.fromData(track.art)
+            self.track_art = None if image.isNull() else image
+        started = track is not None and track.playing and (
+            previous is None or not previous.playing or previous.key != track.key)
+        if started and self.pomo_listening():
+            self.view.pomo.new_song()
+        self.island.on_music_changed()
+        self.orb.update()
+        if self.music_card is not None:
+            self.music_card.refresh()
+
+    def music_playing(self) -> bool:
+        return self.track is not None and self.track.playing
+
+    def pomo_listening(self) -> bool:
+        return self.settings.music_controls and self.settings.pomo_listens and self.music_playing()
+
+    def media_command(self, name: str) -> None:
+        if self.media is None or self.track is None:
+            return
+        self.media.command(name)
+        if name == "toggle":  # show it right away; the watcher confirms a moment later
+            self._on_track(replace(self.track, playing=not self.track.playing))
+
+    def open_music_card(self) -> None:
+        if self.track is None:
+            return
+        if self.music_card is None:
+            from .music_card import MusicCard
+            self.music_card = MusicCard(self)
+        self.music_card.show_near(self.view.anchor_rect_global())
 
     def set_start_with_windows(self, on: bool) -> None:
         if winutil.set_start_with_windows(on):
@@ -293,6 +352,7 @@ class PomoApp(QObject):
         self.theme = theme_for(self.settings.theme)
         self._apply_style()
         self.engine.apply_settings()
+        self._sync_media()
         self.orb.apply_settings()
         self.island.apply_settings()
         if mode_changed:
@@ -443,6 +503,15 @@ class PomoApp(QObject):
 
         _action(menu, "Ask Pomo…", self.open_chat)
         _action(menu, "Play Petal Catch…", self.open_game)
+        if self.track is not None:
+            t = self.track
+            title = t.title if len(t.title) <= 30 else t.title[:29] + "…"
+            music = styled_menu(menu.addMenu(f"Music: {title}"))
+            _action(music, t.byline or t.app, lambda: None, enabled=False)
+            music.addSeparator()
+            _action(music, "Pause" if t.playing else "Play", lambda: self.media_command("toggle"), enabled=t.can_toggle)
+            _action(music, "Next", lambda: self.media_command("next"), enabled=t.can_next)
+            _action(music, "Previous", lambda: self.media_command("previous"), enabled=t.can_previous)
         sessions = self.agents.live_sessions()
         agents = styled_menu(menu.addMenu(f"Coding agents ({len(sessions)})" if sessions else "Coding agents"))
         for session in sessions[:8]:
@@ -677,6 +746,8 @@ class PomoApp(QObject):
 
     def _on_quit(self) -> None:
         self.agents.shutdown()
+        if self.media is not None:
+            self.media.stop()
         if self.chat is not None:
             self.chat.shutdown()
         self.engine.shutdown()
