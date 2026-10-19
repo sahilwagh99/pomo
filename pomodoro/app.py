@@ -1,6 +1,7 @@
 """Application controller: owns the engine, storage and windows and wires them up."""
 from __future__ import annotations
 
+import os
 import time
 from datetime import date
 from pathlib import Path
@@ -9,15 +10,17 @@ from PySide6.QtCore import QObject, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QSystemTrayIcon
 
-from . import APP_NAME
+from . import APP_NAME, keystore
+from .agents import AgentHub, Approval
 from .config import Settings
 from .engine import Mode, State, TimerEngine
-from .icons import app_icon, render_orb_icon
+from .icons import app_icon, render_tray_icon
+from .island import IslandWidget
 from .notifier import Notifier
 from .orb import OrbWidget
 from .stats import fmt_clock, plural
 from .storage import Storage
-from .theme import DARK, build_palette, build_qss, ensure_qss_assets, mode_color, theme_for
+from .theme import build_palette, build_qss, ensure_qss_assets, mode_color, theme_for
 from .toast import ToastCard
 from . import winutil
 
@@ -66,10 +69,15 @@ class FocusOrbApp(QObject):
 
         self._apply_style()
 
+        self._idle_since: float | None = time.monotonic()
         self.orb = OrbWidget(self)
+        self.island = IslandWidget(self)
         self.toast = ToastCard(self)
         self.dashboard = None
         self.settings_dialog = None
+        self.chat = None
+        self.agents = AgentHub(self, self)
+        self._approval_queue: list[Approval] = []
 
         self.tray: QSystemTrayIcon | None = None
         if QSystemTrayIcon.isSystemTrayAvailable():
@@ -79,7 +87,7 @@ class FocusOrbApp(QObject):
             self._populate_menu(self._tray_menu)
             self.tray.setContextMenu(self._tray_menu)
             self.tray.activated.connect(self._on_tray_activated)
-            self.tray.messageClicked.connect(self.show_orb)
+            self.tray.messageClicked.connect(self.show_timer)
             self.tray.show()
         self.notifier = Notifier(self.settings, self.cache_dir, self.tray, self)
 
@@ -91,7 +99,6 @@ class FocusOrbApp(QObject):
         self._house_timer.setInterval(30_000)
         self._house_timer.timeout.connect(self._housekeeping)
         self._house_timer.start()
-        self._idle_since: float | None = time.monotonic()
         self._idle_nudged = False
         self._tray_second = -1
 
@@ -100,18 +107,59 @@ class FocusOrbApp(QObject):
         self.engine.finished.connect(self._on_finished)
         self.engine.changed.connect(self._on_engine_changed)
         self.engine.ticked.connect(self._on_tick)
-        self.orb.dashboard_requested.connect(self.open_dashboard)
-        self.orb.settings_requested.connect(self.open_settings)
-        self.orb.menu_requested.connect(self._show_orb_menu)
+        for view in (self.orb, self.island):
+            view.dashboard_requested.connect(self.open_dashboard)
+            view.settings_requested.connect(self.open_settings)
+            view.menu_requested.connect(self._show_view_menu)
+            view.interacted.connect(self._on_view_interacted)
         self.orb.moved.connect(self.save_position)
-        self.orb.interacted.connect(self.toast.dismiss)
+        self.agents.approval_requested.connect(self._on_approval_requested)
+        self.agents.approval_closed.connect(self._on_approval_closed)
+        self.agents.turn_finished.connect(self._on_agent_finished)
+        self.agents.needs_input.connect(self._on_agent_needs_input)
+        self.agents.changed.connect(self._on_agents_changed)
+        self.agents.changed.connect(self.island._update_targets)
         qapp.aboutToQuit.connect(self._on_quit)
-        qapp.screenRemoved.connect(lambda *_: QTimer.singleShot(400, self.orb.ensure_on_screen))
-        qapp.primaryScreenChanged.connect(lambda *_: QTimer.singleShot(400, self.orb.ensure_on_screen))
+        qapp.screenRemoved.connect(lambda *_: QTimer.singleShot(400, self.view.ensure_on_screen))
+        qapp.primaryScreenChanged.connect(lambda *_: QTimer.singleShot(400, self.view.ensure_on_screen))
 
-        self.orb.place()
-        self.orb.show()
+        self._apply_display_mode()
         self._on_engine_changed()
+
+    # ----------------------------------------------------------------- views
+    @property
+    def view(self):
+        """The timer window in use: the floating orb or the top-of-screen island."""
+        return self.island if self.settings.display_mode == "island" else self.orb
+
+    def _apply_display_mode(self) -> None:
+        active, other = (self.island, self.orb) if self.settings.display_mode == "island" else (self.orb, self.island)
+        other.hide()
+        active.place()
+        active.show()
+        active.hello()
+
+    def set_display_mode(self, mode: str) -> None:
+        if mode == self.settings.display_mode:
+            return
+        self.settings.display_mode = mode
+        self.settings.clamp()
+        self.save_settings()
+        self.toast.dismiss()
+        self._apply_display_mode()
+
+    def agent_signal(self) -> str | None:
+        hub = getattr(self, "agents", None)
+        return hub.signal() if hub is not None else None
+
+    def _on_view_interacted(self) -> None:
+        # clicking the timer closes an ordinary card, never a pending approval
+        if not isinstance(self.toast.tag, Approval):
+            self.toast.dismiss()
+
+    def idle_seconds(self) -> float:
+        """How long no timer has been running (0 while one runs)."""
+        return 0.0 if self._idle_since is None else time.monotonic() - self._idle_since
 
     # ----------------------------------------------------------------- style
     def _apply_style(self) -> None:
@@ -119,9 +167,7 @@ class FocusOrbApp(QObject):
         assets = ensure_qss_assets(self.theme, self.cache_dir)
         self.qapp.setPalette(build_palette(self.theme, accent))
         self.qapp.setStyleSheet(build_qss(self.theme, accent, assets))
-        track = QColor(accent)
-        track.setAlpha(70)
-        self.icon = app_icon(accent, QColor(DARK.orb_face), track)
+        self.icon = app_icon()
         self.qapp.setWindowIcon(self.icon)
 
     # -------------------------------------------------------------- settings
@@ -135,8 +181,9 @@ class FocusOrbApp(QObject):
             pass
 
     def save_position(self) -> None:
-        pos = self.orb.pos()
-        self.settings.orb_x, self.settings.orb_y = pos.x(), pos.y()
+        center = self.orb.circle_center_global()
+        self.settings.orb_cx, self.settings.orb_cy = center.x(), center.y()
+        self.settings.orb_x = self.settings.orb_y = None
         self.save_settings()
 
     def set_default_minutes(self, mode: Mode, minutes: int) -> None:
@@ -150,13 +197,14 @@ class FocusOrbApp(QObject):
         self.settings.daily_goal = goal
         self.settings.clamp()
         self.save_settings()
-        self.orb.update()
+        self.view.update()
         self._update_tray()
         if self.dashboard is not None:
             self.dashboard.refresh()
 
     def apply_settings(self, new: Settings) -> None:
         autostart_changed = new.start_with_windows != self.settings.start_with_windows
+        mode_changed = new.display_mode != self.settings.display_mode
         self.settings.update_from(new)
         if autostart_changed and not winutil.set_start_with_windows(self.settings.start_with_windows):
             self.settings.start_with_windows = False
@@ -164,8 +212,20 @@ class FocusOrbApp(QObject):
         self._apply_style()
         self.engine.apply_settings()
         self.orb.apply_settings()
+        self.island.apply_settings()
+        if mode_changed:
+            self.toast.dismiss()
+            self._apply_display_mode()
         self.toast.update()
         self._update_tray()
+        if self.chat is not None and self.chat.worker is None:
+            visible, geometry = self.chat.isVisible(), self.chat.geometry()
+            self.chat.close()
+            self.chat.deleteLater()
+            self.chat = None
+            if visible:
+                self.open_chat()
+                self.chat.setGeometry(geometry)
         if self.dashboard is not None:
             visible, geometry = self.dashboard.isVisible(), self.dashboard.geometry()
             self.dashboard.close()
@@ -186,26 +246,50 @@ class FocusOrbApp(QObject):
         self.dashboard.raise_()
         self.dashboard.activateWindow()
 
-    def open_settings(self) -> None:
+    @property
+    def ai_key_path(self) -> Path:
+        return self.data_dir / "ai_key.bin"
+
+    def ai_key(self) -> str | None:
+        """The saved key, or None to let the SDK use ANTHROPIC_API_KEY or an `ant` login."""
+        return keystore.load_key(self.ai_key_path)
+
+    def has_ai_key(self) -> bool:
+        return bool(self.ai_key() or os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+
+    def open_chat(self) -> None:
+        if self.chat is None:
+            from .chat import ChatWindow
+            self.chat = ChatWindow(self)
+        self.chat.show()
+        self.chat.setWindowState(self.chat.windowState() & ~Qt.WindowMinimized)
+        self.chat.raise_()
+        self.chat.activateWindow()
+
+    def open_settings(self, tab: str | None = None) -> None:
         if self.settings_dialog is not None:
+            if tab:
+                self.settings_dialog.show_tab(tab)
             self.settings_dialog.raise_()
             self.settings_dialog.activateWindow()
             return
         from .settings_dialog import SettingsDialog
         self.settings_dialog = SettingsDialog(self)
+        if tab:
+            self.settings_dialog.show_tab(tab)
         self.settings_dialog.finished.connect(lambda _result: setattr(self, "settings_dialog", None))
         self.settings_dialog.show()
         self.settings_dialog.raise_()
         self.settings_dialog.activateWindow()
 
-    def show_orb(self) -> None:
-        self.orb.show()
-        self.orb.ensure_on_screen()
-        self.orb.raise_()
+    def show_timer(self) -> None:
+        self.view.show()
+        self.view.ensure_on_screen()
+        self.view.raise_()
 
-    def hide_orb(self) -> None:
+    def hide_timer(self) -> None:
         if self.tray is not None:
-            self.orb.hide()
+            self.view.hide()
             self.toast.dismiss()
 
     def edit_task(self) -> None:
@@ -216,13 +300,13 @@ class FocusOrbApp(QObject):
             self.settings.remember_task(text)
             self.engine.task = self.settings.current_task
             self.save_settings()
-            self.orb.update()
+            self.view.update()
 
     def clear_task(self) -> None:
         self.settings.current_task = ""
         self.engine.task = ""
         self.save_settings()
-        self.orb.update()
+        self.view.update()
 
     def _custom_goal(self) -> None:
         value, ok = QInputDialog.getInt(None, "Daily goal", "Pomodoros to finish per day:", self.settings.daily_goal, 1, 48)
@@ -262,18 +346,35 @@ class FocusOrbApp(QObject):
             _action(goal, plural(g, "pomodoro"), lambda g=g: self.set_goal(g), checked=g == self.settings.daily_goal)
         goal.addSeparator()
         _action(goal, "Custom…", self._custom_goal)
+        style = styled_menu(menu.addMenu("Timer style"))
+        _action(style, "Floating orb", lambda: self.set_display_mode("orb"),
+                checked=self.settings.display_mode == "orb")
+        _action(style, "Top island", lambda: self.set_display_mode("island"),
+                checked=self.settings.display_mode == "island")
         menu.addSeparator()
 
+        _action(menu, "Ask Pomo…", self.open_chat)
+        sessions = self.agents.live_sessions()
+        agents = styled_menu(menu.addMenu(f"Coding agents ({len(sessions)})" if sessions else "Coding agents"))
+        for session in sessions[:8]:
+            line = f"{session.project}: {session.status_text}"
+            if session.status == "working" and session.activity:
+                line += f" · {session.activity[:40]}"
+            _action(agents, line, lambda: None, enabled=False)
+        if not sessions:
+            _action(agents, "No sessions right now", lambda: None, enabled=False)
+        agents.addSeparator()
+        _action(agents, "Agent settings…", lambda: self.open_settings("Agents"))
         _action(menu, "Dashboard\tD", self.open_dashboard)
         _action(menu, "Settings…", self.open_settings)
         menu.addSeparator()
-        if self.orb.isVisible():
-            _action(menu, "Hide timer", self.hide_orb, enabled=self.tray is not None)
+        if self.view.isVisible():
+            _action(menu, "Hide timer", self.hide_timer, enabled=self.tray is not None)
         else:
-            _action(menu, "Show timer", self.show_orb)
+            _action(menu, "Show timer", self.show_timer)
         _action(menu, f"Quit {APP_NAME}", self.quit)
 
-    def _show_orb_menu(self, pos) -> None:
+    def _show_view_menu(self, pos) -> None:
         menu = styled_menu(QMenu())
         self._populate_menu(menu)
         menu.exec(pos)
@@ -281,11 +382,11 @@ class FocusOrbApp(QObject):
 
     def _on_tray_activated(self, reason) -> None:
         if reason == QSystemTrayIcon.Trigger:
-            if self.orb.isVisible():
-                self.orb.raise_()
-                self.orb.flash(1)
+            if self.view.isVisible():
+                self.view.raise_()
+                self.view.flash(1)
             else:
-                self.show_orb()
+                self.show_timer()
         elif reason == QSystemTrayIcon.DoubleClick:
             self.open_dashboard()
 
@@ -311,7 +412,7 @@ class FocusOrbApp(QObject):
 
     def _on_history_changed(self) -> None:
         self.today_count = self.storage.completed_focus_count(date.today())
-        self.orb.update()
+        self.view.update()
         self._update_tray()
 
     def _update_tray(self) -> None:
@@ -322,12 +423,14 @@ class FocusOrbApp(QObject):
         track = QColor(accent)
         track.setAlpha(70)
         frac = e.fraction_left if e.state in (State.RUNNING, State.PAUSED) else 1.0
-        self.tray.setIcon(QIcon(render_orb_icon(64, accent, frac, QColor(DARK.orb_face), track)))
+        self.tray.setIcon(QIcon(render_tray_icon(64, accent, frac, QColor(self.theme.orb_face), track)))
         state = {State.RUNNING: "", State.PAUSED: " (paused)", State.IDLE: " (ready)", State.FINISHED: " (up next)"}[e.state]
-        self.tray.setToolTip(
-            f"{APP_NAME}\n{e.mode.label}{state} · {fmt_clock(e.remaining)}\n"
-            f"{self.today_count}/{self.settings.daily_goal} pomodoros today"
-        )
+        tip = (f"{APP_NAME}\n{e.mode.label}{state} · {fmt_clock(e.remaining)}\n"
+               f"{self.today_count}/{self.settings.daily_goal} pomodoros today")
+        headline = self.agents.headline()
+        if headline:
+            tip += f"\n{headline}"
+        self.tray.setToolTip(tip[:127])  # Windows truncates tray tooltips at 128 characters
 
     def _on_finished(self, finished: Mode, upcoming: Mode, auto_started: bool) -> None:
         s = self.settings
@@ -355,16 +458,19 @@ class FocusOrbApp(QObject):
 
         self.notifier.alert()
         self.notifier.toast(title, body)
+        view = self.view
+        if finished is Mode.FOCUS:
+            view.celebrate(big=count == goal)
         if auto_started:
-            self.orb.flash()
-        if s.popup_card and self.orb.isVisible():
+            view.flash()
+        if s.popup_card and view.isVisible() and not self._approval_on_screen():
             e = self.engine
             if auto_started:
                 actions = [("Pause", e.pause, True), ("Skip", e.skip, False)]
             else:
                 actions = [(f"Start {upcoming.label.lower()}", e.start, True), ("Skip", e.skip, False)]
             accent = mode_color(self.theme, s, upcoming.value)
-            self.toast.show_message(title, body, accent, actions, self.orb.circle_rect_global())
+            self.toast.show_message(title, body, accent, actions, view.anchor_rect_global())
 
     # ----------------------------------------------------------- housekeeping
     def _housekeeping(self) -> None:
@@ -375,7 +481,7 @@ class FocusOrbApp(QObject):
             if self.engine.state in (State.IDLE, State.FINISHED):
                 self.engine.cycle_index = 0
                 self.engine.changed.emit()
-            self.orb.update()
+            self.view.update()
             self._update_tray()
 
         minutes = self.settings.idle_reminder_min
@@ -388,17 +494,97 @@ class FocusOrbApp(QObject):
             self.notifier.toast(title, body)
             if self.settings.sound_enabled:
                 self.notifier.play("Soft", self.settings.volume, 1)
-            if self.settings.popup_card and self.orb.isVisible():
+            if self.settings.popup_card and self.view.isVisible() and not self._approval_on_screen():
                 accent = mode_color(self.theme, self.settings, "focus")
                 actions = [("Start focus", self._start_focus_now, True), ("Later", lambda: None, False)]
-                self.toast.show_message(title, body, accent, actions, self.orb.circle_rect_global())
+                self.toast.show_message(title, body, accent, actions, self.view.anchor_rect_global())
 
     def _start_focus_now(self) -> None:
         if self.engine.mode is not Mode.FOCUS:
             self.engine.switch_mode(Mode.FOCUS)
         self.engine.start()
 
+    # ---------------------------------------------------------- coding agents
+    def _approval_on_screen(self) -> bool:
+        return isinstance(self.toast.tag, Approval) and self.toast.isVisible()
+
+    def _on_approval_requested(self, approval: Approval) -> None:
+        self._approval_queue.append(approval)
+        self.view.flash(2)
+        if self.settings.sound_enabled:
+            self.notifier.play("Soft", self.settings.volume, 1)
+        self.notifier.toast(f"{approval.session.project}: Claude needs your OK", self._approval_text(approval))
+        if not self._approval_on_screen():
+            self._show_next_approval()
+
+    @staticmethod
+    def _approval_text(approval: Approval) -> str:
+        detail = approval.detail
+        # let long commands and paths wrap: QLabel only breaks at spaces
+        detail = "".join(ch + ("​" if ch in "/\\.,;&|=" else "") for ch in detail[:600])
+        return f"{approval.tool}: {detail}" if detail else approval.tool
+
+    def _show_next_approval(self) -> None:
+        while self._approval_queue and self._approval_queue[0].id not in self.agents.pending:
+            self._approval_queue.pop(0)
+        if not self._approval_queue:
+            return
+        approval = self._approval_queue[0]
+        aid = approval.id
+        title = f"{approval.session.project}: Claude needs your OK"
+        accent = mode_color(self.theme, self.settings, "short")
+        actions = [
+            ("Allow", lambda: self.agents.resolve(aid, "allow"), True),
+            ("Deny", lambda: self.agents.resolve(aid, "deny"), False),
+            ("In terminal", lambda: self.agents.resolve(aid, "terminal"), False),
+        ]
+        wait_ms = max(1000, int(self.settings.approval_wait_s * 1000 - (time.monotonic() - approval.created) * 1000))
+        if not self.view.isVisible():
+            self.show_timer()
+        self.toast.show_message(title, self._approval_text(approval), accent, actions,
+                                self.view.anchor_rect_global(), timeout_ms=wait_ms, tag=approval,
+                                on_dismiss=lambda: self.agents.resolve(aid, "terminal"))
+
+    def _on_approval_closed(self, approval: Approval) -> None:
+        if self.toast.tag is approval:
+            self.toast.dismiss_silently()
+        if approval in self._approval_queue:
+            self._approval_queue.remove(approval)
+        QTimer.singleShot(250, self._show_next_approval)
+
+    def _on_agent_finished(self, session, seconds: float) -> None:
+        if self.view.isVisible() and self.view.pomo is not None:
+            self.view.pomo.celebrate()
+        s = self.settings
+        if not s.agent_notify_finish or seconds < s.agent_notify_after_s:
+            return
+        title = f"{session.project}: Claude finished"
+        body = f"Done after {fmt_clock(seconds)}. Your turn when you're ready."
+        self.notifier.toast(title, body)
+        if s.popup_card and self.view.isVisible() and not self._approval_on_screen():
+            self.toast.show_message(title, body, mode_color(self.theme, s, "focus"),
+                                    [("OK", lambda: None, False)], self.view.anchor_rect_global(), timeout_ms=10000)
+
+    def _on_agent_needs_input(self, session, kind: str) -> None:
+        self.view.flash(1)
+        if kind == "idle_prompt":
+            return  # Claude finished a while ago; the finish notice already covered it
+        title = f"{session.project}: Claude is waiting for you"
+        body = ("It's asking for permission in the terminal." if kind == "permission_prompt"
+                else session.activity or "It needs your input in the terminal.")
+        self.notifier.toast(title, body)
+        if self.settings.popup_card and self.view.isVisible() and not self._approval_on_screen():
+            self.toast.show_message(title, body, mode_color(self.theme, self.settings, "long"),
+                                    [("OK", lambda: None, False)], self.view.anchor_rect_global(), timeout_ms=12000)
+
+    def _on_agents_changed(self) -> None:
+        self._update_tray()
+        self.view.update()
+
     def _on_quit(self) -> None:
+        self.agents.shutdown()
+        if self.chat is not None:
+            self.chat.shutdown()
         self.engine.shutdown()
         self.settings.cycle_index = self.engine.cycle_index
         self.settings.cycle_date = date.today().isoformat()

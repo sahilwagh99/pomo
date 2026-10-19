@@ -1,9 +1,11 @@
 """Design tokens.
 
-Every surface, ink and chart color comes from a Theme, so dark and light swap in
-one place. Mode colors are the first three slots of a CVD-validated categorical
-palette (they stay distinguishable for color-blind users), and the heatmap uses a
-single-hue sequential ramp.
+Every surface, ink and chart color comes from a Theme, so the two themes swap in
+one place: "Matcha" (light, warm cream and cocoa ink) and "Cocoa" (dark, warm
+brown, never black). Mode colors are soft pastels for the UI (matcha, sakura,
+lavender); they always sit next to a text label, so color never carries meaning
+alone. Charts use a deeper matcha (`chart`) checked to stay readable on the
+card surface, and the heatmap uses a single-hue matcha ramp.
 """
 from __future__ import annotations
 
@@ -38,12 +40,19 @@ class Theme:
     focus: str
     short: str
     long: str
+    chart: str             # data marks: deeper than the pastel accents, >= 3:1 on surface
     heat: tuple[str, ...]  # low -> high magnitude
     heat_empty: str
     shadow_alpha: int
+    label: str = ""
 
     def q(self, token: str) -> QColor:
         return QColor(getattr(self, token))
+
+    def shadow(self, alpha: int) -> QColor:
+        """Warm shadow tone (cocoa on Matcha, near-black brown on Cocoa)."""
+        r, g, b = (12, 8, 7) if self.dark else (63, 42, 38)
+        return QColor(r, g, b, alpha)
 
     @property
     def border(self) -> QColor:
@@ -55,63 +64,75 @@ class Theme:
         return f"rgba({r},{g},{b},{a})"
 
 
-DARK = Theme(
-    key="dark",
-    dark=True,
-    page="#0d0d0d",
-    surface="#1a1a19",
-    raised="#242423",
-    hover="#2c2c2a",
-    orb_face="#1a1a19",
-    orb_edge="#2c2c2a",
-    ink="#f0efec",
-    ink_2="#c3c2b7",
-    muted="#898781",
-    grid="#2c2c2a",
-    axis="#383835",
-    border_rgba=(255, 255, 255, 26),
-    success="#0ca30c",
-    danger="#e66767",
-    on_accent="#ffffff",
-    focus="#d95926",
-    short="#199e70",
-    long="#3987e5",
-    heat=("#104281", "#1c5cab", "#2a78d6", "#5598e7", "#9ec5f4"),
-    heat_empty="#262624",
-    shadow_alpha=150,
-)
-
-LIGHT = Theme(
+LIGHT = Theme(  # "Matcha"
     key="light",
     dark=False,
-    page="#f4f4f1",
-    surface="#fcfcfb",
-    raised="#f0efec",
-    hover="#e8e7e2",
-    orb_face="#fcfcfb",
-    orb_edge="#e1e0d9",
-    ink="#0b0b0b",
-    ink_2="#52514e",
-    muted="#898781",
-    grid="#e1e0d9",
-    axis="#c3c2b7",
-    border_rgba=(11, 11, 11, 26),
-    success="#006300",
-    danger="#d03b3b",
-    on_accent="#ffffff",
-    focus="#eb6834",
-    short="#1baf7a",
-    long="#2a78d6",
-    heat=("#cde2fb", "#9ec5f4", "#5598e7", "#2a78d6", "#1c5cab"),
-    heat_empty="#ecebe6",
-    shadow_alpha=70,
+    page="#f8f3ea",
+    surface="#fffdf8",
+    raised="#f3ede2",
+    hover="#ebe3d5",
+    orb_face="#fffdf8",
+    orb_edge="#e3d8c6",
+    ink="#3f2a26",
+    ink_2="#6e5a54",
+    muted="#9b8a82",
+    grid="#efe7da",
+    axis="#ddd0bf",
+    border_rgba=(63, 42, 38, 30),
+    success="#4f7f43",
+    danger="#b5544e",
+    on_accent="#3f2a26",
+    focus="#95c283",
+    short="#f0a3b1",
+    long="#a7b3e3",
+    chart="#6f9d60",
+    heat=("#e4efd9", "#c6dfb4", "#a3c98d", "#7fb068", "#5f8f50"),
+    heat_empty="#f1eadf",
+    shadow_alpha=40,
+    label="Matcha (light)",
 )
 
-THEMES = {"dark": DARK, "light": LIGHT}
+DARK = Theme(  # "Cocoa"
+    key="dark",
+    dark=True,
+    page="#251e1c",
+    surface="#2f2623",
+    raised="#3a2f2b",
+    hover="#453833",
+    orb_face="#342a27",
+    orb_edge="#4b3d37",
+    ink="#f6ede3",
+    ink_2="#d2c3b6",
+    muted="#a39188",
+    grid="#40342f",
+    axis="#54453e",
+    border_rgba=(246, 237, 227, 26),
+    success="#a9cf8f",
+    danger="#ec9b94",
+    on_accent="#2b211f",
+    focus="#a6cf92",
+    short="#f2abb8",
+    long="#b0bbe8",
+    chart="#6fa45a",
+    heat=("#3d4a33", "#4f6541", "#67844f", "#86a96a", "#a9cb8e"),
+    heat_empty="#3d322e",
+    shadow_alpha=110,
+    label="Cocoa (dark)",
+)
+
+THEMES = {"light": LIGHT, "dark": DARK}
 
 
 def theme_for(key: str) -> Theme:
-    return THEMES.get(key, DARK)
+    return THEMES.get(key, LIGHT)
+
+
+def chart_color(theme: Theme, settings) -> QColor:
+    """Color for focus data in charts: the user's focus color if they picked one."""
+    override = getattr(settings, "focus_color", "")
+    if override and QColor.isValidColorName(override):
+        return QColor(override)
+    return QColor(theme.chart)
 
 
 def mode_color(theme: Theme, settings, mode: str) -> QColor:

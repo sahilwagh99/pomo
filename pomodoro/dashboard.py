@@ -37,9 +37,10 @@ from .stats import (
     plural,
     streaks,
     summarize,
+    summarize_agents,
 )
 from .storage import MODE_LABELS
-from .theme import mode_color
+from .theme import chart_color, mode_color
 from .winutil import set_dark_title_bar
 
 RANGES = (("7 days", 7), ("30 days", 30), ("90 days", 90), ("All time", 0))
@@ -199,6 +200,8 @@ class Dashboard(QWidget):
         row4.addWidget(week_card, 2)
         root.addLayout(row4)
 
+        root.addWidget(self._build_agents_card())
+
         log_card = Card("Session log", "Most recent first. Export the full history as CSV from the top right.")
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(["Date", "Start", "Type", "Task", "Length", "Result"])
@@ -217,6 +220,12 @@ class Dashboard(QWidget):
         root.addWidget(log_card)
 
         ctrl.storage.changed.connect(self.refresh)
+        self._agents_timer = QTimer(self)
+        self._agents_timer.setSingleShot(True)
+        self._agents_timer.setInterval(1000)  # agent events can arrive many times a second
+        self._agents_timer.timeout.connect(self._refresh_agents)
+        ctrl.storage.agents_changed.connect(self._agents_timer.start)
+        ctrl.agents.changed.connect(self._agents_timer.start)
         ctrl.engine.changed.connect(self._refresh_today_note)
         self._clock = QTimer(self)
         self._clock.setInterval(60_000)
@@ -290,7 +299,7 @@ class Dashboard(QWidget):
         summary = summarize(records, start, today)
         prev = summarize(records, start - timedelta(days=days), start - timedelta(days=1)) if days else None
         current_streak, best_streak = streaks(records, today)
-        focus_color = mode_color(self.theme, s, "focus")
+        focus_color = chart_color(self.theme, s)
 
         range_text = f"last {days} days" if days else f"all time, since {fmt_day(start, weekday=False)}"
         self.subtitle.setText(f"{today:%A}, {fmt_day(today, weekday=False)}  ·  showing {range_text}")
@@ -319,6 +328,50 @@ class Dashboard(QWidget):
             focus_color, label_every=1,
         )
         self._refresh_table([r for r in records if start <= r.day <= today])
+        self._refresh_agents()
+
+    # ------------------------------------------------------------ coding agents
+    def _build_agents_card(self) -> Card:
+        card = Card("Coding agents", "What your Claude Code sessions did today, as Pomo saw it.")
+        grid = QGridLayout()
+        grid.setSpacing(12)
+        self.agent_tiles: dict[str, StatTile] = {}
+        for i, (key, label) in enumerate((("sessions", "Sessions"), ("prompts", "Prompts"), ("tools", "Tool calls"),
+                                          ("files", "Files edited"), ("commands", "Commands"),
+                                          ("approvals", "Approved here"))):
+            self.agent_tiles[key] = StatTile(label)
+            grid.addWidget(self.agent_tiles[key], 0, i)
+        card.body.addLayout(grid)
+        card.body.addSpacing(10)
+        self.agent_live = _label("", "secondary", wrap=True)
+        self.agent_live.setTextFormat(Qt.RichText)
+        card.body.addWidget(self.agent_live)
+        return card
+
+    def _refresh_agents(self) -> None:
+        if not self.isVisible():
+            return
+        today = date.today()
+        sm = summarize_agents(self.ctrl.storage.agent_events(since=today), today)
+        tiles = self.agent_tiles
+        tiles["sessions"].set(str(sm.sessions), ", ".join(p for p, _ in sm.projects[:3]))
+        tiles["prompts"].set(str(sm.prompts), f"{plural(sm.turns, 'finished turn')}")
+        tiles["tools"].set(str(sm.tool_calls))
+        tiles["files"].set(str(sm.files_edited), f"+{sm.lines_added} / -{sm.lines_removed} lines")
+        tiles["commands"].set(str(sm.commands))
+        tiles["approvals"].set(str(sm.approvals_allowed), f"{sm.approvals_denied} denied")
+        hub = self.ctrl.agents
+        from html import escape
+        rows = [f"<b>{escape(a.project)}</b> &middot; {escape(a.status_text)}"
+                + (f" &middot; {escape(a.activity)}" if a.status == "working" and a.activity else "")
+                for a in hub.live_sessions()[:6]]
+        if rows:
+            self.agent_live.setText("Live now:<br>" + "<br>".join(rows))
+        elif sm.sessions:
+            self.agent_live.setText("No sessions running right now.")
+        else:
+            self.agent_live.setText("No agent activity yet today. Connect Claude Code in "
+                                    "<b>Settings &gt; Agents</b> and Pomo will keep an eye on your sessions.")
 
     def _refresh_today(self, today: Summary, color: QColor) -> None:
         goal = self.ctrl.settings.daily_goal

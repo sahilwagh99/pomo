@@ -10,6 +10,11 @@ from pathlib import Path
 from . import APP_NAME
 
 SOUND_NAMES = ("Chime", "Bell", "Digital", "Soft")
+AI_MODELS = {  # model id -> label; Opus is the default
+    "claude-opus-5-5": "Claude Opus 5.5 (default)",
+    "claude-sonnet-5-5": "Claude Sonnet 5.5",
+    "claude-haiku-5-5": "Claude Haiku 5.5",
+}
 ORB_SIZES = {"Small": 150, "Medium": 190, "Large": 230}
 
 
@@ -40,7 +45,10 @@ class Settings:
     idle_reminder_min: int = 0  # 0 = off
 
     # Appearance
-    theme: str = "dark"
+    theme: str = "light"  # "light" = Matcha, "dark" = Cocoa
+    display_mode: str = "orb"  # "orb" (floating circle) | "island" (pill at the top of the screen)
+    show_buddy: bool = True    # Pomo, the focus buddy
+    island_autohide: bool = True
     orb_size: int = 190
     opacity: int = 100
     fade_when_away: bool = True
@@ -50,12 +58,23 @@ class Settings:
     short_color: str = ""
     long_color: str = ""
 
+    # Coding agents (Claude Code)
+    agent_approvals: bool = True      # answer permission requests from FocusOrb
+    approval_wait_s: int = 60         # then Claude Code asks in the terminal instead
+    agent_notify_finish: bool = True
+    agent_notify_after_s: int = 30    # only for turns at least this long
+
+    # AI (Ask Pomo)
+    ai_model: str = "claude-opus-5-5"
+
     # General
     start_with_windows: bool = False
     dashboard_range: int = 7  # 0 = all time
 
     # Runtime state that survives restarts
-    orb_x: int | None = None
+    orb_cx: int | None = None  # center of the orb's circle, in screen coordinates
+    orb_cy: int | None = None
+    orb_x: int | None = None   # 1.0 stored the window corner; read once for migration
     orb_y: int | None = None
     current_task: str = ""
     recent_tasks: list[str] = field(default_factory=list)
@@ -104,7 +123,13 @@ class Settings:
         if self.sound_name not in SOUND_NAMES:
             self.sound_name = SOUND_NAMES[0]
         if self.theme not in ("dark", "light"):
-            self.theme = "dark"
+            self.theme = "light"
+        if self.display_mode not in ("orb", "island"):
+            self.display_mode = "orb"
+        self.approval_wait_s = _clip(self.approval_wait_s, 15, 300)
+        self.agent_notify_after_s = _clip(self.agent_notify_after_s, 0, 3600)
+        if self.ai_model not in AI_MODELS:
+            self.ai_model = "claude-opus-5-5"
         if self.dashboard_range not in (0, 7, 30, 90):
             self.dashboard_range = 7
         self.recent_tasks = [t for t in self.recent_tasks if isinstance(t, str) and t.strip()][:12]

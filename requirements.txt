@@ -1,1 +1,2 @@
 PySide6-Essentials>=6.7
+anthropic>=1.15

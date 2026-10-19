@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QSlider,
@@ -24,10 +25,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import APP_NAME, APP_VERSION
-from .config import ORB_SIZES, SOUND_NAMES, Settings
+from . import APP_NAME, APP_VERSION, claude_hooks, keystore
+from .config import AI_MODELS, ORB_SIZES, SOUND_NAMES, Settings
 from .stats import plural
-from .theme import theme_for
+from .theme import DARK, LIGHT, theme_for
 from .winutil import set_dark_title_bar
 
 
@@ -117,10 +118,12 @@ class SettingsDialog(QDialog):
         title = QLabel("Settings")
         title.setProperty("role", "h1")
         root.addWidget(title)
-        tabs = QTabWidget()
+        self.tabs = tabs = QTabWidget()
         tabs.addTab(self._timer_tab(), "Timer")
         tabs.addTab(self._alerts_tab(), "Alerts")
         tabs.addTab(self._appearance_tab(), "Appearance")
+        tabs.addTab(self._agents_tab(), "Agents")
+        tabs.addTab(self._ai_tab(), "AI")
         tabs.addTab(self._general_tab(), "General")
         root.addWidget(tabs, 1)
 
@@ -198,7 +201,11 @@ class SettingsDialog(QDialog):
     def _appearance_tab(self) -> QWidget:
         page, form = _form()
         self.theme_box = QComboBox()
-        self.theme_box.addItems(["Dark", "Light"])
+        self.theme_box.addItems([LIGHT.label, DARK.label])
+        self.style_box = QComboBox()
+        self.style_box.addItems(["Floating orb", "Top island"])
+        self.buddy = QCheckBox("Show Pomo, your focus buddy")
+        self.island_autohide = QCheckBox("Shrink the island to a sliver when no timer is running")
         self.size_box = QComboBox()
         self.size_box.addItems(list(ORB_SIZES))
         opacity_box, self.opacity = _slider(30, 100)
@@ -215,7 +222,10 @@ class SettingsDialog(QDialog):
         reset_colors.setObjectName("ghost")
         reset_colors.clicked.connect(lambda: [b.set_value("") for b in self.colors.values()])
         form.addRow("Theme", self.theme_box)
-        form.addRow("Timer size", self.size_box)
+        form.addRow("Timer style", self.style_box)
+        form.addRow("", self.buddy)
+        form.addRow("", self.island_autohide)
+        form.addRow("Orb size", self.size_box)
         form.addRow("Opacity", opacity_box)
         form.addRow("", self.fade)
         form.addRow("", self.on_top)
@@ -225,6 +235,131 @@ class SettingsDialog(QDialog):
         form.addRow("Long break color", self.colors["long"])
         form.addRow("", reset_colors)
         return page
+
+    def show_tab(self, name: str) -> None:
+        for i in range(self.tabs.count()):
+            if self.tabs.tabText(i) == name:
+                self.tabs.setCurrentIndex(i)
+
+    def _agents_tab(self) -> QWidget:
+        page, form = _form()
+        self.hooks_status = QLabel()
+        self.hooks_status.setWordWrap(True)
+        self.hooks_button = QPushButton()
+        self.hooks_button.setCursor(Qt.PointingHandCursor)
+        self.hooks_button.clicked.connect(self._toggle_hooks)
+        self.approvals = QCheckBox("Answer permission requests in FocusOrb")
+        self.approval_wait = _spin(15, 300, " s")
+        self.notify_finish = QCheckBox("Tell me when an agent finishes a long task")
+        self.notify_after = _spin(0, 3600, " s")
+        form.addRow("Claude Code", self.hooks_status)
+        form.addRow("", self.hooks_button)
+        form.addRow("", _hint("Connecting adds FocusOrb hooks to\n"
+                              f"{claude_hooks.default_settings_path()}\n"
+                              "Your other settings are kept, and a backup is\n"
+                              "saved next to the file the first time."))
+        form.addRow("", self.approvals)
+        form.addRow("Wait for my answer", self.approval_wait)
+        form.addRow("", _hint("If you don't answer in time, or choose \"In terminal\",\n"
+                              "Claude Code asks in the terminal as usual."))
+        form.addRow("", self.notify_finish)
+        form.addRow("When longer than", self.notify_after)
+        self._refresh_hooks_status()
+        return page
+
+    def _refresh_hooks_status(self) -> None:
+        state = claude_hooks.status()
+        listening = self.ctrl.agents.listening
+        text = {
+            "connected": "Connected. Pomo can see your Claude Code sessions.",
+            "outdated": "Connected to an older FocusOrb location. Reconnect to update.",
+            "off": "Not connected.",
+        }[state]
+        if not listening:
+            text += "\nAnother FocusOrb is already receiving agent events, so this one can't."
+        self.hooks_status.setText(text)
+        self.hooks_button.setText({"connected": "Disconnect Claude Code", "outdated": "Reconnect Claude Code",
+                                   "off": "Connect Claude Code"}[state])
+        self._hooks_state = state
+
+    def _toggle_hooks(self) -> None:
+        path = claude_hooks.default_settings_path()
+        try:
+            if self._hooks_state == "connected":
+                claude_hooks.uninstall(path)
+            else:
+                answer = QMessageBox.question(
+                    self, "Connect Claude Code",
+                    f"FocusOrb will add its hooks to\n{path}\n\nClaude Code will then send FocusOrb a short "
+                    "summary of what each session does (prompts, tools, file names), and ask FocusOrb before "
+                    "showing a permission prompt. New Claude Code sessions pick this up.",
+                    QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Ok)
+                if answer != QMessageBox.Ok:
+                    return
+                claude_hooks.install(path, approval_timeout=330)
+        except (claude_hooks.HookConfigError, OSError) as exc:
+            QMessageBox.warning(self, "Claude Code settings", str(exc))
+        self._refresh_hooks_status()
+
+    def _ai_tab(self) -> QWidget:
+        page, form = _form()
+        self.key_status = QLabel()
+        self.key_status.setWordWrap(True)
+        self.key_input = QLineEdit()
+        self.key_input.setEchoMode(QLineEdit.Password)
+        self.key_input.setPlaceholderText("sk-ant-…")
+        save_key = QPushButton("Save key")
+        save_key.clicked.connect(self._save_key)
+        remove_key = QPushButton("Remove")
+        remove_key.setObjectName("ghost")
+        remove_key.clicked.connect(self._remove_key)
+        key_row = QWidget()
+        lay = QHBoxLayout(key_row)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.key_input, 1)
+        lay.addWidget(save_key)
+        lay.addWidget(remove_key)
+        self.model_box = QComboBox()
+        for model_id, label in AI_MODELS.items():
+            self.model_box.addItem(label, model_id)
+        open_chat = QPushButton("Open Ask Pomo")
+        open_chat.clicked.connect(self.ctrl.open_chat)
+        form.addRow("API key", self.key_status)
+        form.addRow("", key_row)
+        form.addRow("", _hint("Get a key at console.anthropic.com. It is stored encrypted for your\n"
+                              "Windows account. Without one, FocusOrb uses ANTHROPIC_API_KEY if set."))
+        form.addRow("Model", self.model_box)
+        form.addRow("", _hint("Ask Pomo sends your question and a short summary of your focus\n"
+                              "stats, task names and agent activity to Anthropic. Nothing is sent\n"
+                              "until you ask something."))
+        form.addRow("", open_chat)
+        self._refresh_key_status()
+        return page
+
+    def _refresh_key_status(self) -> None:
+        key = self.ctrl.ai_key()
+        if key:
+            self.key_status.setText(f"Saved ({keystore.mask(key)}).")
+        elif self.ctrl.has_ai_key():
+            self.key_status.setText("Using the key from your environment.")
+        else:
+            self.key_status.setText("No key yet.")
+
+    def _save_key(self) -> None:
+        key = self.key_input.text().strip()
+        if not key:
+            return
+        try:
+            keystore.save_key(self.ctrl.ai_key_path, key)
+        except OSError as exc:
+            QMessageBox.warning(self, "API key", str(exc))
+            return
+        self.key_input.clear()
+        self._refresh_key_status()
+
+    def _remove_key(self) -> None:
+        keystore.delete_key(self.ctrl.ai_key_path)
+        self._refresh_key_status()
 
     def _general_tab(self) -> QWidget:
         page, form = _form()
@@ -266,7 +401,10 @@ class SettingsDialog(QDialog):
         self.volume.setValue(s.volume)
         self.repeat.setValue(s.sound_repeat)
         self.idle.setValue(s.idle_reminder_min)
-        self.theme_box.setCurrentIndex(0 if s.theme == "dark" else 1)
+        self.theme_box.setCurrentIndex(1 if s.theme == "dark" else 0)
+        self.style_box.setCurrentIndex(1 if s.display_mode == "island" else 0)
+        self.buddy.setChecked(s.show_buddy)
+        self.island_autohide.setChecked(s.island_autohide)
         size_name = min(ORB_SIZES, key=lambda name: abs(ORB_SIZES[name] - s.orb_size))
         self.size_box.setCurrentText(size_name)
         self.opacity.setValue(s.opacity)
@@ -276,6 +414,11 @@ class SettingsDialog(QDialog):
         for mode, button in self.colors.items():
             button.set_value(getattr(s, f"{mode}_color"))
         self.autostart.setChecked(s.start_with_windows)
+        self.approvals.setChecked(s.agent_approvals)
+        self.approval_wait.setValue(s.approval_wait_s)
+        self.notify_finish.setChecked(s.agent_notify_finish)
+        self.notify_after.setValue(s.agent_notify_after_s)
+        self.model_box.setCurrentIndex(max(0, self.model_box.findData(s.ai_model)))
 
     def _collect(self) -> Settings:
         # start from the live settings so runtime state (position, task, cycle) is kept
@@ -294,7 +437,10 @@ class SettingsDialog(QDialog):
         s.volume = self.volume.value()
         s.sound_repeat = self.repeat.value()
         s.idle_reminder_min = self.idle.value()
-        s.theme = "dark" if self.theme_box.currentIndex() == 0 else "light"
+        s.theme = "dark" if self.theme_box.currentIndex() == 1 else "light"
+        s.display_mode = "island" if self.style_box.currentIndex() == 1 else "orb"
+        s.show_buddy = self.buddy.isChecked()
+        s.island_autohide = self.island_autohide.isChecked()
         s.orb_size = ORB_SIZES[self.size_box.currentText()]
         s.opacity = self.opacity.value()
         s.fade_when_away = self.fade.isChecked()
@@ -303,6 +449,11 @@ class SettingsDialog(QDialog):
         for mode, button in self.colors.items():
             setattr(s, f"{mode}_color", button.value)
         s.start_with_windows = self.autostart.isChecked()
+        s.agent_approvals = self.approvals.isChecked()
+        s.approval_wait_s = self.approval_wait.value()
+        s.agent_notify_finish = self.notify_finish.isChecked()
+        s.agent_notify_after_s = self.notify_after.value()
+        s.ai_model = self.model_box.currentData()
         s.clamp()
         return s
 

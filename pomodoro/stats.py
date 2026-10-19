@@ -162,3 +162,61 @@ def fmt_day(d: date, weekday: bool = True) -> str:
 
 def plural(n: int, word: str) -> str:
     return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
+# ---------------------------------------------------------------- coding agents
+@dataclass
+class AgentSummary:
+    sessions: int = 0
+    prompts: int = 0
+    tool_calls: int = 0
+    files_edited: int = 0
+    commands: int = 0
+    lines_added: int = 0
+    lines_removed: int = 0
+    approvals_allowed: int = 0
+    approvals_denied: int = 0
+    turns: int = 0
+    projects: list[tuple[str, int]] = field(default_factory=list)  # project, tool calls
+    recent_prompts: list[str] = field(default_factory=list)
+
+
+EDIT_TOOLS = ("Edit", "MultiEdit", "Write", "NotebookEdit")
+
+
+def summarize_agents(events: Iterable, day: date | None = None) -> AgentSummary:
+    """Totals for agent events (optionally only those on one day)."""
+    out = AgentSummary()
+    sessions: set[str] = set()
+    files: set[tuple[str, str]] = set()
+    per_project: dict[str, int] = defaultdict(int)
+    prompts: list[str] = []
+    for ev in events:
+        if day is not None and ev.day != day:
+            continue
+        sessions.add(ev.session)
+        if ev.event == "UserPromptSubmit":
+            out.prompts += 1
+            if ev.detail:
+                prompts.append(f"{ev.project}: {ev.detail}")
+        elif ev.event == "PostToolUse":
+            out.tool_calls += 1
+            per_project[ev.project] += 1
+            if ev.tool in EDIT_TOOLS:
+                files.add((ev.project, ev.detail))
+                out.lines_added += ev.added
+                out.lines_removed += ev.removed
+            elif ev.tool == "Bash":
+                out.commands += 1
+        elif ev.event == "Stop":
+            out.turns += 1
+        elif ev.event == "Approval":
+            if ev.detail == "allow":
+                out.approvals_allowed += 1
+            elif ev.detail == "deny":
+                out.approvals_denied += 1
+    out.sessions = len(sessions)
+    out.files_edited = len(files)
+    out.projects = sorted(per_project.items(), key=lambda kv: -kv[1])
+    out.recent_prompts = prompts[-8:]
+    return out

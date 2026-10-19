@@ -74,7 +74,7 @@ class SettingsTests(unittest.TestCase):
             s = Settings.load(path)
             self.assertEqual(s.focus_min, 180)
             self.assertEqual(s.daily_goal, 8)
-            self.assertEqual(s.theme, "dark")
+            self.assertEqual(s.theme, "light")  # unknown themes fall back to Matcha
             self.assertTrue(s.auto_start_focus)
             self.assertEqual(s.orb_x, 12)
             s.save(path)

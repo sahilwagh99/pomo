@@ -1,27 +1,32 @@
 """FocusOrb entry point.
 
-    python main.py            normal run
-    python main.py --demo     separate data folder pre-filled with sample history
+    python main.py                   normal run
+    python main.py --demo            separate data folder pre-filled with sample history
+    python main.py --focusorb-hook   Claude Code hook client (reads an event on stdin; no window)
 """
 from __future__ import annotations
 
-import argparse
-import getpass
-import hashlib
 import sys
-from pathlib import Path
 
-from PySide6.QtGui import QFont
-from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from PySide6.QtWidgets import QApplication
-
-from pomodoro import APP_NAME, winutil
-from pomodoro.app import FocusOrbApp
-from pomodoro.config import default_data_dir
-from pomodoro.theme import FONT_FAMILY
+HOOK_FLAG = "--focusorb-hook"
 
 
 def main() -> int:
+    # Qt is imported here, not at the top, so hook runs stay fast
+    import argparse
+    import getpass
+    import hashlib
+    from pathlib import Path
+
+    from PySide6.QtGui import QFont
+    from PySide6.QtNetwork import QLocalServer, QLocalSocket
+    from PySide6.QtWidgets import QApplication
+
+    from pomodoro import APP_NAME, winutil
+    from pomodoro.app import FocusOrbApp
+    from pomodoro.config import default_data_dir
+    from pomodoro.theme import FONT_FAMILY
+
     parser = argparse.ArgumentParser(prog=APP_NAME, add_help=False)
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--data-dir", type=Path)
@@ -59,12 +64,16 @@ def main() -> int:
         conn = server.nextPendingConnection()
         if conn is not None:
             conn.disconnected.connect(conn.deleteLater)
-        ctrl.show_orb()
-        ctrl.orb.flash(1)
+        ctrl.show_timer()
+        ctrl.view.flash(1)
 
     server.newConnection.connect(on_ping)
     return app.exec()
 
 
 if __name__ == "__main__":
+    if HOOK_FLAG in sys.argv:
+        from pomodoro.hook import run
+
+        sys.exit(run())
     sys.exit(main())

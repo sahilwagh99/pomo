@@ -1,4 +1,4 @@
-"""Prepare build inputs: the .exe icon and the Windows version resource.
+"""Prepare build inputs: the .exe icon (Pomo) and the Windows version resource.
 
 Prints the app version (and nothing else) so build.bat can pass it to the installer.
 """
@@ -8,17 +8,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from PySide6.QtGui import QColor, QGuiApplication  # noqa: E402
+from PySide6.QtGui import QGuiApplication  # noqa: E402
 
 from pomodoro import APP_NAME, APP_VERSION  # noqa: E402
-from pomodoro.icons import write_ico  # noqa: E402
-from pomodoro.theme import DARK  # noqa: E402
+from pomodoro.icons import render_pomo_icon, write_ico  # noqa: E402
 
 app = QGuiApplication([])
-accent = QColor(DARK.focus)
-track = QColor(accent)
-track.setAlpha(70)
-write_ico(ROOT / "assets" / "focusorb.ico", accent, QColor(DARK.orb_face), track)
+write_ico(ROOT / "assets" / "focusorb.ico")
+render_pomo_icon(256).save(str(ROOT / "docs" / "icon.png"))
 
 parts = [int(p) for p in APP_VERSION.split(".")][:4]
 quad = tuple(parts + [0] * (4 - len(parts)))

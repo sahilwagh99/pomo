@@ -77,8 +77,23 @@ def draw_glyph(p: QPainter, name: str, c: QPointF, size: float, color: QColor) -
     p.restore()
 
 
-def render_orb_icon(size: int, accent: QColor, fraction: float, face: QColor, track: QColor) -> QPixmap:
-    """Round icon: dark face, progress ring in the mode color, center dot."""
+def render_pomo_icon(size: int) -> QPixmap:
+    """The app icon: Pomo himself on a transparent background."""
+    from .pomo import BODY_RY, Pomo
+
+    pm = QPixmap(size, size)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    body = size * 0.86
+    Pomo().paint(p, QPointF(size / 2, size - body * BODY_RY - size * 0.07), body, ground_shadow=False)
+    p.end()
+    return pm
+
+
+def render_tray_icon(size: int, accent: QColor, fraction: float, face: QColor, track: QColor) -> QPixmap:
+    """Tray icon: the session's progress ring around a mini Pomo."""
+    from .pomo import Pomo
+
     pm = QPixmap(size, size)
     pm.fill(Qt.transparent)
     p = QPainter(pm)
@@ -88,8 +103,8 @@ def render_orb_icon(size: int, accent: QColor, fraction: float, face: QColor, tr
     p.setPen(Qt.NoPen)
     p.setBrush(face)
     p.drawEllipse(c, r, r)
-    ring_w = size * 0.15
-    rr = r - ring_w / 2 - size * 0.05
+    ring_w = size * 0.13
+    rr = r - ring_w / 2 - size * 0.02
     rect = QRectF(c.x() - rr, c.y() - rr, 2 * rr, 2 * rr)
     p.setPen(QPen(track, ring_w, Qt.SolidLine, Qt.FlatCap))
     p.drawEllipse(rect)
@@ -97,28 +112,26 @@ def render_orb_icon(size: int, accent: QColor, fraction: float, face: QColor, tr
         p.setPen(QPen(accent, ring_w, Qt.SolidLine, Qt.RoundCap if fraction < 1 else Qt.FlatCap))
         start = 90 - (1 - fraction) * 360
         p.drawArc(rect, int(start * 16), int(-fraction * 360 * 16))
-    p.setPen(Qt.NoPen)
-    p.setBrush(accent)
-    p.drawEllipse(c, size * 0.11, size * 0.11)
+    Pomo().paint(p, QPointF(c.x(), c.y() + size * 0.04), size * 0.5, ground_shadow=False)
     p.end()
     return pm
 
 
-def app_icon(accent: QColor, face: QColor, track: QColor) -> QIcon:
+def app_icon() -> QIcon:
     icon = QIcon()
     for size in (16, 24, 32, 48, 64, 128, 256):
-        icon.addPixmap(render_orb_icon(size, accent, 0.75, face, track))
+        icon.addPixmap(render_pomo_icon(size))
     return icon
 
 
-def write_ico(path: Path, accent: QColor, face: QColor, track: QColor) -> None:
+def write_ico(path: Path) -> None:
     """Multi-resolution .ico with PNG-compressed entries (for the PyInstaller build)."""
     images = []
     for size in (16, 24, 32, 48, 64, 128, 256):
         data = QByteArray()
         buf = QBuffer(data)
         buf.open(QIODevice.WriteOnly)
-        render_orb_icon(size, accent, 0.75, face, track).save(buf, "PNG")
+        render_pomo_icon(size).save(buf, "PNG")
         buf.close()
         images.append((size, bytes(data)))
     header = struct.pack("<HHH", 0, 1, len(images))
