@@ -1,0 +1,59 @@
+name: Build
+
+# Every push and pull request: run tests and build the installer (downloadable from the run's artifacts).
+# Pushing a tag like v1.0.0: also publish a GitHub Release with the installer and portable zip attached.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Check tag matches app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = python -c "import pomodoro; print(pomodoro.APP_VERSION)"
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match APP_VERSION $version in pomodoro/__init__.py"
+          }
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build
+        shell: cmd
+        run: build.bat
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FocusOrb-windows
+          path: |
+            dist/FocusOrb-Setup.exe
+            dist/FocusOrb-portable.zip
+
+      # Asset names stay the same every release, so the README's
+      # releases/latest/download/FocusOrb-Setup.exe link always serves the newest installer.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: FocusOrb ${{ github.ref_name }}
+          files: |
+            dist/FocusOrb-Setup.exe
+            dist/FocusOrb-portable.zip
+          generate_release_notes: true

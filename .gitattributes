@@ -1,0 +1,10 @@
+# Normalize text files to LF in the repo
+* text=auto
+
+# Batch files must have CRLF on checkout, or cmd can mis-handle labels and goto
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets
+*.png binary
+*.ico binary
