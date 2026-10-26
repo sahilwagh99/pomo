@@ -1,17 +1,23 @@
-"""Pomo's focus sounds, made on this PC: rain, café murmur, brown noise and a soft lo-fi loop.
+"""Pomo's focus sounds: rain, café murmur, brown noise and a soft lo-fi loop, all playing on a loop.
 
-Like the alert sounds (sounds.py), nothing is downloaded or shipped: each sound is synthesized
-the first time it's played (a few seconds, on a background thread) and kept in Pomo's cache
-folder. Every sound is a 24-second loop that joins seamlessly: noise beds are crossfaded into
-their own start, and every drop, clink and note that rings past the end wraps around to the
-beginning. The lo-fi loop is exactly eight bars, so its beat carries on across the join.
+Rain and café are recordings that come with Pomo (sounds/*.mp3). The first time one plays, Pomo
+decodes it with Windows' Media Foundation, trims any fade at its ends, crossfades its end into its
+start so it loops without a seam, levels it to match the others, and keeps the result in its cache.
+
+Brown noise and the lo-fi loop are synthesized on this PC, like the alert sounds (sounds.py); so are
+rain and café when a PC can't decode MP3. Each synthesized sound is a 24-second loop that joins
+seamlessly: noise beds are crossfaded into their own start, and every drop, clink and note that rings
+past the end wraps around to the beginning. The lo-fi loop is exactly eight bars, so its beat carries
+on across the join.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import random
 import wave
 from array import array
+from dataclasses import dataclass
 from pathlib import Path
 
 RATE = 22050
@@ -262,29 +268,144 @@ def render(name: str) -> array:
     return _finish(name, SOUNDS[name](random.Random(SEEDS[name])))
 
 
-def cache_path(cache_dir: Path, name: str) -> Path:
+@dataclass(frozen=True)
+class Sound:
+    samples: array  # 16-bit, interleaved when there are two channels
+    rate: int
+    channels: int = 1
+
+
+# ---------------------------------------------------------------- recordings
+SOUND_DIR = Path(__file__).resolve().parent / "sounds"
+RECORDINGS = {"rain": "rain.mp3", "cafe": "cafe.mp3"}
+LOOP_FADE_S = 1.5       # a recording's end blends into its start over this long
+EDGE_WINDOW_S = 0.05
+EDGE_MAX_S = 2.0        # at most this much fade is trimmed from either end
+LIMIT_FROM = 0.8        # peaks above this (of full scale) are rounded off rather than clipped
+
+
+def _frame_rms(samples: array, channels: int, start: int, count: int) -> float:
+    part = samples[start * channels:(start + count) * channels]
+    return math.sqrt(sum(v * v for v in part) / len(part)) if part else 0.0
+
+
+def trim_fades(samples: array, rate: int, channels: int) -> array:
+    """Drop a fade-in or fade-out at the ends: windows much quieter than the recording's usual level."""
+    frames = len(samples) // channels
+    window = max(1, int(rate * EDGE_WINDOW_S))
+    levels = [_frame_rms(samples, channels, i, window) for i in range(0, frames - window + 1, window)]
+    if len(levels) < 8:
+        return samples
+    typical = sorted(levels)[len(levels) // 2]
+    limit = int(EDGE_MAX_S / EDGE_WINDOW_S)
+    first = next((i for i, v in enumerate(levels[:limit]) if v >= typical * 0.5), 0)
+    last = next((i for i, v in enumerate(reversed(levels[-limit:])) if v >= typical * 0.5), 0)
+    start, end = first * window, frames - last * window
+    return samples[start * channels:end * channels]
+
+
+def make_loop(samples: array, rate: int, channels: int, fade_s: float = LOOP_FADE_S) -> array:
+    """A seamless loop: the last fade_s of the recording blends (equal power) into its first fade_s."""
+    frames = len(samples) // channels
+    fade = min(int(rate * fade_s), frames // 4)
+    if fade < 2:
+        return samples
+    body = frames - fade
+    out = samples[:body * channels]
+    for i in range(fade):
+        t = i / fade
+        rise, fall = math.sin(t * math.pi / 2), math.cos(t * math.pi / 2)
+        for c in range(channels):
+            mixed = samples[i * channels + c] * rise + samples[(body + i) * channels + c] * fall
+            out[i * channels + c] = int(max(-32767, min(32767, mixed)))
+    return out
+
+
+def level(samples: array, target_rms: float) -> array:
+    """Bring a recording to the same loudness as the other sounds, rounding off any peaks that would clip."""
+    rms = math.sqrt(sum(v * v for v in samples[::5]) / max(1, len(samples[::5]))) / 32767
+    if rms <= 0:
+        return samples
+    gain = target_rms / rms
+    knee = LIMIT_FROM * 32767
+    room = 32767 - knee
+
+    def shaped(v: int) -> int:
+        x = v * gain
+        if -knee <= x <= knee:
+            return int(x)
+        over = (abs(x) - knee) / room
+        y = knee + room * math.tanh(over)
+        return int(y if x > 0 else -y)
+
+    return array("h", (shaped(v) for v in samples))
+
+
+def recording(name: str, folder: Path = SOUND_DIR) -> Sound | None:
+    """A recorded sound, decoded and made into a seamless, levelled loop; None if there's none or Windows can't decode it."""
+    source = folder / RECORDINGS.get(name, "")
+    if name not in RECORDINGS or not source.is_file():
+        return None
+    from .audio import decode_file
+
+    try:
+        samples, rate, channels = decode_file(source)
+    except OSError:
+        return None
+    if channels not in (1, 2) or len(samples) < rate * channels * 4:
+        return None
+    looped = make_loop(trim_fades(samples, rate, channels), rate, channels)
+    return Sound(level(looped, TARGET_RMS[name]), rate, channels)
+
+
+# ---------------------------------------------------------------- loading
+def cache_path(cache_dir: Path, name: str, source: Path | None = None) -> Path:
+    if source is not None:  # a recording: named after its contents, so a new recording is used at once
+        digest = hashlib.sha1(source.read_bytes()).hexdigest()[:10]
+        return cache_dir / f"focus_{name}_rec{VERSION}_{digest}.wav"
     return cache_dir / f"focus_{name}_v{VERSION}.wav"
 
 
-def load(cache_dir: Path, name: str) -> array:
-    """The sound from the cache, made and saved first if needed."""
-    path = cache_path(cache_dir, name)
+def _read(path: Path) -> Sound | None:
     try:
         with wave.open(str(path), "rb") as w:
-            if w.getframerate() == RATE and w.getnchannels() == 1 and w.getsampwidth() == 2:
-                samples = array("h")
-                samples.frombytes(w.readframes(w.getnframes()))
-                if len(samples) == N:
-                    return samples
+            if w.getsampwidth() != 2 or w.getnchannels() not in (1, 2):
+                return None
+            samples = array("h")
+            samples.frombytes(w.readframes(w.getnframes()))
+            sound = Sound(samples, w.getframerate(), w.getnchannels())
     except (OSError, EOFError, wave.Error):
-        pass
-    samples = render(name)
+        return None
+    return sound if len(sound.samples) >= sound.rate * sound.channels else None
+
+
+def _write(path: Path, sound: Sound) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     with wave.open(str(tmp), "wb") as w:
-        w.setnchannels(1)
+        w.setnchannels(sound.channels)
         w.setsampwidth(2)
-        w.setframerate(RATE)
-        w.writeframes(samples.tobytes())
+        w.setframerate(sound.rate)
+        w.writeframes(sound.samples.tobytes())
     tmp.replace(path)
-    return samples
+
+
+def load(cache_dir: Path, name: str, folder: Path = SOUND_DIR) -> Sound:
+    """The sound, from the cache when it's there: the recording if there is one, else synthesized."""
+    source = folder / RECORDINGS[name] if name in RECORDINGS else None
+    if source is not None and source.is_file():
+        path = cache_path(cache_dir, name, source)
+        cached = _read(path)
+        if cached is not None:
+            return cached
+        sound = recording(name, folder)
+        if sound is not None:
+            _write(path, sound)
+            return sound
+    path = cache_path(cache_dir, name)
+    cached = _read(path)
+    if cached is not None and cached.channels == 1 and len(cached.samples) == N:
+        return cached
+    sound = Sound(render(name), RATE, 1)
+    _write(path, sound)
+    return sound

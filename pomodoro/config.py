@@ -169,7 +169,7 @@ class Settings:
     # Focus sounds, made on this PC (no downloads)
     focus_sound: str = "off"          # off | rain | cafe | brown | lofi
     focus_sound_volume: int = 45
-    focus_sound_follows: bool = True  # only while a focus session runs (off: whenever one is picked)
+    focus_sound_only_focus: bool = False  # on: only while a focus session runs; off: loops until you turn it off
 
     # Talk to Pomo
     voice_input: str = "auto"     # auto (the chat's provider if it can listen, else this PC) | windows | openai | gemini

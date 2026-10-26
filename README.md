@@ -43,7 +43,7 @@ Pomo used to be called FocusOrb. Run `Pomo-Setup.exe` and it removes FocusOrb fo
 - **Pomo helps you focus.** It learns your best session length from one-tap ratings, gives you a side-eye when YouTube sneaks into a focus session, lets you park stray thoughts with a hotkey, and pauses when you step away.
 - **"Where was I?" after breaks.** When a break ends, Pomo shows your task, the window you were working in, what your agents did while you were away and your parked thoughts. One click brings that window back to the front.
 - **Sessions named for you.** Pomo picks up the project and git branch open in your editor and offers it as the session's task, so the dashboard shows focus per project with no typing.
-- **Focus sounds.** Rain, café murmur, brown noise and a soft lo-fi loop, made by Pomo on your PC with nothing to download. Pomo puts on headphones and listens too.
+- **Focus sounds.** Real rain and café recordings, brown noise and a soft lo-fi loop, playing on a seamless loop with nothing to download. Pomo puts on headphones and listens too.
 - **Talk to Pomo.** Hold a shortcut and ask out loud, and let a soft voice read the replies.
 - **Pomo on the taskbar.** The countdown fills Pomo's taskbar button, with reset, play/pause and skip when you hover it, like a music player.
 - **Agent-paced pomodoros.** Take your break while your agent works on a long task, and get agent news on your break instead of in the middle of focus.
@@ -133,18 +133,18 @@ Pomo reads what's playing through Windows' own media controls, and nothing leave
 
 ### Focus sounds
 
-No music app needed: Pomo makes its own focus sounds. Pick one with the headphones button beside Pomo on the island (or on the orb's rim), in *Focus sounds* in the right-click menu, or in *Settings > General*:
+No music app needed: Pomo has its own focus sounds. Pick one with the headphones button beside Pomo on the island (or on the orb's rim), in *Focus sounds* in the right-click menu, or in *Settings > General*:
 
-- **Rain:** steady rain with slow gusts, small drops and the odd heavy one.
-- **Café murmur:** low room tone, indistinct chatter from a few tables, a cup now and then.
+- **Rain:** a recording of steady, relaxing rain, in stereo.
+- **Café murmur:** a recording of a café: soft chatter and the clink of cups.
 - **Brown noise:** deep and even, to cover a noisy room.
 - **Lo-fi loop:** a soft eight-bar loop, with a lazy beat and a little vinyl crackle.
 
-By default they play only while you focus and fade out for your breaks (pick one outside a session and you hear a few seconds of it). Turn off *Only while I focus* to keep them on. Pomo puts on headphones and listens along.
+A sound you pick plays on a loop until you pick *Off*, with no gap or click where it starts over. Prefer silence on your breaks? Turn on *Only while I focus* and it plays during focus sessions and fades out for breaks. Pomo puts on headphones and listens along.
 
-Every sound is synthesized on your PC the first time you play it (a second or two) and kept in Pomo's cache folder. Nothing is downloaded, and they play alongside your alert sounds without touching your system volume.
+Rain and café come with Pomo. The first time you play one, Pomo prepares it as a seamless loop (under a second, using Windows' own audio decoder) and keeps it in its cache folder; on a PC that can't decode MP3, Pomo makes a synthesized version instead. Brown noise and the lo-fi loop are synthesized on your PC. Nothing is downloaded, and the sounds play alongside your alert sounds without touching your system volume.
 
-<div align="center"><img src="docs/sounds.png" alt="The island with Pomo in headphones, the headphones button beside him, and the focus sounds menu: Off, Rain, Café murmur, Brown noise, Lo-fi loop, Only while I focus, Volume" width="750"></div>
+<div align="center"><img src="docs/sounds.png" alt="The island with Pomo in headphones while rain plays, the headphones button beside him, and the focus sounds menu with Rain picked" width="750"></div>
 
 ## Pomo helps you focus
 
@@ -503,8 +503,9 @@ pomodoro/reviews.py         the agent review queue: changed files turned into fo
 pomodoro/workspace.py       the window you worked in, and the project and git branch open in your editor
 pomodoro/quests.py          daily quests, badges and their drawings
 pomodoro/cheer.py           a few warm words from Pomo during focus, in a bubble that fades
-pomodoro/soundscapes.py     focus sounds (rain, café, brown noise, lo-fi), synthesized as seamless loops
-pomodoro/audio.py           sound in and out through Windows' waveOut and waveIn (focus sounds, the mic)
+pomodoro/soundscapes.py     focus sounds: the recordings made into seamless loops, and brown noise and lo-fi synthesized
+pomodoro/sounds/            the rain and café recordings (MP3)
+pomodoro/audio.py           sound in and out through Windows' waveOut and waveIn (focus sounds, the mic), MP3 decoding
 pomodoro/voice.py           Talk to Pomo: push-to-talk, speech to text, replies read aloud
 pomodoro/taskbar.py         the taskbar button: progress, thumbnail buttons and the live preview
 pomodoro/updater.py         updates from GitHub Releases: check, download, verify, one-click silent install

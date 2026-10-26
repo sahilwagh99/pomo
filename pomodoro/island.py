@@ -60,8 +60,8 @@ def sounds_tip(settings) -> str:
     from .config import FOCUS_SOUNDS
 
     if settings.focus_sound == "off":
-        return "Focus sounds: rain, café, brown noise or lo-fi, made by Pomo.\nClick to pick one"
-    when = "while you focus" if settings.focus_sound_follows else "now"
+        return "Focus sounds: rain, café, brown noise or lo-fi, on a loop.\nClick to pick one"
+    when = "while you focus" if settings.focus_sound_only_focus else "on a loop"
     return f"Focus sounds: {FOCUS_SOUNDS[settings.focus_sound]}, playing {when}\nClick to change"
 
 

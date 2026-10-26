@@ -30,7 +30,8 @@ if "%APP_VERSION%"=="" goto :error
 
 echo [4/5] Building Pomo %APP_VERSION%...
 %PY% -m PyInstaller --noconfirm --clean --onedir --windowed --name Pomo ^
-    --icon assets\pomo.ico --version-file build\version_info.txt main.py || goto :error
+    --icon assets\pomo.ico --version-file build\version_info.txt ^
+    --add-data "pomodoro\sounds;pomodoro\sounds" main.py || goto :error
 %PY% -c "import shutil, sys; shutil.make_archive(sys.argv[1], 'zip', 'dist', 'Pomo')" "dist\Pomo-portable" || goto :error
 
 echo [5/5] Building installer...

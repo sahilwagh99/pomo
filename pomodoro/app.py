@@ -56,7 +56,7 @@ def _action(menu: QMenu, text: str, fn, *, checked: bool | None = None, enabled:
 
 
 class PomoApp(QObject):
-    sound_loaded = Signal(str, object)  # a focus sound finished loading (on a worker thread): name, samples
+    sound_loaded = Signal(str, object)  # a focus sound finished loading (on a worker thread): name, Sound
     voices_found = Signal(list)         # Windows' voices, looked up on a worker thread for Settings
     update_status_changed = Signal()    # checking, ready, up to date... (Settings shows it)
 
@@ -123,7 +123,7 @@ class PomoApp(QObject):
         self.whisper = None              # Pomo's little speech bubble, made when first needed
         # focus sounds, talking, the taskbar
         self.sound_player = audio.LoopPlayer()
-        self._sounds: dict[str, object] = {}  # name -> samples, once made
+        self._sounds: dict[str, object] = {}  # name -> soundscapes.Sound, once decoded or made
         self._sound_loading: set[str] = set()
         self._sound_now: str | None = None
         self._preview_until = 0.0
@@ -400,7 +400,7 @@ class PomoApp(QObject):
         s, e = self.settings, self.engine
         if s.focus_sound == "off":
             return None
-        if not s.focus_sound_follows or time.monotonic() < self._preview_until:
+        if not s.focus_sound_only_focus or time.monotonic() < self._preview_until:
             return s.focus_sound
         return s.focus_sound if e.mode is Mode.FOCUS and e.state is State.RUNNING else None
 
@@ -415,8 +415,8 @@ class PomoApp(QObject):
         if want == self._sound_now and self.sound_player.playing:
             self.sound_player.set_volume(self._sound_volume())
             return
-        samples = self._sounds.get(want)
-        if samples is None:  # made the first time it's wanted, off the UI thread
+        sound = self._sounds.get(want)
+        if sound is None:  # decoded or made the first time it's wanted, off the UI thread
             if want not in self._sound_loading:
                 self._sound_loading.add(want)
                 import threading
@@ -431,14 +431,15 @@ class PomoApp(QObject):
                 threading.Thread(target=load, name="pomo-sound-maker", daemon=True).start()
             return
         self._sound_now = want
-        self.sound_player.play(samples, soundscapes.RATE, self._sound_volume(), fade_in_s=2.5)
+        self.sound_player.play(sound.samples, sound.rate, self._sound_volume(), fade_in_s=2.5,
+                               channels=sound.channels)
         if self.pomo_listening():
             self.view.pomo.new_song()
 
-    def _on_sound_loaded(self, name: str, samples) -> None:
+    def _on_sound_loaded(self, name: str, sound) -> None:
         self._sound_loading.discard(name)
-        if samples is not None:
-            self._sounds[name] = samples
+        if sound is not None:
+            self._sounds[name] = sound
             self._sync_focus_sound()
 
     def set_focus_sound(self, name: str) -> None:
@@ -447,7 +448,7 @@ class PomoApp(QObject):
         self.save_settings()
         e = self.engine
         focusing = e.mode is Mode.FOCUS and e.state is State.RUNNING
-        if s.focus_sound != "off" and s.focus_sound_follows and not focusing:
+        if s.focus_sound != "off" and s.focus_sound_only_focus and not focusing:
             self._preview_until = time.monotonic() + SOUND_PREVIEW_S  # a taste now; the rest when you focus
             self._preview_timer.start(int(SOUND_PREVIEW_S * 1000) + 50)
         else:
@@ -463,8 +464,8 @@ class PomoApp(QObject):
         self.save_settings()
         self._sync_focus_sound()
 
-    def set_focus_sound_follows(self, follows: bool) -> None:
-        self.settings.focus_sound_follows = follows
+    def set_focus_sound_only_focus(self, only: bool) -> None:
+        self.settings.focus_sound_only_focus = only
         self.save_settings()
         self._sync_focus_sound()
 
@@ -473,8 +474,8 @@ class PomoApp(QObject):
         for key, label in FOCUS_SOUNDS.items():
             _action(menu, label, lambda k=key: self.set_focus_sound(k), checked=key == s.focus_sound)
         menu.addSeparator()
-        _action(menu, "Only while I focus", lambda: self.set_focus_sound_follows(not s.focus_sound_follows),
-                checked=s.focus_sound_follows)
+        _action(menu, "Only while I focus", lambda: self.set_focus_sound_only_focus(not s.focus_sound_only_focus),
+                checked=s.focus_sound_only_focus)
         volume = styled_menu(menu.addMenu(f"Volume: {s.focus_sound_volume}%"))
         for v in SOUND_VOLUMES:
             _action(volume, f"{v}%", lambda v=v: self.set_focus_sound_volume(v), checked=v == s.focus_sound_volume)

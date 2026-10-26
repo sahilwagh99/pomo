@@ -744,8 +744,9 @@ class SettingsDialog(QDialog):
         form.addRow("Focus sounds", self.sound_box)
         form.addRow("Sound volume", sound_volume_box)
         form.addRow("", self.sound_follows)
-        form.addRow("", _hint("Rain, café murmur, brown noise and a lo-fi loop, made by Pomo\n"
-                              "on this PC the first time you play them. Nothing is downloaded."))
+        form.addRow("", _hint("A sound you pick plays on a loop until you turn it off. Rain and\n"
+                              "café are recordings that come with Pomo; brown noise and the\n"
+                              "lo-fi loop are made on this PC. Nothing is downloaded."))
         form.addRow("Music", self.music_controls)
         form.addRow("", self.pomo_listens)
         form.addRow("", self.music_follows)
@@ -818,7 +819,7 @@ class SettingsDialog(QDialog):
         self.taskbar.setChecked(s.taskbar_button)
         self.sound_box.setCurrentIndex(max(0, self.sound_box.findData(s.focus_sound)))
         self.sound_volume.setValue(s.focus_sound_volume)
-        self.sound_follows.setChecked(s.focus_sound_follows)
+        self.sound_follows.setChecked(s.focus_sound_only_focus)
         self.voice_input.setCurrentIndex(max(0, self.voice_input.findData(s.voice_input)))
         self.voice_replies.setChecked(s.voice_replies)
         self._set_voice(s.voice_name)
@@ -896,7 +897,7 @@ class SettingsDialog(QDialog):
         s.taskbar_button = self.taskbar.isChecked()
         s.focus_sound = self.sound_box.currentData()
         s.focus_sound_volume = self.sound_volume.value()
-        s.focus_sound_follows = self.sound_follows.isChecked()
+        s.focus_sound_only_focus = self.sound_follows.isChecked()
         s.voice_input = self.voice_input.currentData()
         s.voice_replies = self.voice_replies.isChecked()
         s.voice_name = self.voice_box.currentData() or ""

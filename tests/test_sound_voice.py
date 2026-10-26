@@ -18,14 +18,59 @@ from pomodoro.theme import theme_for
 class SoundscapeTests(unittest.TestCase):
     def test_a_loop_that_joins_smoothly_and_is_cached(self):
         with tempfile.TemporaryDirectory() as folder:
-            samples = soundscapes.load(Path(folder), "brown")
-            self.assertEqual(len(samples), soundscapes.N)
+            sound = soundscapes.load(Path(folder), "brown")
+            samples = sound.samples
+            self.assertEqual((len(samples), sound.rate, sound.channels), (soundscapes.N, soundscapes.RATE, 1))
             self.assertTrue(soundscapes.cache_path(Path(folder), "brown").exists())
             steps = sorted(abs(samples[i + 1] - samples[i]) for i in range(0, len(samples) - 1, 7))
             join = abs(samples[0] - samples[-1])
             self.assertLess(join, steps[int(len(steps) * 0.995)] * 1.5)  # no click where the loop restarts
             self.assertLess(max(abs(v) for v in samples), 32767 * 0.9)  # headroom
-            self.assertEqual(soundscapes.load(Path(folder), "brown"), samples)  # read back from the cache
+            self.assertEqual(soundscapes.load(Path(folder), "brown"), sound)  # read back from the cache
+
+    def test_the_recordings(self):
+        import sys
+
+        if sys.platform != "win32":
+            self.skipTest("decoding MP3 uses Windows' Media Foundation")
+        with tempfile.TemporaryDirectory() as folder:
+            for name in soundscapes.RECORDINGS:
+                with self.subTest(sound=name):
+                    sound = soundscapes.load(Path(folder), name)
+                    a, ch = sound.samples, sound.channels
+                    self.assertEqual((sound.rate, ch), (44100, 2))  # the recording's own quality, in stereo
+                    self.assertGreater(len(a) / ch / sound.rate, 15)
+                    for c in range(ch):  # the end runs into the start without a click
+                        steps = sorted(abs(a[i + ch] - a[i]) for i in range(c, len(a) - ch, 13 * ch))
+                        self.assertLess(abs(a[c] - a[len(a) - ch + c]), steps[int(len(steps) * 0.999)])
+                    rms = (sum(v * v for v in a[::9]) / len(a[::9])) ** 0.5 / 32767
+                    self.assertAlmostEqual(rms, soundscapes.TARGET_RMS[name], delta=0.01)  # as loud as the others
+                    cached = soundscapes.cache_path(Path(folder), name, soundscapes.SOUND_DIR / soundscapes.RECORDINGS[name])
+                    self.assertTrue(cached.exists())
+                    self.assertEqual(soundscapes.load(Path(folder), name), sound)
+
+    def test_without_the_recording_it_makes_one(self):
+        with tempfile.TemporaryDirectory() as folder:
+            sound = soundscapes.load(Path(folder), "rain", folder=Path(folder) / "nothing-here")
+            self.assertEqual((sound.rate, sound.channels, len(sound.samples)), (soundscapes.RATE, 1, soundscapes.N))
+
+    def test_fades_are_trimmed_and_loops_crossfaded(self):
+        rate = 1000
+        steady = array("h", [1000, -1000] * (rate * 5))  # 10 s of stereo "sound"
+        faded = array("h", [0, 0] * (rate // 2)) + steady + array("h", [10, -10] * (rate // 2))
+        trimmed = soundscapes.trim_fades(faded, rate, 2)
+        self.assertEqual(len(trimmed), len(steady))
+        ramp = array("h", [i % 2000 for i in range(rate * 8)])  # mono, 8 s
+        loop = soundscapes.make_loop(ramp, rate, 1, fade_s=1.0)
+        self.assertEqual(len(loop), rate * 7)  # a second shorter: it was blended into the start
+        self.assertEqual(loop[0], ramp[rate * 7])  # the loop starts where its end left off
+        self.assertEqual(loop[-1], ramp[rate * 7 - 1])
+
+    def test_levelling_rounds_off_peaks(self):
+        quiet = array("h", [300, -300] * 1000 + [9000])
+        out = soundscapes.level(quiet, 0.15)
+        self.assertLessEqual(max(abs(v) for v in out), 32767)
+        self.assertGreater(abs(out[0]), 300)
 
     def test_events_wrap_around_the_loop(self):
         mix = [0.0] * 10

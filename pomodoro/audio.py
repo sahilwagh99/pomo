@@ -49,8 +49,8 @@ def _winmm():
     return ctypes, wintypes, WAVEFORMATEX, WAVEHDR
 
 
-def _format(WAVEFORMATEX, rate: int):
-    return WAVEFORMATEX(1, 1, rate, rate * 2, 2, 16, 0)  # PCM, mono, 16-bit
+def _format(WAVEFORMATEX, rate: int, channels: int = 1):
+    return WAVEFORMATEX(1, channels, rate, rate * 2 * channels, 2 * channels, 16, 0)  # PCM, 16-bit
 
 
 def take(samples: array, pos: int, count: int) -> tuple[array, int]:
@@ -86,6 +86,7 @@ class LoopPlayer:
         self._thread: threading.Thread | None = None
         self._samples = array("h")
         self._rate = 22050
+        self._channels = 1
         self._volume = 0.5
         self._stop_requested = False
         self._fade_in_s = 1.5
@@ -96,11 +97,11 @@ class LoopPlayer:
     def playing(self) -> bool:
         return self._thread is not None and self._thread.is_alive() and not self._stop_requested
 
-    def play(self, samples: array, rate: int, volume: float, fade_in_s: float = 1.5) -> None:
-        """Start looping (or switch to) a sound."""
+    def play(self, samples: array, rate: int, volume: float, fade_in_s: float = 1.5, channels: int = 1) -> None:
+        """Start looping (or switch to) a sound. Stereo samples come interleaved."""
         self.stop(fade_out_s=0.25, wait=True)
         with self._lock:
-            self._samples, self._rate = samples, rate
+            self._samples, self._rate, self._channels = samples, rate, channels
             self._volume = max(0.0, min(1.0, volume))
             self._fade_in_s = fade_in_s
             self._stop_requested = False
@@ -134,14 +135,14 @@ class LoopPlayer:
         ctypes, wintypes, WAVEFORMATEX, WAVEHDR = _winmm()
         winmm, kernel32 = ctypes.windll.winmm, ctypes.windll.kernel32
         with self._lock:
-            samples, rate = self._samples, self._rate
+            samples, rate, channels = self._samples, self._rate, self._channels
         event = kernel32.CreateEventW(None, False, False, None)
         hwo = ctypes.c_void_p()
-        fmt = _format(WAVEFORMATEX, rate)
+        fmt = _format(WAVEFORMATEX, rate, channels)
         if winmm.waveOutOpen(ctypes.byref(hwo), WAVE_MAPPER, ctypes.byref(fmt), event, 0, CALLBACK_EVENT):
             kernel32.CloseHandle(event)
             raise OSError("no sound device")
-        chunk = max(256, int(rate * CHUNK_S))
+        chunk = max(256, int(rate * CHUNK_S)) * channels  # whole frames, so the channels never swap
         buffers = [ctypes.create_string_buffer(chunk * 2) for _ in range(BUFFERS)]
         headers = [WAVEHDR() for _ in range(BUFFERS)]
         size = ctypes.sizeof(WAVEHDR)
@@ -306,6 +307,99 @@ def wav_bytes(pcm: bytes, rate: int) -> bytes:
         w.setframerate(rate)
         w.writeframes(pcm)
     return out.getvalue()
+
+
+def decode_file(path) -> tuple[array, int, int]:
+    """Decode an audio file (MP3, AAC, WMA...) to 16-bit PCM with Windows' Media Foundation.
+
+    Returns (interleaved samples, rate, channels). Raises OSError where Windows can't decode it
+    (say, an N edition without the Media Feature Pack).
+    """
+    if sys.platform != "win32":
+        raise OSError("decoding needs Windows")
+    import ctypes
+    from ctypes import wintypes
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("a", ctypes.c_uint32), ("b", ctypes.c_uint16), ("c", ctypes.c_uint16), ("d", ctypes.c_ubyte * 8)]
+
+    ole32, mfplat = ctypes.windll.ole32, ctypes.windll.mfplat
+    mfreadwrite = ctypes.windll.mfreadwrite
+
+    def guid(text: str) -> GUID:
+        g = GUID()
+        ole32.CLSIDFromString(text, ctypes.byref(g))
+        return g
+
+    def call(ptr, index: int, argtypes: list, *args) -> int:
+        vtable = ctypes.cast(ptr, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+        return ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, *argtypes)(vtable[index])(ptr, *args)
+
+    def check(hr: int, what: str) -> None:
+        if hr < 0:
+            raise OSError(f"{what} failed (0x{hr & 0xFFFFFFFF:08X})")
+
+    major, subtype = guid("{48eba18e-f8c9-4687-bf11-0a74c9f96a8f}"), guid("{f7e34c9a-42e8-4714-b74b-cb29d72c35e5}")
+    audio, pcm = guid("{73647561-0000-0010-8000-00AA00389B71}"), guid("{00000001-0000-0010-8000-00AA00389B71}")
+    num_channels = guid("{37e48bf5-645e-4c5b-89de-ada9e29b696a}")
+    rate_key = guid("{5faeeae7-0290-4c31-9e8a-c534f68d9dba}")
+    bits_key = guid("{f2deb57f-40fa-4764-aa33-ed4f2d1ff669}")
+    first_audio = 0xFFFFFFFD  # MF_SOURCE_READER_FIRST_AUDIO_STREAM
+    vp = ctypes.c_void_p
+    # vtable slots: IMFAttributes GetUINT32 7, SetGUID 24, SetUINT32 21; IMFSourceReader GetCurrentMediaType 6,
+    # SetCurrentMediaType 7, ReadSample 9; IMFSample ConvertToContiguousBuffer 41; IMFMediaBuffer Lock 3, Unlock 4
+    # COM may already be up on this thread in another mode (Qt's UI thread): then it's not ours to shut down
+    com_ours = ole32.CoInitializeEx(None, 0) >= 0
+    started = mfplat.MFStartup(0x00020070, 0) >= 0  # MF_VERSION, MFSTARTUP_FULL
+    reader, wanted, current = vp(), vp(), vp()
+    try:
+        if not started:
+            raise OSError("Media Foundation isn't available")
+        check(mfreadwrite.MFCreateSourceReaderFromURL(ctypes.c_wchar_p(str(path)), None, ctypes.byref(reader)),
+              "opening the file")
+        check(mfplat.MFCreateMediaType(ctypes.byref(wanted)), "MFCreateMediaType")
+        call(wanted, 24, [vp, vp], ctypes.byref(major), ctypes.byref(audio))
+        call(wanted, 24, [vp, vp], ctypes.byref(subtype), ctypes.byref(pcm))
+        call(wanted, 21, [vp, ctypes.c_uint32], ctypes.byref(bits_key), 16)
+        check(call(reader, 7, [wintypes.DWORD, vp, vp], first_audio, None, wanted), "asking for PCM")
+        check(call(reader, 6, [wintypes.DWORD, vp], first_audio, ctypes.byref(current)), "reading the format")
+        channels, rate, bits = ctypes.c_uint32(), ctypes.c_uint32(), ctypes.c_uint32()
+        call(current, 7, [vp, vp], ctypes.byref(num_channels), ctypes.byref(channels))
+        call(current, 7, [vp, vp], ctypes.byref(rate_key), ctypes.byref(rate))
+        call(current, 7, [vp, vp], ctypes.byref(bits_key), ctypes.byref(bits))
+        if bits.value != 16 or not channels.value or not rate.value:
+            raise OSError("an unexpected sample format")
+        pcm_bytes = bytearray()
+        while len(pcm_bytes) < 200_000_000:
+            index, flags, stamp, sample = wintypes.DWORD(), wintypes.DWORD(), ctypes.c_longlong(), vp()
+            check(call(reader, 9, [wintypes.DWORD, wintypes.DWORD, vp, vp, vp, vp], first_audio, 0,
+                       ctypes.byref(index), ctypes.byref(flags), ctypes.byref(stamp), ctypes.byref(sample)),
+                  "decoding")
+            if sample.value:
+                buffer = vp()
+                try:
+                    check(call(sample, 41, [vp], ctypes.byref(buffer)), "reading a sample")
+                    data, length = vp(), wintypes.DWORD()
+                    check(call(buffer, 3, [vp, vp, vp], ctypes.byref(data), None, ctypes.byref(length)), "Lock")
+                    pcm_bytes += ctypes.string_at(data, length.value)
+                    call(buffer, 4, [])
+                finally:
+                    if buffer.value:
+                        call(buffer, 2, [])
+                    call(sample, 2, [])
+            if flags.value & 0x2:  # MF_SOURCE_READERF_ENDOFSTREAM
+                break
+    finally:
+        for ptr in (current, wanted, reader):
+            if ptr.value:
+                call(ptr, 2, [])  # Release
+        if started:
+            mfplat.MFShutdown()
+        if com_ours:
+            ole32.CoUninitialize()
+    samples = array("h")
+    samples.frombytes(bytes(pcm_bytes[: len(pcm_bytes) // 2 * 2]))
+    return samples, rate.value, channels.value
 
 
 def read_wav(data: bytes) -> tuple[array, int]:
