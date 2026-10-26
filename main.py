@@ -60,6 +60,7 @@ def main() -> int:
     QLocalServer.removeServer(server_name)
     server = QLocalServer()
     server.listen(server_name)
+    winutil.hold_running_mutex()  # open until Pomo exits: the installer waits on it when Pomo updates itself
 
     ctrl = PomoApp(app, data_dir, demo=args.demo)
 

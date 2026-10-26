@@ -5,6 +5,10 @@
 ;
 ; Pomo was called FocusOrb before 1.2. It keeps the same AppId, so an existing FocusOrb
 ; install is recognised, removed first (files and shortcuts), and replaced by Pomo.
+;
+; Pomo updates itself (see pomodoro/updater.py) by running this installer with
+;   /VERYSILENT /UPDATE=1 /DIR=<its folder> /MERGETASKS=!autostart,!desktopicon /RELAUNCH=<Pomo.exe>
+; then quitting. Setup waits for it to close, and starts it again at the end, whatever happened.
 
 #ifndef AppVersion
   #define AppVersion "1.4.0"
@@ -83,6 +87,25 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags
 [Code]
 const
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+  RunningMutex = 'PomoAppRunning';  // held by a running Pomo (main.py)
+
+function IsSelfUpdate(): Boolean;
+begin
+  Result := ExpandConstant('{param:UPDATE|0}') = '1';
+end;
+
+procedure WaitForPomoToClose();
+var
+  Waited: Integer;
+begin
+  // Pomo quits by itself right after starting its own update: give it time to save and go
+  Waited := 0;
+  while CheckForMutexes(RunningMutex) and (Waited < 15000) do
+  begin
+    Sleep(250);
+    Waited := Waited + 250;
+  end;
+end;
 
 procedure StopRunningApp();
 var
@@ -111,6 +134,8 @@ var
   ResultCode, Waited: Integer;
 begin
   // Upgrading over a running copy would fail on locked files.
+  if IsSelfUpdate() then
+    WaitForPomoToClose();
   StopRunningApp();
   if FindPreviousInstall(Location, Uninstaller) then
   begin
@@ -130,6 +155,17 @@ begin
     end;
   end;
   Result := '';
+end;
+
+procedure DeinitializeSetup();
+var
+  Relaunch: String;
+  ResultCode: Integer;
+begin
+  // A self-update starts Pomo again at the end, updated or not, so it never just disappears
+  Relaunch := ExpandConstant('{param:RELAUNCH|}');
+  if (Relaunch <> '') and FileExists(Relaunch) then
+    Exec(Relaunch, '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

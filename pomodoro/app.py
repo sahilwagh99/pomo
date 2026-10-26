@@ -12,8 +12,8 @@ from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QImage
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QSystemTrayIcon
 
-from . import APP_NAME, agent_hooks, audio, claude_hooks, garden, insights, keystore, media, planner, providers
-from . import quests, reviews, soundscapes
+from . import APP_NAME, APP_VERSION, agent_hooks, audio, claude_hooks, garden, insights, keystore, media, planner
+from . import providers, quests, reviews, soundscapes, updater
 from .agents import EDIT_TOOLS, AgentHub, Approval
 from .config import FOCUS_SOUNDS, HOTKEYS, OUTFITS, Settings
 from .hotkeys import GlobalHotkeys
@@ -26,7 +26,7 @@ from .icons import app_icon, render_tray_icon
 from .island import IslandWidget
 from .notifier import Notifier
 from .orb import OrbWidget
-from .stats import fmt_clock, plural
+from .stats import fmt_clock, fmt_day, plural
 from .storage import Storage
 from .theme import THEMES, build_palette, build_qss, ensure_qss_assets, mode_color, theme_for
 from .toast import ToastCard
@@ -58,6 +58,7 @@ def _action(menu: QMenu, text: str, fn, *, checked: bool | None = None, enabled:
 class PomoApp(QObject):
     sound_loaded = Signal(str, object)  # a focus sound finished loading (on a worker thread): name, samples
     voices_found = Signal(list)         # Windows' voices, looked up on a worker thread for Settings
+    update_status_changed = Signal()    # checking, ready, up to date... (Settings shows it)
 
     def __init__(self, qapp: QApplication, data_dir: Path, demo: bool = False):
         super().__init__()
@@ -135,6 +136,14 @@ class PomoApp(QObject):
         self.taskbar = None
         self._taskbar_dismissed = False
         self._fresh_review: dict | None = None
+        # updates from GitHub
+        self.update_mode = updater.install_mode()
+        self._update_worker = None
+        self._update_error = ""
+        self._updating = False
+        self._update_timer = QTimer(self)
+        self._update_timer.setInterval(updater.CHECK_EVERY_MS)
+        self._update_timer.timeout.connect(self.check_for_updates)
         self._quest_pending: tuple[list, list] = ([], [])  # finished quests and unlocked outfits not shown yet
         self._roll_quests()
 
@@ -201,6 +210,9 @@ class PomoApp(QObject):
         self._sync_focus_sound()
         QTimer.singleShot(1200, self._sync_taskbar)  # after the timer window, so it doesn't steal the first look
         QTimer.singleShot(2000, self._check_quests)  # today's history may already have met a quest
+        QTimer.singleShot(2500, self._after_update)  # just updated? say so
+        QTimer.singleShot(updater.FIRST_CHECK_MS, self.check_for_updates)
+        self._update_timer.start()
         if not self.settings.welcomed:
             QTimer.singleShot(1800, self._welcome)
 
@@ -840,6 +852,8 @@ class PomoApp(QObject):
         _action(agents, "Agent settings…", lambda: self.open_settings("Agents"))
         _action(menu, "Dashboard\tD", self.open_dashboard)
         _action(menu, "Settings…", self.open_settings)
+        if self.update_ready():
+            _action(menu, f"Update to Pomo {self.settings.update_version}", self.install_update)
         menu.addSeparator()
         _action(menu, "Run on startup", lambda: self.set_start_with_windows(not self.settings.start_with_windows),
                 checked=self.settings.start_with_windows)
@@ -1379,6 +1393,187 @@ class PomoApp(QObject):
         self._ensure_voice()
         self.speaker.speak(text, self.settings.voice_name)
 
+    # ---------------------------------------------------------------- updates
+    def check_for_updates(self, manual: bool = False) -> None:
+        """Ask GitHub for a newer Pomo. The installed app also downloads and verifies it, ready to offer."""
+        s = self.settings
+        if self._update_worker is not None:
+            return
+        if not manual and (not s.auto_update or self.update_mode == "source"):
+            return
+        download = self.update_mode == "installer"
+        self._update_error = ""
+        self._update_worker = worker = updater.UpdateWorker(APP_VERSION, self.data_dir / "updates", download, self)
+        worker.checked.connect(self._on_update_checked)
+        worker.ready.connect(self._on_update_ready)
+        worker.failed.connect(self._on_update_failed)
+        worker.finished.connect(self._update_done)
+        worker.start()
+        self.update_status_changed.emit()
+
+    def _update_done(self) -> None:
+        if self._update_worker is not None:
+            self._update_worker.deleteLater()
+        self._update_worker = None
+        self.update_status_changed.emit()
+
+    def _on_update_checked(self, release) -> None:
+        s = self.settings
+        s.update_checked = datetime.now().replace(microsecond=0).isoformat()
+        if release is None:
+            if s.update_version and not updater.is_newer(s.update_version, APP_VERSION):
+                self._clear_update()
+        else:
+            if release.version != s.update_version:  # a new one: start afresh
+                s.update_file, s.update_tries, s.update_offered = "", 0, ""
+            s.update_version, s.update_page, s.update_notes = release.version, release.page, release.notes
+            if self.update_mode != "installer":
+                QTimer.singleShot(0, self._tell_about_update)
+        self.save_settings()
+
+    def _on_update_ready(self, release, path: str) -> None:
+        self.settings.update_file = path
+        self.save_settings()
+        self.update_status_changed.emit()
+        QTimer.singleShot(0, self._maybe_offer_update)
+
+    def _on_update_failed(self, message: str, worth_telling: bool) -> None:
+        self._update_error = message
+        if worth_telling and self.settings.update_version:
+            QTimer.singleShot(0, self._tell_about_update)  # it can't be one click: point to the download page
+
+    def update_ready(self) -> bool:
+        """A newer Pomo is downloaded and verified, one click from installing."""
+        s = self.settings
+        return (self.update_mode == "installer" and bool(s.update_file) and Path(s.update_file).exists()
+                and updater.is_newer(s.update_version, APP_VERSION) and s.update_tries < updater.MAX_TRIES)
+
+    def _maybe_offer_update(self) -> None:
+        """'Pomo 1.5.1 is ready. Update now?' once a day, never in the middle of a focus session."""
+        s, e = self.settings, self.engine
+        if not self.update_ready():
+            if s.update_file and s.update_tries >= updater.MAX_TRIES:
+                self._tell_about_update()  # the one-click update didn't take: offer the download instead
+            return
+        if s.update_offered == date.today().isoformat():
+            return
+        if e.mode is Mode.FOCUS and e.state in (State.RUNNING, State.PAUSED):
+            return
+        if not s.popup_card or not self.view.isVisible() or self.toast.showing or self._approval_on_screen():
+            return
+        s.update_offered = date.today().isoformat()
+        self.save_settings()
+        notes = f"{s.update_notes}\n" if s.update_notes else ""
+        self.view.pomo.hello()
+        self.toast.show_message(
+            f"Pomo {s.update_version} is ready",
+            f"{notes}Update now and Pomo restarts on the new version in a few seconds. "
+            "Your history and settings stay just as they are.",
+            mode_color(self.theme, s, "long"),
+            [("Update now", self.install_update, True), ("Later", lambda: None, False)],
+            self.view.anchor_rect_global(), timeout_ms=60000,
+            extras=[("What's new", self._open_update_page)])
+
+    def install_update(self) -> None:
+        """Run the downloaded installer silently and quit: it updates Pomo and starts it again."""
+        s = self.settings
+        if not self.update_ready() or self._updating:
+            self._tell_about_update()
+            return
+        s.update_tries += 1
+        s.last_version = APP_VERSION  # so the new version knows it was just updated
+        self._save_now()
+        folder = updater.app_dir()
+        log = self.data_dir / "updates" / "install.log"
+        args = updater.installer_args(Path(s.update_file), folder, log, Path(sys.executable))
+        if updater.launch_installer(args):
+            self._updating = True
+            self.quit()
+        else:
+            self._update_error = "Windows wouldn't start the installer."
+            self._tell_about_update()
+
+    def _tell_about_update(self) -> None:
+        """A newer Pomo that can't be a one-click update here: say so once, with a download link."""
+        s = self.settings
+        if not s.update_version or s.update_notified == s.update_version or not updater.is_newer(
+                s.update_version, APP_VERSION):
+            return
+        if not s.popup_card or not self.view.isVisible() or self.toast.showing or self._approval_on_screen():
+            return  # try again at the next check
+        s.update_notified = s.update_version
+        self.save_settings()
+        notes = f"{s.update_notes}\n" if s.update_notes else ""
+        self.toast.show_message(
+            f"Pomo {s.update_version} is out",
+            f"{notes}Get it from GitHub: run the new installer and your history and settings carry over.",
+            mode_color(self.theme, s, "long"),
+            [("Download", self._open_update_page, True), ("Later", lambda: None, False)],
+            self.view.anchor_rect_global(), timeout_ms=60000)
+
+    def _open_update_page(self) -> None:
+        self._open_page(self.settings.update_page)
+
+    def _clear_update(self) -> None:
+        s = self.settings
+        if s.update_file:
+            try:
+                Path(s.update_file).unlink()
+            except OSError:
+                pass
+        s.update_version = s.update_file = s.update_notes = s.update_offered = ""
+        s.update_tries = 0
+
+    def _after_update(self) -> None:
+        """At start: if Pomo was just updated, say so (with what's new), and tidy up the installer."""
+        s = self.settings
+        updated = bool(s.last_version) and updater.is_newer(APP_VERSION, s.last_version)
+        page, notes = s.update_page, s.update_notes
+        if s.update_version and not updater.is_newer(s.update_version, APP_VERSION):
+            self._clear_update()  # we're on it now (or past it)
+        s.last_version = APP_VERSION
+        self.save_settings()
+        if not updated or not s.popup_card or not self.view.isVisible() or self._approval_on_screen():
+            return
+        self.view.celebrate()
+        self.toast.show_message(
+            f"Pomo is now {APP_VERSION}",
+            (f"{notes}\n" if notes else "") + "Thanks for keeping Pomo up to date!",
+            mode_color(self.theme, s, "focus"),
+            [("What's new", lambda: self._open_page(page), True), ("OK", lambda: None, False)],
+            self.view.anchor_rect_global(), timeout_ms=30000)
+
+    @staticmethod
+    def _open_page(url: str) -> None:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        QDesktopServices.openUrl(QUrl(url or updater.RELEASES_PAGE))
+
+    def update_status_text(self) -> str:
+        """For Settings: where updates stand."""
+        s = self.settings
+        if self._update_worker is not None:
+            return "Checking GitHub for a new version…"
+        newer = s.update_version and updater.is_newer(s.update_version, APP_VERSION)
+        if newer and self.update_ready():
+            return f"Pomo {s.update_version} is ready. Click Update now, or wait for Pomo to offer it."
+        if newer and self.update_mode == "installer" and s.update_tries < updater.MAX_TRIES and not self._update_error:
+            return f"Pomo {s.update_version} is out. Pomo is getting it ready."
+        if newer:
+            return f"Pomo {s.update_version} is out. Download it from GitHub to update."
+        if self._update_error:
+            return self._update_error
+        if self.update_mode == "source":
+            return f"Pomo {APP_VERSION}, running from source: updates come from git."
+        if s.update_checked:
+            try:
+                when = datetime.fromisoformat(s.update_checked)
+                return f"Pomo {APP_VERSION} is up to date (checked {fmt_day(when.date())}, {when:%H:%M})."
+            except ValueError:
+                pass
+        return f"Pomo {APP_VERSION}."
+
     # ----------------------------------------------------------- housekeeping
     def _housekeeping(self) -> None:
         today = date.today()
@@ -1410,6 +1605,7 @@ class PomoApp(QObject):
             self.save_settings()
         self._check_quests()  # e.g. a quest your history already met when Pomo started
         self._flush_quest_news()
+        self._maybe_offer_update()
 
     def _maybe_offer_review(self) -> None:
         s, e = self.settings, self.engine

@@ -555,6 +555,10 @@ class SettingsDialog(QDialog):
         self.provider_box.currentIndexChanged.connect(self._provider_changed)
         return page
 
+    def _refresh_update_status(self) -> None:
+        self.update_status.setText(self.ctrl.update_status_text())
+        self.update_now.setVisible(self.ctrl.update_ready())
+
     def _load_voices(self) -> None:
         """Fill the voice list with Windows' voices (asked once, in the background)."""
         voices = self.ctrl.voices
@@ -711,6 +715,29 @@ class SettingsDialog(QDialog):
         self.sound_follows = QCheckBox("Play them only while I focus")
         form.addRow("Startup", self.autostart)
         form.addRow("", _hint(f"Starts {APP_NAME} when you sign in to Windows."))
+        self.auto_update = QCheckBox("Get new versions ready and offer a one-click update")
+        self.update_status = QLabel()
+        self.update_status.setWordWrap(True)
+        self.update_status.setProperty("role", "secondary")
+        self.update_status.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        check_now = QPushButton("Check now")
+        check_now.clicked.connect(lambda: self.ctrl.check_for_updates(manual=True))
+        self.update_now = QPushButton("Update now")
+        self.update_now.setObjectName("primary")
+        self.update_now.clicked.connect(self.ctrl.install_update)
+        update_row = QWidget()
+        lay = QHBoxLayout(update_row)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(check_now)
+        lay.addWidget(self.update_now)
+        lay.addStretch(1)
+        form.addRow("Updates", self.auto_update)
+        form.addRow("", self.update_status)
+        form.addRow("", update_row)
+        form.addRow("", _hint("Pomo asks GitHub for a new version every few hours. Updating\n"
+                              "takes one click and keeps your history and settings."))
+        self.ctrl.update_status_changed.connect(self._refresh_update_status)
+        self._refresh_update_status()
         form.addRow("Taskbar", self.taskbar)
         form.addRow("", _hint("The countdown shows as progress on Pomo's taskbar button,\n"
                               "with reset, play/pause and skip when you hover it."))
@@ -770,6 +797,7 @@ class SettingsDialog(QDialog):
         for mode, button in self.colors.items():
             button.set_value(getattr(s, f"{mode}_color"))
         self.autostart.setChecked(s.start_with_windows)
+        self.auto_update.setChecked(s.auto_update)
         self.music_follows.setChecked(s.music_follows)
         self.music_follows.setEnabled(s.music_controls and media.available())
         self.rate_sessions.setChecked(s.rate_sessions)
@@ -851,6 +879,7 @@ class SettingsDialog(QDialog):
         for mode, button in self.colors.items():
             setattr(s, f"{mode}_color", button.value)
         s.start_with_windows = self.autostart.isChecked()
+        s.auto_update = self.auto_update.isChecked()
         s.music_follows = self.music_follows.isChecked()
         s.rate_sessions = self.rate_sessions.isChecked()
         s.suggest_length = self.suggest_length.isChecked()

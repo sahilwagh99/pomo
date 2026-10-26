@@ -52,6 +52,21 @@ def starts_with_windows() -> bool:
         return False
 
 
+RUNNING_MUTEX = "PomoAppRunning"  # installer/Pomo.iss waits for it to go when Pomo updates itself
+
+
+def hold_running_mutex() -> int:
+    """A named mutex that exists while Pomo runs: the handle stays open, and Windows frees it when Pomo ends."""
+    if sys.platform != "win32":
+        return 0
+    import ctypes
+
+    try:
+        return int(ctypes.windll.kernel32.CreateMutexW(None, False, RUNNING_MUTEX) or 0)
+    except OSError:
+        return 0
+
+
 def set_dark_title_bar(widget, dark: bool) -> None:
     if sys.platform != "win32":
         return

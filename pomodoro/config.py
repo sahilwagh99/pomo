@@ -205,6 +205,18 @@ class Settings:
     # General
     start_with_windows: bool = False
     taskbar_button: bool = True  # the countdown on Pomo's taskbar button, with play, pause and skip on hover
+    auto_update: bool = True     # check GitHub for new versions, get them ready, and offer a one-click update
+
+    # Updates (see updater.py)
+    last_version: str = ""       # the version that last ran: a change means Pomo was just updated
+    update_version: str = ""     # the newest version GitHub has, when it's newer than this one
+    update_file: str = ""        # its installer, downloaded and verified
+    update_page: str = ""        # its release page: what's new
+    update_notes: str = ""       # a few lines of its release notes
+    update_tries: int = 0        # installs of it started (a few that don't take, and Pomo stops trying)
+    update_notified: str = ""    # the version a "new version available" card was shown for
+    update_offered: str = ""     # the day the "ready to update" card was last shown ("Later" means tomorrow)
+    update_checked: str = ""     # when GitHub was last asked
     dashboard_range: int = 7  # 0 = all time
 
     # Runtime state that survives restarts

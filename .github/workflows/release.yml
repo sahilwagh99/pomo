@@ -39,11 +39,19 @@ jobs:
         shell: cmd
         run: build.bat
 
+      # Pomo checks a downloaded update against this before offering to install it
+      - name: Checksum for in-app updates
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash dist/Pomo-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path dist/Pomo-Setup.exe.sha256 -Value "$hash  Pomo-Setup.exe" -NoNewline -Encoding ascii
+
       - uses: actions/upload-artifact@v4
         with:
           name: Pomo-windows
           path: |
             dist/Pomo-Setup.exe
+            dist/Pomo-Setup.exe.sha256
             dist/Pomo-portable.zip
 
       # Asset names stay the same every release, so the README's
@@ -55,5 +63,6 @@ jobs:
           name: Pomo ${{ github.ref_name }}
           files: |
             dist/Pomo-Setup.exe
+            dist/Pomo-Setup.exe.sha256
             dist/Pomo-portable.zip
           generate_release_notes: true

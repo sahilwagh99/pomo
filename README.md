@@ -24,7 +24,7 @@
 
 Pomo opens as a little island at the top of your screen and says hi. Prefer a round timer you can drag anywhere? Click **Switch to orb** on the welcome card, or the style button on the timer whenever you like.
 
-- **Update:** download and run the newest installer. It replaces the old version and keeps your history.
+- **Update:** Pomo updates itself. When a new version is out, it downloads it in the background, checks it against GitHub's checksum, and offers **Update now**: one click and Pomo restarts on the new version, history and settings kept. It never asks during a focus session, and *Later* waits until tomorrow (or use *Update to Pomo...* in the right-click menu). On 1.4 or earlier, download and run the newest installer once; from 1.5 on, updates come to you. The portable zip shows a download link instead.
 - **Uninstall:** *Settings > Apps > Installed apps > Pomo*. You will be asked whether to keep your history.
 - **No installer:** download the [portable zip](../../releases/latest/download/Pomo-portable.zip), extract it anywhere and run `Pomo.exe`.
 
@@ -436,9 +436,9 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 | Agents | Connect or disconnect Claude Code, Codex CLI and Gemini CLI, suggesting reviews of agent changes, answer permission requests in Pomo, how long to wait for your answer, finish notifications, answering Claude's questions, replying when a turn ends (and how long the agent waits), break suggestions for long agent tasks |
 | AI | Provider and model for Ask Pomo, your key for each provider (save, check, remove), load your models, when to offer the day review, who hears you when you talk to Pomo, reading replies aloud and the voice |
 | Shortcuts | Global shortcuts on or off, and each key combination (including the talk shortcut) |
-| General | Run Pomo on startup, Pomo on the taskbar, focus sounds (which one, volume, only while focusing), music controls, Pomo listening along, music following the timer, move the orb back to its corner, open the data folder, export CSV, clear history |
+| General | Run Pomo on startup, updates (on or off, check now, update now), Pomo on the taskbar, focus sounds (which one, volume, only while focusing), music controls, Pomo listening along, music following the timer, move the orb back to its corner, open the data folder, export CSV, clear history |
 
-Your data lives in `%APPDATA%\Pomo`: `settings.json` (with your quests, badges and reviews waiting), `history.db` (pomodoros with their ratings, agent activity, parked thoughts and, if the check-in is on, minutes per app), `cache\` (the focus sounds once they're made) and, if you saved one, `ai_key.bin` (your API key, encrypted). Window titles (for "Where was I?" and project names) are never written to disk. When you talk to Pomo, the recording and the replies it reads aloud only pass through a temporary file in `cache\`, deleted as soon as Windows is done with it.
+Your data lives in `%APPDATA%\Pomo`: `settings.json` (with your quests, badges and reviews waiting), `history.db` (pomodoros with their ratings, agent activity, parked thoughts and, if the check-in is on, minutes per app), `cache\` (the focus sounds once they're made), `updates\` (a downloaded update until it's installed) and, if you saved one, `ai_key.bin` (your API key, encrypted). Window titles (for "Where was I?" and project names) are never written to disk. When you talk to Pomo, the recording and the replies it reads aloud only pass through a temporary file in `cache\`, deleted as soon as Windows is done with it. To check for updates, Pomo asks GitHub's public API for the latest release every few hours; nothing about you is sent with it.
 
 ## For developers
 
@@ -479,7 +479,7 @@ The workflow in [`.github/workflows/release.yml`](.github/workflows/release.yml)
    git tag v1.2.0
    git push origin v1.2.0
    ```
-3. GitHub Actions builds `Pomo-Setup.exe` and `Pomo-portable.zip` and attaches them to the release.
+3. GitHub Actions builds `Pomo-Setup.exe` and `Pomo-portable.zip` and attaches them to the release, with `Pomo-Setup.exe.sha256`. Installed copies of Pomo find the release within a few hours, verify the installer against that checksum and offer the one-click update.
 
 The download button at the top of this README always points to the latest release, so it needs no edits.
 
@@ -507,6 +507,7 @@ pomodoro/soundscapes.py     focus sounds (rain, café, brown noise, lo-fi), synt
 pomodoro/audio.py           sound in and out through Windows' waveOut and waveIn (focus sounds, the mic)
 pomodoro/voice.py           Talk to Pomo: push-to-talk, speech to text, replies read aloud
 pomodoro/taskbar.py         the taskbar button: progress, thumbnail buttons and the live preview
+pomodoro/updater.py         updates from GitHub Releases: check, download, verify, one-click silent install
 pomodoro/ai.py              Ask Pomo: context, streaming replies and key checks (Anthropic SDK, OpenAI-compatible APIs)
 pomodoro/providers.py       the AI providers and their models
 pomodoro/agent_card.py      Claude Code's questions, permission prompts and end-of-turn messages, answered in Pomo
@@ -533,11 +534,7 @@ pomodoro/sounds.py          alert sounds synthesized at runtime
 pomodoro/theme.py           the five pastel themes, stylesheet
 pomodoro/icons.py           button glyphs and the Pomo app icon
 pomodoro/winutil.py         Windows helpers: run on startup, dark title bars, bringing a window back to the front
-installer/Pomo.iss          Inno Setup installer script (also removes FocusOrb when upgrading)
+installer/Pomo.iss          Inno Setup installer script (also removes FocusOrb when upgrading, and runs silent updates)
 tools/prepare_build.py      generates the .exe icon, installer artwork and version info
 tests/                      unit tests
 ```
-
-## Credits
-
-The idea of a buddy that reacts to your work, a timer island at the top of the screen, and watching coding agents from it was inspired by [Coucou](https://github.com/Louis-CFM/coucou) by Louis Raillé. Pomo is an original character, and this app uses none of Coucou's code, artwork or sounds.
