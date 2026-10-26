@@ -13,13 +13,16 @@ import shutil
 import sys
 from pathlib import Path
 
-from .hook import LEGACY_MARKERS, MARKER
+from .hook import ANSWER_FLAG, LEGACY_MARKERS, MARKER
 
 # Watched without slowing Claude Code down: async hooks run in the background.
 OBSERVED_EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
-                   "Notification", "Stop", "SubagentStop", "SessionEnd")
+                   "Notification", "SubagentStop", "SessionEnd")
 TOOL_EVENTS = ("PreToolUse", "PostToolUse", "PermissionRequest")
 APPROVAL_EVENT = "PermissionRequest"
+# These wait for the user (Pomo answers within its own time limit, or passes at once):
+# permission prompts, Claude's multiple-choice questions, and the end of a turn (to reply).
+QUESTION_TOOL = "AskUserQuestion"
 
 
 class HookConfigError(Exception):
@@ -91,7 +94,28 @@ def _strip_ours(hooks: dict) -> None:
             del hooks[event]
 
 
-def install(path: Path | None = None, approval_timeout: int = 90) -> Path:
+def layout(command: str, args: list[str], wait_timeout: int = 330) -> dict[str, list[dict]]:
+    """Every hook group Pomo adds, by event."""
+    out: dict[str, list[dict]] = {}
+
+    def add(event: str, handler: dict, matcher: str | None = None) -> None:
+        group = {"hooks": [handler]}
+        if matcher:
+            group = {"matcher": matcher, **group}
+        out.setdefault(event, []).append(group)
+
+    for event in OBSERVED_EVENTS:
+        add(event, {"type": "command", "command": command, "args": list(args), "async": True, "timeout": 10},
+            "*" if event in TOOL_EVENTS else None)
+    add(APPROVAL_EVENT, {"type": "command", "command": command, "args": list(args), "timeout": int(wait_timeout)}, "*")
+    answering = list(args) + [ANSWER_FLAG]
+    add("PreToolUse", {"type": "command", "command": command, "args": answering, "timeout": int(wait_timeout)},
+        QUESTION_TOOL)
+    add("Stop", {"type": "command", "command": command, "args": answering, "timeout": int(wait_timeout)})
+    return out
+
+
+def install(path: Path | None = None, approval_timeout: int = 330) -> Path:
     path = path or default_settings_path()
     data = _load(path)
     hooks = data.get("hooks")
@@ -101,20 +125,15 @@ def install(path: Path | None = None, approval_timeout: int = 90) -> Path:
         raise HookConfigError(f'"hooks" in {path} is not an object. It was left unchanged.')
     _strip_ours(hooks)
     command, args = hook_command()
-
-    def group(event: str, handler: dict) -> dict:
-        entry = {"hooks": [handler]}
-        if event in TOOL_EVENTS:
-            entry = {"matcher": "*", **entry}
-        return entry
-
-    for event in OBSERVED_EVENTS:
-        handler = {"type": "command", "command": command, "args": list(args), "async": True, "timeout": 10}
-        hooks.setdefault(event, []).append(group(event, handler))
-    approval = {"type": "command", "command": command, "args": list(args), "timeout": int(approval_timeout)}
-    hooks.setdefault(APPROVAL_EVENT, []).append(group(APPROVAL_EVENT, approval))
+    for event, groups in layout(command, args, approval_timeout).items():
+        hooks.setdefault(event, []).extend(groups)
     _write(path, data)
     return path
+
+
+def _signature(event: str, group: dict, handler: dict) -> tuple:
+    return (event, group.get("matcher"), handler.get("command"), tuple(handler.get("args") or ()),
+            bool(handler.get("async")))
 
 
 def uninstall(path: Path | None = None) -> Path:
@@ -143,13 +162,12 @@ def status(path: Path | None = None) -> str:
     if not ours:
         return "off"
     command, args = hook_command()
-    expected = {APPROVAL_EVENT, *OBSERVED_EVENTS}
-    current = all(h.get("command") == command and h.get("args") == args for h in ours)
-    complete = expected.issubset({event for event, groups in hooks.items()
-                                  if isinstance(groups, list) and any(
-                                      isinstance(g, dict) and any(_is_ours(h) for h in g.get("hooks") or [])
-                                      for g in groups)})
-    return "connected" if current and complete else "outdated"
+    installed = {_signature(event, g, h) for event, groups in hooks.items() if isinstance(groups, list)
+                 for g in groups if isinstance(g, dict) and isinstance(g.get("hooks"), list)
+                 for h in g["hooks"] if _is_ours(h)}
+    expected = {_signature(event, g, h) for event, groups in layout(command, args).items()
+                for g in groups for h in g["hooks"]}
+    return "connected" if installed == expected else "outdated"
 
 
 def refresh(path: Path | None = None) -> bool:

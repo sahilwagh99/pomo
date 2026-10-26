@@ -12,7 +12,9 @@ import asyncio
 import re
 import sys
 import threading
+import time
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 
 from PySide6.QtCore import QThread, Signal
 
@@ -72,6 +74,15 @@ class Track:
     can_next: bool = False
     can_previous: bool = False
     art: bytes | None = field(default=None, repr=False)  # the cover (JPEG or PNG bytes), if the app shares one
+    duration: float = 0.0  # song length in seconds, if the app shares it
+    # where the song was when read; it moves every second, so it doesn't count as a change
+    position: float = field(default=0.0, compare=False)
+    read_at: float = field(default_factory=time.monotonic, compare=False, repr=False)
+
+    def position_now(self) -> float:
+        if not self.playing:
+            return self.position
+        return min(self.duration or 1e9, self.position + time.monotonic() - self.read_at)
 
     @property
     def app(self) -> str:
@@ -115,7 +126,25 @@ def pick_session(sessions, current):
     return current
 
 
-def make_track(session, props, art: bytes | None = None) -> Track | None:
+def timeline_of(session, playing: bool) -> tuple[float, float]:
+    """(song length, position now) in seconds, or zeros when the app doesn't say."""
+    try:
+        tl = session.get_timeline_properties()
+        duration = (tl.end_time - tl.start_time).total_seconds()
+        position = (tl.position - tl.start_time).total_seconds()
+        updated = tl.last_updated_time
+    except Exception:
+        return 0.0, 0.0
+    if duration <= 0:
+        return 0.0, 0.0
+    if playing and isinstance(updated, datetime) and updated.year > 2000:
+        since = (datetime.now(timezone.utc) - updated.astimezone(timezone.utc)).total_seconds()
+        if 0 <= since < duration:  # apps report the position now and then; carry it forward
+            position += since
+    return round(duration), max(0.0, min(duration, position))
+
+
+def make_track(session, props, art: bytes | None = None, timeline: tuple[float, float] = (0.0, 0.0)) -> Track | None:
     """A Track from a session and its media properties, or None if there is nothing to show."""
     if session is None or props is None:
         return None
@@ -132,7 +161,8 @@ def make_track(session, props, art: bytes | None = None) -> Track | None:
     return Track(
         app_id=app_id, title=title, artist=artist, album=(props.album_title or "").strip(), playing=playing,
         can_toggle=bool(controls.is_play_pause_toggle_enabled or controls.is_play_enabled or controls.is_pause_enabled),
-        can_next=bool(controls.is_next_enabled), can_previous=bool(controls.is_previous_enabled), art=art)
+        can_next=bool(controls.is_next_enabled), can_previous=bool(controls.is_previous_enabled), art=art,
+        duration=timeline[0], position=timeline[1])
 
 
 async def read_art(ref) -> bytes | None:
@@ -281,6 +311,7 @@ class MediaWatcher(QThread):
         track = make_track(session, props)
         if track is None:
             return None
+        track = replace(track, **dict(zip(("duration", "position"), timeline_of(session, track.playing))))
         if track.key != self._art_key:
             self._art_key, self._art, self._art_tries = track.key, None, 0
         if self._art is None and self._art_tries < ART_TRIES:

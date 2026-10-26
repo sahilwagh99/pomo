@@ -175,7 +175,7 @@ class KeyCheckTests(unittest.TestCase):
             transport=httpx2.MockTransport(handler)))
         try:
             results = []
-            worker = KeyCheckWorker("test-key", "claude-opus-5-5")
+            worker = KeyCheckWorker("anthropic", "test-key", "claude-opus-5-5")
             worker.result.connect(lambda s, m: results.append((s, m)))
             worker.run()  # synchronously, on this thread
         finally:
@@ -184,7 +184,8 @@ class KeyCheckTests(unittest.TestCase):
 
     def test_working_key_costs_nothing(self):
         paths, results = self.check(200)
-        self.assertEqual(paths, [("GET", "/v1/models/claude-opus-5-5")])  # no tokens: just a model lookup
+        self.assertEqual(paths[0], ("GET", "/v1/models/claude-opus-5-5"))  # no tokens: just model lookups
+        self.assertTrue(all(method == "GET" and path.startswith("/v1/models") for method, path in paths))
         self.assertEqual(results[0][0], "ok")
 
     def test_rejected_key(self):

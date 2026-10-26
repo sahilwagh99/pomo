@@ -1,8 +1,11 @@
 """Live view of Claude Code sessions, fed by Pomo's hook client (hook.py).
 
-Each hook run connects to a local named pipe and sends one JSON line. Approval
-requests keep the connection open until the user answers (or the wait runs out,
-in which case Claude Code falls back to its own prompt in the terminal).
+Each hook run connects to a local named pipe and sends one JSON line. Some keep
+the connection open until the user answers in Pomo (or the wait runs out, and
+Claude Code carries on in the terminal as usual):
+  permission  a permission prompt: allow, deny (with a note for Claude), or in terminal
+  question    Claude's multiple-choice question (AskUserQuestion): pick an answer
+  reply       the end of a turn: Claude's own words, and a box to reply
 """
 from __future__ import annotations
 
@@ -17,6 +20,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 from .hook import PROTOCOL, pipe_name
+from .presence import user_at_terminal
 from .storage import AgentEvent
 
 STALE_AFTER = timedelta(hours=2)
@@ -51,6 +55,7 @@ class AgentSession:
     started: datetime = field(default_factory=datetime.now)
     last_event: datetime = field(default_factory=datetime.now)
     turn_started: datetime | None = None
+    message: str = ""  # Claude's latest words to you (a notification or the end of a turn), as written
     tools: int = 0
     edits: int = 0
     commands: int = 0
@@ -69,6 +74,9 @@ class Approval:
     created: float
     socket: QLocalSocket | None = None
     timer: QTimer | None = None
+    kind: str = "permission"  # permission | question | reply
+    questions: list = field(default_factory=list)
+    message: str = ""         # for a reply: what Claude said at the end of its turn
 
 
 class AgentHub(QObject):
@@ -83,6 +91,7 @@ class AgentHub(QObject):
         self.ctrl = ctrl
         self.sessions: dict[str, AgentSession] = {}
         self.pending: dict[int, Approval] = {}
+        self.user_at_terminal = user_at_terminal  # replaced in tests
         self._ids = itertools.count(1)
         self._buffers: dict[QLocalSocket, bytearray] = {}
         self.server = QLocalServer(self)
@@ -103,7 +112,8 @@ class AgentHub(QObject):
     def signal(self) -> str | None:
         """What Pomo should show: 'alert' (an agent needs you), 'busy' (agents working) or None."""
         now = datetime.now()
-        if self.pending or any(s.status in ("approval", "waiting") for s in self.sessions.values()):
+        if any(a.kind != "reply" for a in self.pending.values()) or any(
+                s.status in ("approval", "waiting") for s in self.sessions.values()):
             return "alert"
         if any(s.status == "working" and now - s.last_event < WORKING_GRACE for s in self.sessions.values()):
             return "busy"
@@ -180,6 +190,8 @@ class AgentHub(QObject):
         elif event == "UserPromptSubmit":
             session.status, session.activity, session.turn_started = "working", "Thinking", now
             self._record(session, event, detail=detail)
+        elif event == "PreToolUse" and msg.get("kind") == "question" and msg.get("wait"):
+            self._open_question(session, msg.get("questions") or [], sock)
         elif event == "PreToolUse":
             if session.status not in ("approval",):
                 session.status = "working"
@@ -197,6 +209,7 @@ class AgentHub(QObject):
             session.activity = activity_text(tool, detail)
             self._open_approval(session, tool, detail, sock)
         elif event == "Notification":
+            session.message = str(msg.get("message") or detail)
             if kind == "permission_prompt":
                 session.status = "approval"
             elif kind in ("idle_prompt", "agent_needs_input", "elicitation_dialog"):
@@ -205,7 +218,10 @@ class AgentHub(QObject):
         elif event == "Stop":
             seconds = (now - session.turn_started).total_seconds() if session.turn_started else 0.0
             session.status, session.activity, session.turn_started = "done", "Finished", None
+            session.message = str(msg.get("message") or detail)
             self._record(session, event, detail=detail)
+            if msg.get("wait"):
+                self._open_reply(session, session.message, sock)
             self.turn_finished.emit(session, seconds)
         elif event == "SessionEnd":
             self.sessions.pop(sid, None)
@@ -232,36 +248,91 @@ class AgentHub(QObject):
         self.pending[approval.id] = approval
         self.approval_requested.emit(approval)
 
-    def resolve(self, approval_id: int, decision: str) -> None:
-        """decision: 'allow', 'deny', 'terminal' (let Claude Code ask there) or 'timeout'."""
+    def _open_question(self, session: AgentSession, questions: list, sock: QLocalSocket | None) -> None:
+        """Claude asks multiple-choice questions: answer in Pomo, unless you're at the terminal anyway."""
+        s = self.ctrl.settings
+        if sock is None or not questions or not s.agent_questions or self.user_at_terminal():
+            self._reply(sock, "pass")  # the question shows in the terminal right away
+            return
+        session.status, session.activity = "waiting", "Asking you a question"
+        approval = Approval(next(self._ids), session, "AskUserQuestion", str(questions[0].get("question", "")),
+                            time.monotonic(), sock, kind="question", questions=questions)
+        self._wait(approval, s.approval_wait_s)
+
+    def _open_reply(self, session: AgentSession, message: str, sock: QLocalSocket | None) -> None:
+        """A turn ended: offer a reply in Pomo while you're away from the terminal (Claude waits a little)."""
+        s = self.ctrl.settings
+        pacer = getattr(self.ctrl, "pacer", None)
+        holding = pacer is not None and pacer.should_hold()  # quiet focus: no waiting, the news waits for the break
+        if sock is None or not s.agent_reply or holding or self.user_at_terminal():
+            self._reply(sock, "pass")
+            return
+        approval = Approval(next(self._ids), session, "", message[:300], time.monotonic(), sock,
+                            kind="reply", message=message)
+        self._wait(approval, s.agent_reply_wait_s)
+
+    def _wait(self, approval: Approval, seconds: int) -> None:
+        approval.timer = QTimer(self)
+        approval.timer.setSingleShot(True)
+        approval.timer.timeout.connect(lambda a=approval: self.resolve(a.id, "timeout"))
+        approval.timer.start(int(seconds) * 1000)
+        self.pending[approval.id] = approval
+        self.approval_requested.emit(approval)
+        self.changed.emit()
+
+    def awaiting_reply(self, session: AgentSession) -> bool:
+        return any(a.kind == "reply" and a.session is session for a in self.pending.values())
+
+    def resolve(self, approval_id: int, decision: str, payload=None) -> None:
+        """decision: permission 'allow' / 'deny' (payload: a note for Claude); question 'answer' (payload:
+        one answer per question); reply 'reply' (payload: your message); or 'terminal' / 'timeout' / 'pass'."""
         approval = self.pending.get(approval_id)
         if approval is None:
             return
-        self._close_approval(approval, decision, reply=True)
+        self._close_approval(approval, decision, reply=True, payload=payload)
 
-    def _close_approval(self, approval: Approval, decision: str, reply: bool) -> None:
+    def _close_approval(self, approval: Approval, decision: str, reply: bool, payload=None) -> None:
         self.pending.pop(approval.id, None)
         if approval.timer is not None:
             approval.timer.stop()
-        if reply:
-            self._reply(approval.socket, decision if decision in ("allow", "deny") else "pass")
         session = approval.session
-        if decision in ("allow", "deny"):
-            session.status = "working"
-        self._record(session, "Approval", approval.tool, decision)
+        if approval.kind == "question":
+            answered = decision == "answer" and isinstance(payload, list) and any(payload)
+            if reply:
+                self._reply(approval.socket, "answer" if answered else "pass", answers=payload if answered else None)
+            session.status, session.activity = ("working", "Got your answer") if answered else (session.status, session.activity)
+            self._record(session, "Question", approval.tool, "answered" if answered else decision)
+        elif approval.kind == "reply":
+            text = str(payload or "").strip() if decision == "reply" else ""
+            if reply:
+                self._reply(approval.socket, "reply" if text else "pass", message=text)
+            if text:
+                session.status, session.activity, session.turn_started = "working", "Reading your reply", datetime.now()
+            self._record(session, "Reply", "", "replied" if text else decision)
+        else:
+            if reply:
+                note = str(payload or "").strip() if decision == "deny" else ""
+                self._reply(approval.socket, decision if decision in ("allow", "deny") else "pass", message=note)
+            if decision in ("allow", "deny"):
+                session.status = "working"
+            self._record(session, "Approval", approval.tool, decision)
         self.approval_closed.emit(approval)
         self.changed.emit()
 
     @staticmethod
-    def _reply(sock: QLocalSocket | None, decision: str) -> None:
+    def _reply(sock: QLocalSocket | None, decision: str, message: str = "", answers: list | None = None) -> None:
         try:
             if sock is None or sock.state() != QLocalSocket.ConnectedState:
                 return
         except RuntimeError:  # already destroyed
             return
-        reply = {"decision": decision}
+        reply: dict = {"decision": decision}
         if decision == "deny":
-            reply["message"] = "The user denied this in Pomo."
+            reply["message"] = message or "The user denied this in Pomo."
+        elif decision == "reply":
+            reply["message"] = message
+        elif decision == "answer":
+            reply["answers"] = answers or []
         sock.write((json.dumps(reply) + "\n").encode("utf-8"))
         sock.flush()
         sock.disconnectFromServer()
@@ -277,5 +348,5 @@ class AgentHub(QObject):
 
     def shutdown(self) -> None:
         for approval in list(self.pending.values()):
-            self._close_approval(approval, "terminal", reply=True)
+            self._close_approval(approval, "terminal", reply=True)  # Claude Code carries on in the terminal
         self.server.close()

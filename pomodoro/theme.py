@@ -204,7 +204,91 @@ BLUEBERRY = Theme(
     label="Blueberry (dark)",
 )
 
-THEMES = {t.key: t for t in (LIGHT, SAKURA, LAVENDER, DARK, BLUEBERRY)}
+PEACH = Theme(
+    key="peach",
+    dark=False,
+    page="#fbf3ec",
+    surface="#fffbf7",
+    raised="#f7ebe0",
+    hover="#f0dfd0",
+    orb_face="#fffbf7",
+    orb_edge="#f0dccb",
+    ink="#4a2f24",
+    ink_2="#7a5a4c",
+    muted="#a88e82",
+    grid="#f4e7db",
+    axis="#e6d2c1",
+    border_rgba=(74, 47, 36, 30),
+    success="#4f7f43",
+    danger="#b5544e",
+    on_accent="#4a2f24",
+    focus="#f4b48c",
+    short="#9fd3c7",
+    long="#c4b5e6",
+    chart="#c2703f",  # validated: L band, chroma, >= 3:1 on surface
+    heat=("#e59a6e", "#d4824f", "#bd6c3b", "#a0592f", "#834826"),
+    heat_empty="#f6ece3",
+    shadow_alpha=40,
+    label="Peach (light)",
+)
+
+MINT = Theme(
+    key="mint",
+    dark=False,
+    page="#eef7f3",
+    surface="#fbfffd",
+    raised="#e6f2ec",
+    hover="#d9ebe2",
+    orb_face="#fbfffd",
+    orb_edge="#d5e9df",
+    ink="#22403a",
+    ink_2="#4d6b64",
+    muted="#869f98",
+    grid="#e3efe9",
+    axis="#cde0d7",
+    border_rgba=(34, 64, 58, 30),
+    success="#3f7f4f",
+    danger="#b5544e",
+    on_accent="#22403a",
+    focus="#8fd4bf",
+    short="#f4b6c2",
+    long="#b9c3ec",
+    chart="#1f9b7e",
+    heat=("#5ec0a1", "#3aab8b", "#1f9478", "#177d65", "#106653"),
+    heat_empty="#e8f2ed",
+    shadow_alpha=40,
+    label="Mint (light)",
+)
+
+PLUM = Theme(
+    key="plum",
+    dark=True,
+    page="#221b29",
+    surface="#2e2536",
+    raised="#382d41",
+    hover="#43364d",
+    orb_face="#30273a",
+    orb_edge="#4a3d56",
+    ink="#f3ecf8",
+    ink_2="#d0c3dc",
+    muted="#9e90ab",
+    grid="#3a2f44",
+    axis="#4d4058",
+    border_rgba=(243, 236, 248, 26),
+    success="#a9cf8f",
+    danger="#ec9b94",
+    on_accent="#221b29",
+    focus="#c3a5ec",
+    short="#f2b6c6",
+    long="#9fd3c7",
+    chart="#a07ad8",
+    heat=("#6a4f9b", "#8364ba", "#9b7bd2", "#b495e4", "#cfb6f3"),
+    heat_empty="#372d40",
+    shadow_alpha=110,
+    label="Plum (dark)",
+)
+
+THEMES = {t.key: t for t in (LIGHT, SAKURA, LAVENDER, PEACH, MINT, DARK, BLUEBERRY, PLUM)}
 
 
 def theme_for(key: str) -> Theme:

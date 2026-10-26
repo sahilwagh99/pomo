@@ -77,3 +77,13 @@ def set_app_user_model_id() -> None:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"{APP_NAME}.FocusTimer")
     except Exception:
         pass
+
+
+def bring_to_front(widget) -> None:
+    """Raise and focus a window even when another app is in front (Windows allows it right after our hotkey)."""
+    widget.raise_()
+    widget.activateWindow()
+    if sys.platform == "win32":
+        import ctypes
+
+        ctypes.windll.user32.SetForegroundWindow(int(widget.winId()))

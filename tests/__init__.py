@@ -1,4 +1,4 @@
-"""One GUI application for the whole test run (painting Pomo needs fonts, so not a bare QCoreApplication)."""
-from PySide6.QtGui import QGuiApplication
+"""One application for the whole test run (painting Pomo needs fonts, and some tests build windows)."""
+from PySide6.QtWidgets import QApplication
 
-_app = QGuiApplication.instance() or QGuiApplication([])
+_app = QApplication.instance() or QApplication([])

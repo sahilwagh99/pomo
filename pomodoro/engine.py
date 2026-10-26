@@ -187,6 +187,45 @@ class TimerEngine(QObject):
         self._total = self._banked + seconds
         self.changed.emit()
 
+    def discount(self, seconds: float) -> float:
+        """Take time back out of the session, as if it had been paused then (e.g. while you were away).
+
+        The time goes back onto the clock and doesn't count as focus. Returns the seconds taken back.
+        """
+        if self.state not in (State.RUNNING, State.PAUSED):
+            return 0.0
+        running = self._mark is not None
+        self._bank()
+        taken = max(0.0, min(float(seconds), self._banked))
+        self._banked -= taken
+        self._remaining += taken
+        if running:
+            self._mark = self._clock()
+        self.changed.emit()
+        return taken
+
+    def credit(self, seconds: float) -> float:
+        """Count time as focus after all (the opposite of discount); finishes the session if that fills it."""
+        if self.state not in (State.RUNNING, State.PAUSED):
+            return 0.0
+        running = self._mark is not None
+        self._bank()
+        given = max(0.0, min(float(seconds), self._remaining))
+        self._remaining -= given
+        self._banked += given
+        if running:
+            self._mark = self._clock()
+        if self._remaining <= 0:
+            self._complete()
+        else:
+            self.changed.emit()
+        return given
+
+    def finish_now(self) -> None:
+        """End the session now and count it as done (say, to take your break while an agent works)."""
+        if self.state in (State.RUNNING, State.PAUSED):
+            self._complete()
+
     def adjust(self, delta: float) -> None:
         if self.state in (State.IDLE, State.FINISHED):
             self.set_duration(max(60.0, self._total + delta))

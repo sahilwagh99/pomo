@@ -9,13 +9,11 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 from . import APP_NAME, LEGACY_NAME
+from .providers import PROVIDERS, default_model
+
+AI_MODELS = dict(PROVIDERS["anthropic"].models)  # Claude model id -> label
 
 SOUND_NAMES = ("Chime", "Bell", "Digital", "Soft")
-AI_MODELS = {  # model id -> label; Opus is the default
-    "claude-opus-5-5": "Claude Opus 5.5 (default)",
-    "claude-sonnet-5-5": "Claude Sonnet 5.5",
-    "claude-haiku-5-5": "Claude Haiku 5.5",
-}
 OUTFITS = {  # Pomo's wardrobe: key -> label
     "blossom": "Sakura blossom",
     "headphones": "Headphones",
@@ -25,8 +23,30 @@ OUTFITS = {  # Pomo's wardrobe: key -> label
     "bow": "Ribbon bow",
     "glasses": "Round glasses",
     "none": "Nothing",
+    "hardhat": "Hard hat",
+    "nightcap": "Nightcap",
+    "headband": "Sweatband",
+    "sunhat": "Sun hat",
+    "chefhat": "Chef's hat",
+    "beret": "Beret",
+    # earned in the focus garden
+    "catears": "Cat ears",
+    "flowercrown": "Flower crown",
+    "gradcap": "Graduation cap",
+    "wizard": "Wizard hat",
 }
+UNLOCKS = {"catears": 10, "flowercrown": 25, "gradcap": 50, "wizard": 100}  # outfit -> lifetime pomodoros
 ORB_SIZES = {"Small": 150, "Medium": 190, "Large": 230}
+THEME_KEYS = ("light", "sakura", "lavender", "peach", "mint", "dark", "blueberry", "plum")  # see theme.THEMES
+DEFAULT_DISTRACTING = ("youtube", "netflix", "twitch", "tiktok", "instagram", "facebook", "reddit", "twitter",
+                       "9gag", "prime video", "disney+", "steam")
+HOTKEYS = {  # action -> (setting, label)
+    "toggle": ("hotkey_toggle", "Start or pause the timer"),
+    "skip": ("hotkey_skip", "Skip to the next session"),
+    "park": ("hotkey_park", "Park a thought"),
+    "music": ("hotkey_music", "Play or pause music"),
+    "show": ("hotkey_show", "Show or hide the timer"),
+}
 
 
 def _appdata_root() -> Path:
@@ -80,10 +100,11 @@ class Settings:
     idle_reminder_min: int = 0  # 0 = off
 
     # Appearance
-    theme: str = "light"  # light (Matcha), sakura, lavender, dark (Cocoa), blueberry
+    theme: str = "light"  # light (Matcha), sakura, lavender, peach, mint, dark (Cocoa), blueberry, plum
     display_mode: str = "island"  # "island" (pill at the top of the screen, the first impression) | "orb"
     show_buddy: bool = True    # Pomo, the focus buddy
     pomo_outfit: str = "blossom"
+    outfit_follows: bool = True  # Pomo dresses for what you're doing (sweatband in focus, sun hat on breaks...)
     treats: int = 0          # earned one per finished focus session, fed by clicking the dango
     treats_fed: int = 0
     game_best: int = 0       # Petal Catch high score
@@ -103,13 +124,45 @@ class Settings:
     approval_wait_s: int = 60         # then Claude Code asks in the terminal instead
     agent_notify_finish: bool = True
     agent_notify_after_s: int = 30    # only for turns at least this long
+    agent_break_hint: bool = True     # suggest a break while an agent works on a long task
+    agent_break_after_s: int = 120
+    agent_questions: bool = True      # answer Claude's multiple-choice questions in Pomo
+    agent_reply: bool = True          # reply to Claude in Pomo when a turn ends (while you're away from the terminal)
+    agent_reply_wait_s: int = 45      # how long Claude waits for that reply
+
+    # Focus helpers
+    rate_sessions: bool = True         # ask "how was that?" after each focus session
+    suggest_length: bool = True        # suggest a better focus length from those answers
+    length_tip_date: str = ""          # last suggestion (at most one a week)
+    away_after_min: int = 5            # pause when nobody has touched the PC this long (0 = off)
+    focus_guard: bool = False          # notice distracting apps and sites during focus (opt-in)
+    distracting: list[str] = field(default_factory=lambda: list(DEFAULT_DISTRACTING))
+    quiet_focus: bool = True           # hold Pomo's non-urgent alerts until the break
+    break_card: bool = True            # when a break starts: breathe, parked thoughts, play
+    hotkeys_on: bool = True
+    hotkey_toggle: str = "Ctrl+Alt+Shift+P"
+    hotkey_skip: str = "Ctrl+Alt+Shift+K"
+    hotkey_park: str = "Ctrl+Alt+Shift+N"
+    hotkey_music: str = "Ctrl+Alt+Shift+M"
+    hotkey_show: str = "Ctrl+Alt+Shift+H"
 
     # Music (whatever plays on this PC: Spotify, YouTube in a browser, ...)
     music_controls: bool = True   # show what's playing, with play/pause and skip
     pomo_listens: bool = True     # Pomo wears headphones and sways along while music plays
+    music_follows: bool = False   # play while focusing, pause on breaks (opt-in: it touches your music)
 
-    # AI (Ask Pomo)
-    ai_model: str = "claude-opus-5-5"
+    # AI (Ask Pomo): your own key, with the provider and model you pick
+    ai_provider: str = "anthropic"    # anthropic | openai | gemini | xai | openrouter
+    ai_model: str = "claude-opus-5-5"  # the Claude model
+    ai_models: dict = field(default_factory=dict)  # other providers: provider -> model id
+    review_hour: int = 18             # offer an end-of-day review from this hour (0 = off)
+    review_date: str = ""             # last day it was offered
+
+    # Plan: tasks Ask Pomo (or you) lined up, worked through one focus session at a time
+    task_queue: list[dict] = field(default_factory=list)  # {"task": str, "pomodoros": int}
+
+    # Focus garden
+    unlocks_seen: list[str] = field(default_factory=list)  # outfits whose unlock was celebrated
 
     # General
     start_with_windows: bool = False
@@ -166,7 +219,7 @@ class Settings:
         self.orb_size = _clip(self.orb_size, 130, 260)
         if self.sound_name not in SOUND_NAMES:
             self.sound_name = SOUND_NAMES[0]
-        if self.theme not in ("light", "dark", "sakura", "lavender", "blueberry"):
+        if self.theme not in THEME_KEYS:
             self.theme = "light"
         self.treats = _clip(self.treats, 0, 9)
         if self.pomo_outfit not in OUTFITS:
@@ -175,8 +228,22 @@ class Settings:
             self.display_mode = "island"
         self.approval_wait_s = _clip(self.approval_wait_s, 15, 300)
         self.agent_notify_after_s = _clip(self.agent_notify_after_s, 0, 3600)
-        if self.ai_model not in AI_MODELS:
-            self.ai_model = "claude-opus-5-5"
+        self.agent_break_after_s = _clip(self.agent_break_after_s, 30, 1800)
+        self.agent_reply_wait_s = _clip(self.agent_reply_wait_s, 10, 300)
+        self.away_after_min = _clip(self.away_after_min, 0, 60)
+        self.review_hour = _clip(self.review_hour, 0, 23)
+        self.distracting = [w.strip().lower() for w in self.distracting if isinstance(w, str) and w.strip()][:40]
+        self.task_queue = [{"task": str(t["task"]).strip()[:120], "pomodoros": _clip(t.get("pomodoros", 1), 1, 12)}
+                           for t in self.task_queue
+                           if isinstance(t, dict) and isinstance(t.get("task"), str) and t["task"].strip()
+                           and isinstance(t.get("pomodoros", 1), int)][:20]
+        self.unlocks_seen = [k for k in self.unlocks_seen if k in UNLOCKS]
+        if self.ai_provider not in PROVIDERS:
+            self.ai_provider = "anthropic"
+        if not self.ai_model.strip():  # any model id may be typed in; just not an empty one
+            self.ai_model = default_model("anthropic")
+        self.ai_models = {k: v.strip() for k, v in self.ai_models.items()
+                          if k in PROVIDERS and k != "anthropic" and isinstance(v, str) and v.strip()}
         if self.dashboard_range not in (0, 7, 30, 90):
             self.dashboard_range = 7
         self.recent_tasks = [t for t in self.recent_tasks if isinstance(t, str) and t.strip()][:12]
@@ -203,4 +270,6 @@ def _compatible(default, value) -> bool:
         return isinstance(value, str)
     if isinstance(default, list):
         return isinstance(value, list)
+    if isinstance(default, dict):
+        return isinstance(value, dict)
     return False

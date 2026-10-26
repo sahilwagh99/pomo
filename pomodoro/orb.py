@@ -344,7 +344,7 @@ class OrbWidget(QWidget):
         e = self.engine
         self.pomo.set_mood(mood_for(e.state, e.mode.is_break, self.ctrl.idle_seconds()))
         self.pomo.signal = self.ctrl.agent_signal()
-        self.pomo.outfit = self.ctrl.settings.pomo_outfit
+        self.pomo.outfit = self.ctrl.current_outfit()
         self.pomo.listening = self.ctrl.pomo_listening()
         anchor = self._pomo_anchor()
         size = POMO_SIZE * self._k()

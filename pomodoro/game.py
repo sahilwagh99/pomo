@@ -171,7 +171,7 @@ class GameWindow(QWidget):
             elif kind == "end":
                 self._finish()
         s = self.ctrl.settings
-        self.pomo.outfit = s.pomo_outfit
+        self.pomo.outfit = self.ctrl.current_outfit()
         self.pomo.listening = self.ctrl.pomo_listening()
         self.pomo.set_mood("focus" if self.state == "playing" else "idle")
         target = self.game.next_petal()

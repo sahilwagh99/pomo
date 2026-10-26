@@ -58,6 +58,7 @@ FACES = {
     "dizzy": ("spiral", "wobble", None),
     "love": ("happy", "grin", None),
     "munch": ("happy", "chomp", None),
+    "sideeye": ("half", "flat", None),  # caught you on YouTube during focus
 }
 
 
@@ -218,6 +219,12 @@ class Pomo:
             age=-delay, spin=self.rng.uniform(0, 6.28), color=QColor(self.rng.choice(NOTES))))
         del self.particles[:-MAX_PARTICLES]
 
+    def side_eye(self) -> None:
+        """A distracting app is in front during focus: a long, unimpressed look."""
+        self._react("sideeye", 3.2)
+        self.leaf.kick(-60.0)
+        self.squish.kick(1.5)
+
     def poke(self) -> str:
         now = self.t
         self._pokes = [p for p in self._pokes if now - p < POKE_WINDOW] + [now]
@@ -293,7 +300,9 @@ class Pomo:
             if last is None or abs(cursor[0] - last[0]) + abs(cursor[1] - last[1]) > 0.02:
                 self._cursor_moved_at = t
             self._last_cursor = cursor
-        if cursor is not None and t - self._cursor_moved_at < 4.0:
+        if self.reaction == "sideeye":  # a long look at whatever you just opened
+            target = (0.95, 0.1)
+        elif cursor is not None and t - self._cursor_moved_at < 4.0:
             dx, dy = cursor
             dist = math.hypot(dx, dy) or 1.0
             reach = min(1.0, dist / 3.0)
@@ -670,7 +679,8 @@ class Pomo:
         if outfit == "headphones":
             self._paint_headphones(p, c, rx, ry, s)
             return
-        if outfit not in ("beanie", "party", "crown", "bow"):
+        if outfit not in ("beanie", "party", "crown", "bow", "catears", "flowercrown", "gradcap", "wizard",
+                          "hardhat", "nightcap", "headband", "sunhat", "chefhat", "beret"):
             return
         # hats wobble a little with the same spring as the blossom
         base = QPointF(c.x(), c.y() - ry * 0.85)
@@ -776,6 +786,185 @@ class Pomo:
             p.drawEllipse(QPointF(0, 0), s * 0.11, s * 0.07)
             p.restore()
         p.drawEllipse(center, s * 0.04, s * 0.04)
+
+    def _paint_catears(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        for side in (-1, 1):
+            base_in, base_out = c.x() + side * rx * 0.18, c.x() + side * rx * 0.72
+            tip = QPointF(c.x() + side * rx * 0.58, c.y() - ry * 1.55)
+            ear = QPainterPath(QPointF(base_in, c.y() - ry * 0.86))
+            ear.lineTo(tip)
+            ear.lineTo(base_out, c.y() - ry * 0.62)
+            ear.closeSubpath()
+            p.setPen(self._line(s))
+            p.setBrush(BODY)
+            p.drawPath(ear)
+            inner = QPainterPath(QPointF(c.x() + side * rx * 0.3, c.y() - ry * 0.86))
+            inner.lineTo(c.x() + side * rx * 0.56, c.y() - ry * 1.32)
+            inner.lineTo(c.x() + side * rx * 0.64, c.y() - ry * 0.74)
+            inner.closeSubpath()
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor("#f6b3c4"))
+            p.drawPath(inner)
+
+    def _paint_flowercrown(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        colors = ("#fbd0d7", "#f9dc8a", "#c9c3ea", "#fbd0d7", "#a6cf92", "#f9dc8a", "#fbd0d7")
+        p.setPen(QPen(QColor("#86b874"), max(1.0, s * 0.03), Qt.SolidLine, Qt.RoundCap))
+        p.setBrush(Qt.NoBrush)
+        arc = QRectF(c.x() - rx * 0.86, c.y() - ry * 1.02, rx * 1.72, ry * 0.9)
+        p.drawArc(arc, 20 * 16, 140 * 16)
+        for i, color in enumerate(colors):
+            a = math.radians(160 - i * (140 / (len(colors) - 1)))
+            center = QPointF(arc.center().x() + math.cos(a) * arc.width() / 2,
+                             arc.center().y() - math.sin(a) * arc.height() / 2)
+            r = s * 0.055
+            p.setPen(QPen(OUTLINE, max(0.8, s * 0.016)))
+            p.setBrush(QColor(color))
+            for k in range(5):
+                b = math.radians(k * 72 + i * 20)
+                p.drawEllipse(QPointF(center.x() + math.cos(b) * r * 0.7, center.y() + math.sin(b) * r * 0.7), r * 0.55, r * 0.55)
+            p.setPen(Qt.NoPen)
+            p.setBrush(PETAL_HEART)
+            p.drawEllipse(center, r * 0.38, r * 0.38)
+
+    def _paint_gradcap(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        x, y = c.x(), c.y() - ry * 0.92
+        cap = QRectF(x - rx * 0.46, y - ry * 0.12, rx * 0.92, ry * 0.32)
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#5a5470"))
+        p.drawRoundedRect(cap, ry * 0.06, ry * 0.06)
+        board = QPainterPath(QPointF(x, y - ry * 0.52))
+        board.lineTo(x + rx * 0.82, y - ry * 0.2)
+        board.lineTo(x, y + ry * 0.08)
+        board.lineTo(x - rx * 0.82, y - ry * 0.2)
+        board.closeSubpath()
+        p.setBrush(QColor("#6d6788"))
+        p.drawPath(board)
+        p.setPen(QPen(QColor("#f5d77e"), max(1.0, s * 0.025), Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(QPointF(x, y - ry * 0.22), QPointF(x + rx * 0.62, y - ry * 0.12))
+        p.drawLine(QPointF(x + rx * 0.62, y - ry * 0.12), QPointF(x + rx * 0.64, y + ry * 0.32))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#f5d77e"))
+        p.drawEllipse(QPointF(x + rx * 0.64, y + ry * 0.36), s * 0.03, s * 0.045)
+
+    def _paint_wizard(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        x, y = c.x(), c.y()
+        brim = QRectF(x - rx * 0.78, y - ry * 0.98, rx * 1.56, ry * 0.36)
+        cone = QPainterPath(QPointF(x - rx * 0.5, y - ry * 0.82))
+        cone.quadTo(x - rx * 0.1, y - ry * 1.6, x + rx * 0.42, y - ry * 2.25)
+        cone.quadTo(x + rx * 0.2, y - ry * 1.5, x + rx * 0.5, y - ry * 0.82)
+        cone.closeSubpath()
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#9aa7df"))
+        p.drawPath(cone)
+        p.drawEllipse(brim)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#f5d77e"))
+        star = QPointF(x + rx * 0.02, y - ry * 1.3)
+        path = QPainterPath()
+        for i in range(10):
+            a = -math.pi / 2 + i * math.pi / 5
+            r = s * 0.06 if i % 2 == 0 else s * 0.025
+            point = QPointF(star.x() + math.cos(a) * r, star.y() + math.sin(a) * r)
+            path.moveTo(point) if i == 0 else path.lineTo(point)
+        path.closeSubpath()
+        p.drawPath(path)
+
+    def _paint_hardhat(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        x, y = c.x(), c.y()
+        dome = QPainterPath(QPointF(x - rx * 0.78, y - ry * 0.62))
+        dome.cubicTo(x - rx * 0.78, y - ry * 1.45, x + rx * 0.78, y - ry * 1.45, x + rx * 0.78, y - ry * 0.62)
+        dome.closeSubpath()
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#f7d36b"))
+        p.drawPath(dome)
+        p.setPen(QPen(QColor("#e4b847"), max(1.0, s * 0.03), Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(QPointF(x, y - ry * 1.27), QPointF(x, y - ry * 0.7))  # the ridge
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#f2c64f"))
+        p.drawRoundedRect(QRectF(x - rx * 0.98, y - ry * 0.72, rx * 1.96, ry * 0.2), ry * 0.08, ry * 0.08)
+
+    def _paint_nightcap(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        x, y = c.x(), c.y()
+        cap = QPainterPath(QPointF(x - rx * 0.82, y - ry * 0.6))
+        cap.cubicTo(x - rx * 0.7, y - ry * 1.5, x + rx * 0.4, y - ry * 1.55, x + rx * 1.15, y - ry * 0.95)
+        cap.quadTo(x + rx * 0.7, y - ry * 0.95, x + rx * 0.82, y - ry * 0.6)
+        cap.closeSubpath()
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#a7b3e3"))
+        p.drawPath(cap)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(255, 255, 255, 150))
+        for k in (-0.4, 0.0, 0.4):  # stars on the fabric
+            p.drawEllipse(QPointF(x + rx * k, y - ry * 1.05), s * 0.018, s * 0.018)
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#c9c3ea"))
+        p.drawRoundedRect(QRectF(x - rx * 0.9, y - ry * 0.72, rx * 1.8, ry * 0.24), ry * 0.1, ry * 0.1)
+        p.setBrush(QColor("#fffdf8"))
+        p.drawEllipse(QPointF(x + rx * 1.15, y - ry * 0.9), s * 0.07, s * 0.07)
+
+    def _paint_headband(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        x, y = c.x(), c.y() - ry * 0.68
+        band = QPainterPath(QPointF(x - rx * 0.92, y + ry * 0.08))
+        band.quadTo(x, y - ry * 0.22, x + rx * 0.92, y + ry * 0.08)
+        band.lineTo(x + rx * 0.86, y + ry * 0.3)
+        band.quadTo(x, y, x - rx * 0.86, y + ry * 0.3)
+        band.closeSubpath()
+        p.setPen(self._line(s, 0.022))
+        p.setBrush(QColor("#f3a7b8"))
+        p.drawPath(band)
+        p.setPen(QPen(QColor("#fffdf8"), max(1.0, s * 0.02), Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(QPointF(x - rx * 0.6, y + ry * 0.07), QPointF(x + rx * 0.6, y + ry * 0.07))
+        p.setPen(self._line(s, 0.022))
+        p.setBrush(QColor("#f3a7b8"))
+        for k in (0, 1):  # the knot's tails
+            tail = QPainterPath(QPointF(x + rx * 0.86, y + ry * 0.18))
+            tail.lineTo(x + rx * (1.1 + 0.08 * k), y + ry * (0.0 + 0.32 * k))
+            tail.lineTo(x + rx * (1.02 + 0.04 * k), y + ry * (0.16 + 0.24 * k))
+            tail.closeSubpath()
+            p.drawPath(tail)
+
+    def _paint_sunhat(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        x, y = c.x(), c.y()
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#f1d9a5"))
+        p.drawEllipse(QRectF(x - rx * 1.3, y - ry * 0.98, rx * 2.6, ry * 0.46))  # the brim
+        crown = QPainterPath(QPointF(x - rx * 0.6, y - ry * 0.78))
+        crown.cubicTo(x - rx * 0.6, y - ry * 1.75, x + rx * 0.6, y - ry * 1.75, x + rx * 0.6, y - ry * 0.78)
+        crown.closeSubpath()
+        p.drawPath(crown)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#f3a7b8"))
+        ribbon = QPainterPath(QPointF(x - rx * 0.6, y - ry * 0.84))
+        ribbon.quadTo(x, y - ry * 0.74, x + rx * 0.6, y - ry * 0.84)
+        ribbon.lineTo(x + rx * 0.6, y - ry * 1.0)
+        ribbon.quadTo(x, y - ry * 0.9, x - rx * 0.6, y - ry * 1.0)
+        ribbon.closeSubpath()
+        p.drawPath(ribbon)
+        p.setBrush(QColor("#fbd0d7"))
+        p.drawEllipse(QPointF(x + rx * 0.5, y - ry * 0.92), s * 0.05, s * 0.05)
+
+    def _paint_chefhat(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        x, y = c.x(), c.y()
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#fffdf8"))
+        puff = QPainterPath()
+        puff.setFillRule(Qt.WindingFill)  # overlapping puffs fill as one
+        for dx, dy, r in ((-0.42, -1.35, 0.3), (0.0, -1.55, 0.36), (0.42, -1.35, 0.3)):
+            puff.addEllipse(QPointF(x + rx * dx, y + ry * dy), rx * r, rx * r)
+        puff.addRect(QRectF(x - rx * 0.6, y - ry * 1.35, rx * 1.2, ry * 0.6))
+        p.drawPath(puff.simplified())
+        p.drawRoundedRect(QRectF(x - rx * 0.66, y - ry * 0.86, rx * 1.32, ry * 0.3), ry * 0.06, ry * 0.06)
+
+    def _paint_beret(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        x, y = c.x(), c.y()
+        p.save()
+        p.translate(x, y - ry * 0.85)
+        p.rotate(-12)
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#c96b80"))
+        p.drawEllipse(QRectF(-rx * 0.95, -ry * 0.4, rx * 1.8, ry * 0.62))
+        p.drawLine(QPointF(rx * 0.05, -ry * 0.4), QPointF(rx * 0.1, -ry * 0.58))  # the little stalk
+        p.restore()
 
     def _paint_glasses(self, p: QPainter, center: QPointF, rx: float, r: float, s: float) -> None:
         p.setPen(self._line(s, 0.024))

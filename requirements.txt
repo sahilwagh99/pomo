@@ -1,5 +1,6 @@
 PySide6-Essentials>=6.7
 anthropic>=1.15
+httpx2>=2.14  # OpenAI, Gemini, Grok and OpenRouter (their OpenAI-compatible endpoints)
 # Now playing: Windows' media controls (Spotify, YouTube in a browser, ...)
 winrt-runtime>=3.2,<4; sys_platform == "win32"
 winrt-Windows.Foundation>=3.2,<4; sys_platform == "win32"

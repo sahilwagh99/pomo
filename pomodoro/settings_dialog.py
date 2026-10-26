@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import date
 
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QKeySequence, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
@@ -14,10 +14,12 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QKeySequenceEdit,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSlider,
     QSpinBox,
@@ -27,8 +29,9 @@ from PySide6.QtWidgets import (
 )
 
 from . import APP_NAME, APP_VERSION, claude_hooks, keystore, media
-from .ai import KEYS_URL, KeyCheckWorker
-from .config import AI_MODELS, ORB_SIZES, OUTFITS, SOUND_NAMES, Settings
+from .ai import KeyCheckWorker
+from .config import HOTKEYS, ORB_SIZES, OUTFITS, SOUND_NAMES, UNLOCKS, Settings
+from .providers import PROVIDERS, default_model, model_for, model_label, provider, set_model
 from .stats import plural
 from .theme import THEMES, theme_for
 from .winutil import set_dark_title_bar
@@ -94,6 +97,17 @@ def _hint(text: str) -> QLabel:
     return label
 
 
+def _scrolled(page: QWidget) -> QScrollArea:
+    area = QScrollArea()
+    area.setWidgetResizable(True)
+    area.setFrameShape(QScrollArea.NoFrame)
+    area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    area.setWidget(page)
+    area.setMinimumWidth(page.sizeHint().width() + 4)
+    area.setMinimumHeight(min(page.sizeHint().height() + 4, 480))  # taller tabs scroll the rest
+    return area
+
+
 def _form() -> tuple[QWidget, QFormLayout]:
     page = QWidget()
     form = QFormLayout(page)
@@ -111,7 +125,7 @@ class SettingsDialog(QDialog):
         self.ctrl = ctrl
         self.setWindowTitle(f"{APP_NAME} · Settings")
         self.setWindowIcon(ctrl.icon)
-        self.setMinimumWidth(540)
+        self.setMinimumWidth(600)
         self.setAttribute(Qt.WA_DeleteOnClose)
 
         root = QVBoxLayout(self)
@@ -121,12 +135,10 @@ class SettingsDialog(QDialog):
         title.setProperty("role", "h1")
         root.addWidget(title)
         self.tabs = tabs = QTabWidget()
-        tabs.addTab(self._timer_tab(), "Timer")
-        tabs.addTab(self._alerts_tab(), "Alerts")
-        tabs.addTab(self._appearance_tab(), "Appearance")
-        tabs.addTab(self._agents_tab(), "Agents")
-        tabs.addTab(self._ai_tab(), "AI")
-        tabs.addTab(self._general_tab(), "General")
+        for build, name in ((self._timer_tab, "Timer"), (self._focus_tab, "Focus"), (self._alerts_tab, "Alerts"),
+                            (self._appearance_tab, "Appearance"), (self._agents_tab, "Agents"), (self._ai_tab, "AI"),
+                            (self._keys_tab, "Shortcuts"), (self._general_tab, "General")):
+            tabs.addTab(_scrolled(build()), name)
         root.addWidget(tabs, 1)
 
         buttons = QHBoxLayout()
@@ -146,6 +158,9 @@ class SettingsDialog(QDialog):
         root.addLayout(buttons)
 
         self._load(ctrl.settings)
+        screen = self.screen().availableGeometry() if self.screen() else None
+        if screen is not None:  # tall tabs scroll, so the window fits small screens
+            self.resize(self.sizeHint().width(), min(self.sizeHint().height(), screen.height() - 60))
 
     # ------------------------------------------------------------------ tabs
     def _timer_tab(self) -> QWidget:
@@ -168,6 +183,57 @@ class SettingsDialog(QDialog):
         form.addRow("", self.auto_focus)
         form.addRow("", _hint("Tip: double-click the time on the timer to type a new one,\n"
                               "or scroll over it to add or remove a minute."))
+        return page
+
+    def _focus_tab(self) -> QWidget:
+        page, form = _form()
+        self.rate_sessions = QCheckBox("Ask how each focus session went (one tap)")
+        self.suggest_length = QCheckBox("Suggest a better focus length from my answers")
+        self.rate_sessions.toggled.connect(self.suggest_length.setEnabled)
+        self.away_after = _spin(0, 60, " min")
+        self.away_after.setSpecialValueText("Off")
+        self.focus_guard = QCheckBox("Notice distracting apps and sites during focus")
+        self.distracting = QLineEdit()
+        self.distracting.setPlaceholderText("youtube, reddit, netflix")
+        self.focus_guard.toggled.connect(self.distracting.setEnabled)
+        self.quiet_focus = QCheckBox("Hold agent updates until my break")
+        self.break_card = QCheckBox("Offer breathing, parked thoughts and a game")
+        form.addRow("After a session", self.rate_sessions)
+        form.addRow("", self.suggest_length)
+        form.addRow("Away from the PC", self.away_after)
+        form.addRow("", _hint("Pauses the focus session when the keyboard and mouse have\n"
+                              "been still this long, and gives that time back."))
+        form.addRow("Distractions", self.focus_guard)
+        form.addRow("Sites and apps", self.distracting)
+        form.addRow("", _hint("Pomo only looks at which app or site is in front, never what's\n"
+                              "in it, and keeps the names and minutes on this PC."))
+        form.addRow("Quiet focus", self.quiet_focus)
+        form.addRow("", _hint("Windows doesn't let apps turn on its own Focus or Do not disturb,\n"
+                              "so Pomo keeps itself quiet. Permission requests still come through."))
+        form.addRow("When a break starts", self.break_card)
+        return page
+
+    def _keys_tab(self) -> QWidget:
+        page, form = _form()
+        self.hotkeys_on = QCheckBox("Use global shortcuts (they work from any app)")
+        form.addRow("", self.hotkeys_on)
+        self.hotkey_edits: dict[str, QKeySequenceEdit] = {}
+        for _action, (attr, label) in HOTKEYS.items():
+            edit = QKeySequenceEdit()
+            edit.setMaximumSequenceLength(1)
+            edit.setClearButtonEnabled(True)
+            self.hotkey_edits[attr] = edit
+            form.addRow(label, edit)
+        self.hotkeys_on.toggled.connect(lambda on: [e.setEnabled(on) for e in self.hotkey_edits.values()])
+        problems = [f"{HOTKEYS[action][1]}: {why}" for action, why in self.ctrl.hotkey_failures.items()]
+        if problems:
+            warn = _hint("Not working right now:\n" + "\n".join(problems))
+            warn.setStyleSheet(f"color: {self.ctrl.theme.danger};")
+            form.addRow("", warn)
+        form.addRow("", _hint("Shortcuts need Ctrl, Alt or Win. Ctrl+Alt+Shift keeps them\n"
+                              "clear of the shortcuts other apps use."))
+        if not self.ctrl.hotkeys.available:
+            self.hotkeys_on.setEnabled(False)
         return page
 
     def _alerts_tab(self) -> QWidget:
@@ -207,7 +273,11 @@ class SettingsDialog(QDialog):
             self.theme_box.addItem(theme.label, theme.key)
         self.outfit_box = QComboBox()
         for key, label in OUTFITS.items():
-            self.outfit_box.addItem(label, key)
+            if self.ctrl.lifetime >= UNLOCKS.get(key, 0):
+                self.outfit_box.addItem(label, key)
+            else:  # still growing in the garden
+                self.outfit_box.addItem(f"{label}  (at {UNLOCKS[key]} pomodoros)", key)
+                self.outfit_box.model().item(self.outfit_box.count() - 1).setEnabled(False)
         self.style_box = QComboBox()
         self.style_box.addItems(["Floating orb", "Top island"])
         self.buddy = QCheckBox("Show Pomo, your focus buddy")
@@ -230,7 +300,9 @@ class SettingsDialog(QDialog):
         form.addRow("Theme", self.theme_box)
         form.addRow("Timer style", self.style_box)
         form.addRow("", self.buddy)
+        self.outfit_follows = QCheckBox("Pomo dresses for what you're doing")
         form.addRow("Pomo's outfit", self.outfit_box)
+        form.addRow("", self.outfit_follows)
         form.addRow("", self.island_autohide)
         form.addRow("Orb size", self.size_box)
         form.addRow("Opacity", opacity_box)
@@ -271,6 +343,22 @@ class SettingsDialog(QDialog):
                               "Claude Code asks in the terminal as usual."))
         form.addRow("", self.notify_finish)
         form.addRow("When longer than", self.notify_after)
+        self.agent_questions = QCheckBox("Answer Claude's multiple-choice questions in Pomo")
+        self.agent_reply = QCheckBox("Let me reply to Claude in Pomo when it finishes")
+        self.agent_reply_wait = _spin(10, 300, " s")
+        self.agent_reply.toggled.connect(self.agent_reply_wait.setEnabled)
+        form.addRow("", self.agent_questions)
+        form.addRow("", self.agent_reply)
+        form.addRow("Claude waits", self.agent_reply_wait)
+        form.addRow("", _hint("Only while you're away from your terminal or editor; there, Claude\n"
+                              "Code asks and stops as usual. Pomo shows Claude's own words."))
+        self.agent_break_hint = QCheckBox("Suggest a break while an agent works on a long task")
+        self.agent_break_after = _spin(30, 1800, " s")
+        self.agent_break_hint.toggled.connect(self.agent_break_after.setEnabled)
+        form.addRow("", self.agent_break_hint)
+        form.addRow("Long task after", self.agent_break_after)
+        form.addRow("", _hint("Late in a focus session, Pomo offers your break then. With the\n"
+                              "timer idle, it offers a focus session while you wait."))
         self._refresh_hooks_status()
         return page
 
@@ -310,13 +398,26 @@ class SettingsDialog(QDialog):
 
     def _ai_tab(self) -> QWidget:
         page, form = _form()
+        self.provider_box = QComboBox()
+        for prov in PROVIDERS.values():
+            self.provider_box.addItem(prov.label, prov.key)
+        self.model_box = QComboBox()
+        self.model_box.setEditable(True)
+        self.model_box.setInsertPolicy(QComboBox.NoInsert)
+        self.load_models = QPushButton("Load models")
+        self.load_models.setToolTip("Fetch the models your key can use")
+        self.load_models.clicked.connect(self._check_key)
+        model_row = QWidget()
+        lay = QHBoxLayout(model_row)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.model_box, 1)
+        lay.addWidget(self.load_models)
         self.key_status = QLabel()
         self.key_status.setWordWrap(True)
         # without this the form squeezes the label to its narrowest wrap and clips the second line
         self.key_status.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.key_input = QLineEdit()
         self.key_input.setEchoMode(QLineEdit.Password)
-        self.key_input.setPlaceholderText("Paste your key (sk-ant-…)")
         save_key = QPushButton("Save key")
         save_key.clicked.connect(self._save_key)
         key_row = QWidget()
@@ -328,7 +429,7 @@ class SettingsDialog(QDialog):
         self.check_key.clicked.connect(self._check_key)
         get_key = QPushButton("Get a key")
         get_key.setObjectName("ghost")
-        get_key.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(KEYS_URL)))
+        get_key.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(provider(self._provider()).keys_url)))
         self.remove_key = QPushButton("Remove")
         self.remove_key.setObjectName("ghost")
         self.remove_key.clicked.connect(self._remove_key)
@@ -339,40 +440,78 @@ class SettingsDialog(QDialog):
         lay.addWidget(get_key)
         lay.addWidget(self.remove_key)
         lay.addStretch(1)
-        self.model_box = QComboBox()
-        for model_id, label in AI_MODELS.items():
-            self.model_box.addItem(label, model_id)
         open_chat = QPushButton("Open Ask Pomo")
         open_chat.clicked.connect(self.ctrl.open_chat)
+        form.addRow("Provider", self.provider_box)
+        form.addRow("Model", model_row)
+        form.addRow("", _hint("Pick a suggestion or type any model ID. Load models fetches\n"
+                              "the models your key can use."))
         form.addRow("Your key", self.key_status)
         form.addRow("", key_row)
         form.addRow("", key_actions)
-        form.addRow("", _hint("Bring your own key: Ask Pomo uses your Anthropic API key, so you\n"
-                              "only pay Anthropic for what you use. The key is stored encrypted for\n"
-                              "your Windows account and is only ever sent to Anthropic."))
-        form.addRow("Model", self.model_box)
+        form.addRow("", _hint("Bring your own key: you only pay the provider for what you use.\n"
+                              "Keys are stored encrypted for your Windows account and are only\n"
+                              "ever sent to their own provider."))
+        self.review_hour = _spin(0, 23, ":00")
+        self.review_hour.setSpecialValueText("Off")
+        form.addRow("Day review from", self.review_hour)
+        form.addRow("", _hint("From this hour, Pomo offers a short review of your day.\n"
+                              "It only asks the AI if you say yes."))
         form.addRow("", _hint("Ask Pomo sends your question and a short summary of your focus\n"
-                              "stats, task names and agent activity to Anthropic. Nothing is sent\n"
-                              "until you ask something."))
+                              "stats, task names and agent activity to the provider you picked.\n"
+                              "Nothing is sent until you ask something."))
         form.addRow("", open_chat)
         self._key_check: KeyCheckWorker | None = None
-        self._refresh_key_status()
+        self._pending_models = {k: model_for(self.ctrl.settings, k) for k in PROVIDERS}
+        self._loaded_models: dict[str, list[str]] = {}
+        self._shown_provider = self.ctrl.settings.ai_provider
+        self.provider_box.currentIndexChanged.connect(self._provider_changed)
         return page
 
+    def _provider(self) -> str:
+        return self.provider_box.currentData() or "anthropic"
+
+    def _provider_changed(self) -> None:
+        if self._shown_provider:  # keep what was typed for the provider we're leaving
+            self._pending_models[self._shown_provider] = self.model_box.currentText().strip()
+        self._shown_provider = self._provider()
+        self._fill_models()
+        self._refresh_key_status()
+
+    def _fill_models(self) -> None:
+        key = self._provider()
+        prov = provider(key)
+        current = self._pending_models.get(key) or default_model(key)
+        self.model_box.blockSignals(True)
+        self.model_box.clear()
+        ids = [m for m, _label in prov.models] + [m for m in self._loaded_models.get(key, []) if m not in dict(prov.models)]
+        if current not in ids:
+            ids.insert(0, current)
+        for model in ids:
+            self.model_box.addItem(model)
+            self.model_box.setItemData(self.model_box.count() - 1, model_label(key, model), Qt.ToolTipRole)
+        self.model_box.setCurrentText(current)
+        self.model_box.blockSignals(False)
+        self.key_input.setPlaceholderText(f"Paste your {prov.short} key ({prov.key_hint})")
+
     def _refresh_key_status(self, text: str = "", tone: str | None = None) -> None:
-        key = self.ctrl.ai_key()
+        key_name = self._provider()
+        prov = provider(key_name)
+        key = self.ctrl.ai_key(key_name)
         if not text:
             if key:
                 text = f"Saved ({keystore.mask(key)})."
-            elif self.ctrl.has_ai_key():
-                text = "Using the key from your environment (ANTHROPIC_API_KEY)."
+            elif self.ctrl.has_ai_key(key_name):
+                text = f"Using the key from your environment ({' or '.join(prov.env)})."
             else:
-                text = "No key yet. Paste yours below to chat with Pomo."
+                text = f"No {prov.short} key yet. Paste yours below."
         color = {"good": self.ctrl.theme.success, "bad": self.ctrl.theme.danger}.get(tone)
         self.key_status.setStyleSheet(f"color: {color};" if color else "")
         self.key_status.setText(text)
         self.remove_key.setVisible(bool(key))
-        self.check_key.setEnabled(self.ctrl.has_ai_key() and self._key_check is None)
+        busy = self._key_check is not None
+        self.check_key.setEnabled(self.ctrl.has_ai_key(key_name) and not busy)
+        self.load_models.setEnabled(self.ctrl.has_ai_key(key_name) and not busy)
         if getattr(self.ctrl, "chat", None) is not None:
             self.ctrl.chat.refresh_key()
 
@@ -381,7 +520,7 @@ class SettingsDialog(QDialog):
         if not key:
             return False
         try:
-            keystore.save_key(self.ctrl.ai_key_path, key)
+            keystore.save_key(self.ctrl.key_path_for(self._provider()), key)
         except OSError as exc:
             QMessageBox.warning(self, "API key", str(exc))
             return False
@@ -390,23 +529,33 @@ class SettingsDialog(QDialog):
         return True
 
     def _check_key(self) -> None:
-        if self._key_check is not None or not self.ctrl.has_ai_key():
+        key_name = self._provider()
+        if self._key_check is not None or not self.ctrl.has_ai_key(key_name):
             return
+        api_key = self.ctrl.ai_key(key_name) or self.ctrl.env_ai_key(key_name)
         # parented to the app, not this dialog, which is deleted when it closes
-        self._key_check = worker = KeyCheckWorker(self.ctrl.ai_key(), self.model_box.currentData(), self.ctrl)
+        self._key_check = worker = KeyCheckWorker(key_name, api_key, self.model_box.currentText().strip(), self.ctrl)
         worker.result.connect(self._on_key_checked)
+        worker.models.connect(lambda models, k=key_name: self._on_models(k, models))
         worker.finished.connect(worker.deleteLater)
         worker.start()
-        self._refresh_key_status("Checking your key with Anthropic…")
+        self._refresh_key_status(f"Checking your key with {provider(key_name).short}…")
+
+    def _on_models(self, key_name: str, models: list) -> None:
+        self._loaded_models[key_name] = list(models)
+        if key_name == self._provider():
+            self._pending_models[key_name] = self.model_box.currentText().strip()
+            self._fill_models()
 
     def _on_key_checked(self, status: str, message: str) -> None:
         self._key_check = None
-        if status == "bad" and self.ctrl.ai_key():
-            keystore.delete_key(self.ctrl.ai_key_path)  # don't keep a key Anthropic rejected
+        key_name = self._provider()
+        if status == "bad" and self.ctrl.ai_key(key_name):
+            keystore.delete_key(self.ctrl.key_path_for(key_name))  # don't keep a key the provider rejected
         self._refresh_key_status(message, "good" if status in ("ok", "warn") else "bad")
 
     def _remove_key(self) -> None:
-        keystore.delete_key(self.ctrl.ai_key_path)
+        keystore.delete_key(self.ctrl.key_path_for(self._provider()))
         self._refresh_key_status()
 
     def done(self, result: int) -> None:
@@ -431,17 +580,21 @@ class SettingsDialog(QDialog):
             button.setCursor(Qt.PointingHandCursor)
         self.music_controls = QCheckBox("Show what's playing, with music controls")
         self.pomo_listens = QCheckBox("Pomo listens along (headphones and a little sway)")
+        self.music_follows = QCheckBox("Play music while I focus, pause it on breaks")
         self.music_controls.toggled.connect(self.pomo_listens.setEnabled)
+        self.music_controls.toggled.connect(self.music_follows.setEnabled)
         form.addRow("Startup", self.autostart)
         form.addRow("", _hint(f"Starts {APP_NAME} when you sign in to Windows."))
         form.addRow("Music", self.music_controls)
         form.addRow("", self.pomo_listens)
+        form.addRow("", self.music_follows)
         if media.available():
             form.addRow("", _hint("Works with Spotify, YouTube in your browser and any app in\n"
                                   "Windows' media controls. Nothing leaves your PC."))
         else:
             self.music_controls.setEnabled(False)
             self.pomo_listens.setEnabled(False)
+            self.music_follows.setEnabled(False)
             form.addRow("", _hint("Music controls need Windows 10 or later."))
         form.addRow("Position", corner)
         form.addRow("Data", folder)
@@ -470,6 +623,7 @@ class SettingsDialog(QDialog):
         self.idle.setValue(s.idle_reminder_min)
         self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(s.theme)))
         self.outfit_box.setCurrentIndex(max(0, self.outfit_box.findData(s.pomo_outfit)))
+        self.outfit_follows.setChecked(s.outfit_follows)
         self.style_box.setCurrentIndex(1 if s.display_mode == "island" else 0)
         self.buddy.setChecked(s.show_buddy)
         self.island_autohide.setChecked(s.island_autohide)
@@ -482,6 +636,30 @@ class SettingsDialog(QDialog):
         for mode, button in self.colors.items():
             button.set_value(getattr(s, f"{mode}_color"))
         self.autostart.setChecked(s.start_with_windows)
+        self.music_follows.setChecked(s.music_follows)
+        self.music_follows.setEnabled(s.music_controls and media.available())
+        self.rate_sessions.setChecked(s.rate_sessions)
+        self.suggest_length.setChecked(s.suggest_length)
+        self.suggest_length.setEnabled(s.rate_sessions)
+        self.away_after.setValue(s.away_after_min)
+        self.focus_guard.setChecked(s.focus_guard)
+        self.distracting.setText(", ".join(s.distracting))
+        self.distracting.setCursorPosition(0)
+        self.distracting.setEnabled(s.focus_guard)
+        self.quiet_focus.setChecked(s.quiet_focus)
+        self.break_card.setChecked(s.break_card)
+        self.hotkeys_on.setChecked(s.hotkeys_on)
+        for attr, edit in self.hotkey_edits.items():
+            edit.setKeySequence(QKeySequence.fromString(getattr(s, attr), QKeySequence.PortableText))
+            edit.setEnabled(s.hotkeys_on)
+        self.agent_questions.setChecked(s.agent_questions)
+        self.agent_reply.setChecked(s.agent_reply)
+        self.agent_reply_wait.setValue(s.agent_reply_wait_s)
+        self.agent_reply_wait.setEnabled(s.agent_reply)
+        self.agent_break_hint.setChecked(s.agent_break_hint)
+        self.agent_break_after.setValue(s.agent_break_after_s)
+        self.agent_break_after.setEnabled(s.agent_break_hint)
+        self.review_hour.setValue(s.review_hour)
         self.music_controls.setChecked(s.music_controls)
         self.pomo_listens.setChecked(s.pomo_listens)
         self.pomo_listens.setEnabled(s.music_controls and media.available())
@@ -489,7 +667,12 @@ class SettingsDialog(QDialog):
         self.approval_wait.setValue(s.approval_wait_s)
         self.notify_finish.setChecked(s.agent_notify_finish)
         self.notify_after.setValue(s.agent_notify_after_s)
-        self.model_box.setCurrentIndex(max(0, self.model_box.findData(s.ai_model)))
+        self._pending_models = {k: model_for(s, k) for k in PROVIDERS}
+        self._shown_provider = ""
+        self.provider_box.setCurrentIndex(max(0, self.provider_box.findData(s.ai_provider)))
+        self._shown_provider = self._provider()
+        self._fill_models()
+        self._refresh_key_status()
 
     def _collect(self) -> Settings:
         # start from the live settings so runtime state (position, task, cycle) is kept
@@ -510,6 +693,7 @@ class SettingsDialog(QDialog):
         s.idle_reminder_min = self.idle.value()
         s.theme = self.theme_box.currentData()
         s.pomo_outfit = self.outfit_box.currentData()
+        s.outfit_follows = self.outfit_follows.isChecked()
         s.display_mode = "island" if self.style_box.currentIndex() == 1 else "orb"
         s.show_buddy = self.buddy.isChecked()
         s.island_autohide = self.island_autohide.isChecked()
@@ -521,20 +705,40 @@ class SettingsDialog(QDialog):
         for mode, button in self.colors.items():
             setattr(s, f"{mode}_color", button.value)
         s.start_with_windows = self.autostart.isChecked()
+        s.music_follows = self.music_follows.isChecked()
+        s.rate_sessions = self.rate_sessions.isChecked()
+        s.suggest_length = self.suggest_length.isChecked()
+        s.away_after_min = self.away_after.value()
+        s.focus_guard = self.focus_guard.isChecked()
+        s.distracting = [w.strip().lower() for w in self.distracting.text().split(",") if w.strip()]
+        s.quiet_focus = self.quiet_focus.isChecked()
+        s.break_card = self.break_card.isChecked()
+        s.hotkeys_on = self.hotkeys_on.isChecked()
+        for attr, edit in self.hotkey_edits.items():
+            setattr(s, attr, edit.keySequence().toString(QKeySequence.PortableText))
+        s.agent_questions = self.agent_questions.isChecked()
+        s.agent_reply = self.agent_reply.isChecked()
+        s.agent_reply_wait_s = self.agent_reply_wait.value()
+        s.agent_break_hint = self.agent_break_hint.isChecked()
+        s.agent_break_after_s = self.agent_break_after.value()
+        s.review_hour = self.review_hour.value()
         s.music_controls = self.music_controls.isChecked()
         s.pomo_listens = self.pomo_listens.isChecked()
         s.agent_approvals = self.approvals.isChecked()
         s.approval_wait_s = self.approval_wait.value()
         s.agent_notify_finish = self.notify_finish.isChecked()
         s.agent_notify_after_s = self.notify_after.value()
-        s.ai_model = self.model_box.currentData()
+        self._pending_models[self._provider()] = self.model_box.currentText().strip()
+        s.ai_provider = self._provider()
+        for key_name, model in self._pending_models.items():
+            set_model(s, key_name, model)
         s.clamp()
         return s
 
     def _save(self) -> None:
         if self.key_input.text().strip():  # Enter in the key field lands here too
             try:
-                keystore.save_key(self.ctrl.ai_key_path, self.key_input.text().strip())
+                keystore.save_key(self.ctrl.key_path_for(self._provider()), self.key_input.text().strip())
             except OSError as exc:
                 QMessageBox.warning(self, "API key", str(exc))
         self.ctrl.apply_settings(self._collect())

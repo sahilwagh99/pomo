@@ -4,10 +4,13 @@ Claude Code starts this for each hook event with the event JSON on stdin. It
 forwards a compact summary to the running Pomo over a local named pipe.
 
 For PermissionRequest it waits for the user's answer in Pomo and prints the
-decision JSON Claude Code expects. In every other case (Pomo not running,
-"answer in terminal", no answer in time, anything unexpected) it prints nothing,
-so Claude Code shows its normal permission prompt. It always exits 0: a hook
-must never break the agent.
+decision JSON Claude Code expects. Run with --answer (see claude_hooks.py), it
+also waits on two more events: Claude's multiple-choice questions (PreToolUse for
+AskUserQuestion), answered with updatedInput, and the end of a turn (Stop), where a
+reply from Pomo becomes Claude's next instruction. In every other case (Pomo not
+running, "answer in terminal", no answer in time, anything unexpected) it prints
+nothing, so Claude Code carries on as usual. It always exits 0: a hook must never
+break the agent.
 
 Standard library only, no Qt: it has to start fast.
 """
@@ -21,10 +24,12 @@ import sys
 import time
 
 MARKER = "--pomo-hook"
+ANSWER_FLAG = "--answer"  # this run may wait for the user's answer (questions, replies)
 LEGACY_MARKERS = ("--focusorb-hook",)  # written by 1.1, when the app was called FocusOrb
 PROTOCOL = 1
 CLIP = 300
 CLIP_APPROVAL = 1200  # show the whole command when the user is asked to approve it
+CLIP_MESSAGE = 8000   # Claude's own words, shown in full in Pomo
 
 
 def pipe_name() -> str:
@@ -82,12 +87,32 @@ def edit_size(tool: str, tool_input) -> tuple[int, int]:
     return 0, 0
 
 
-def summarize(event: dict) -> dict:
+def _text(text, limit: int) -> str:
+    """Clipped but with its line breaks: for messages shown as Claude wrote them."""
+    text = str(text or "").strip()
+    return text if len(text) <= limit else text[: limit - 1] + "\u2026"
+
+
+def questions_of(tool_input) -> list[dict]:
+    """AskUserQuestion's questions, trimmed for display."""
+    out = []
+    for q in (tool_input.get("questions") if isinstance(tool_input, dict) else None) or []:
+        if not isinstance(q, dict) or not isinstance(q.get("question"), str):
+            continue
+        options = [{"label": _clip(o.get("label"), 120), "description": _clip(o.get("description"), 300)}
+                   for o in q.get("options") or [] if isinstance(o, dict) and o.get("label")]
+        out.append({"question": _text(q["question"], 1000), "header": _clip(q.get("header"), 40),
+                    "options": options[:8], "multiSelect": bool(q.get("multiSelect"))})
+    return out[:4]
+
+
+def summarize(event: dict, answer: bool = False) -> dict:
     """The compact message Pomo receives: no file contents, clipped text."""
     name = str(event.get("hook_event_name", ""))
     tool = str(event.get("tool_name") or "")
     tool_input = event.get("tool_input")
     approval = name == "PermissionRequest"
+    question = answer and name == "PreToolUse" and tool == "AskUserQuestion"
     msg = {
         "v": PROTOCOL,
         "event": name,
@@ -98,27 +123,52 @@ def summarize(event: dict) -> dict:
         "kind": "",
         "added": 0,
         "removed": 0,
-        "wait": approval,
+        "wait": approval or question or (answer and name == "Stop"),
     }
     if name == "UserPromptSubmit":
         msg["detail"] = _clip(event.get("prompt", ""))
     elif name == "Notification":
         msg["detail"] = _clip(event.get("message", ""))
+        msg["message"] = _text(event.get("message", ""), 2000)  # exactly as Claude Code shows it
+        msg["title"] = _clip(event.get("title", ""), 120)
         msg["kind"] = str(event.get("notification_type", ""))
     elif name in ("Stop", "SubagentStop"):
         msg["detail"] = _clip(event.get("last_assistant_message", ""))
+        msg["message"] = _text(event.get("last_assistant_message", ""), CLIP_MESSAGE)
+        msg["kind"] = "continuing" if event.get("stop_hook_active") else ""
     elif name == "SessionStart":
         msg["kind"] = str(event.get("source", ""))
     elif name == "SessionEnd":
         msg["kind"] = str(event.get("reason", ""))
     elif name == "PostToolUse":
         msg["added"], msg["removed"] = edit_size(tool, tool_input)
+    if question:
+        msg["kind"] = "question"
+        msg["questions"] = questions_of(tool_input)
     return msg
 
 
-def decision_output(reply: dict) -> dict | None:
-    """Claude Code's PermissionRequest output for Pomo's reply, or None to stay silent."""
+def decision_output(reply: dict, event: dict | None = None) -> dict | None:
+    """Claude Code's hook output for Pomo's reply, or None to stay silent (Claude Code carries on as usual)."""
     decision = reply.get("decision") if isinstance(reply, dict) else None
+    name = str((event or {}).get("hook_event_name", "PermissionRequest"))
+    if name == "PreToolUse" and decision == "answer":
+        tool_input = (event or {}).get("tool_input")
+        answers = reply.get("answers")
+        if not isinstance(tool_input, dict) or not isinstance(answers, list):
+            return None
+        # updatedInput replaces the whole input: echo the questions, add the answers keyed by question text
+        keyed = {q["question"]: str(a) for q, a in zip(tool_input.get("questions") or [], answers)
+                 if isinstance(q, dict) and isinstance(q.get("question"), str) and a not in (None, "")}
+        if not keyed:
+            return None
+        return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow",
+                                       "updatedInput": {**tool_input, "answers": keyed}}}
+    if name == "Stop":
+        text = str(reply.get("message") or "").strip() if decision == "reply" else ""
+        return {"decision": "block", "reason": f"The user replied (from Pomo): {text}"} if text else None
+    if name != "PermissionRequest":
+        return None
     if decision == "allow":
         return {"hookSpecificOutput": {"hookEventName": "PermissionRequest",
                                        "decision": {"behavior": "allow"}}}
@@ -171,7 +221,7 @@ def run() -> int:
         event = json.loads((stdin.read() if stdin else b"") or b"{}")
         if not isinstance(event, dict):
             return 0
-        msg = summarize(event)
+        msg = summarize(event, answer=ANSWER_FLAG in sys.argv)
         conn = _connect()
         if conn is None:
             return 0
@@ -182,7 +232,7 @@ def run() -> int:
             conn.close()
         if not line:
             return 0
-        out = decision_output(json.loads(line))
+        out = decision_output(json.loads(line), event)
         stdout = _std_stream(1)
         if out is not None and stdout is not None:
             stdout.write(json.dumps(out).encode("utf-8"))

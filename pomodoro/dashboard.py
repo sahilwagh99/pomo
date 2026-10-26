@@ -25,8 +25,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import garden, insights
 from .charts import Bar, CalendarHeatmap, ColumnChart, HBarChart, Meter
 from .engine import State
+from .garden import GardenWidget
 from .stats import (
     Summary,
     daily_map,
@@ -200,6 +202,7 @@ class Dashboard(QWidget):
         row4.addWidget(week_card, 2)
         root.addLayout(row4)
 
+        root.addLayout(self._build_insights_row())
         root.addWidget(self._build_agents_card())
 
         log_card = Card("Session log", "Most recent first. Export the full history as CSV from the top right.")
@@ -327,8 +330,79 @@ class Dashboard(QWidget):
              for i, sec in enumerate(summary.by_weekday)],
             focus_color, label_every=1,
         )
+        self._refresh_insights(records, start, today, summary, focus_color)
         self._refresh_table([r for r in records if start <= r.day <= today])
         self._refresh_agents()
+
+    # ------------------------------------------------------- garden, insights
+    def _build_insights_row(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(16)
+        garden_card = Card("Focus garden", "Your sakura grows with every pomodoro. Each blossom is one in this range.")
+        self.garden = GardenWidget(self.theme)
+        garden_card.body.addWidget(self.garden)
+        self.garden_note = _label("", "secondary", wrap=True)
+        garden_card.body.addWidget(self.garden_note)
+        garden_card.body.addStretch(1)
+        insights_card = Card("Insights", "What Pomo has learned about how you focus.")
+        self.insight_lines: dict[str, QLabel] = {}
+        for key in ("length", "ratings", "score"):
+            line = _label("", "secondary", wrap=True)
+            line.setTextFormat(Qt.RichText)
+            insights_card.body.addWidget(line)
+            self.insight_lines[key] = line
+        insights_card.body.addSpacing(6)
+        self.apps_title = _label("Where your focus time went", "title")
+        insights_card.body.addWidget(self.apps_title)
+        self.apps = HBarChart(self.theme)
+        insights_card.body.addWidget(self.apps)
+        insights_card.body.addStretch(1)
+        row.addWidget(garden_card, 2)
+        row.addWidget(insights_card, 3)
+        return row
+
+    def _refresh_insights(self, records, start: date, today: date, summary: Summary, color: QColor) -> None:
+        s, storage = self.ctrl.settings, self.ctrl.storage
+        lifetime = storage.lifetime_pomodoros()
+        self.garden.set_data(lifetime, summary.pomodoros)
+        _index, stage = garden.stage(lifetime)
+        self.garden_note.setText(f"{stage}  ·  {plural(lifetime, 'pomodoro')} all time  ·  "
+                                 f"{plural(summary.pomodoros, 'blossom')} in this range\n{garden.progress_text(lifetime)}")
+
+        counts = insights.rating_counts(records, start, today)
+        rated = sum(counts.values())
+        tip = insights.length_tip(records, s.focus_min, today)
+        lines = self.insight_lines
+        if tip is not None:
+            lines["length"].setText(f"<b>Best focus length:</b> {tip.text}")
+        elif rated < insights.MIN_RATED and not s.rate_sessions:
+            lines["length"].setText("<b>Best focus length:</b> turn on session ratings in <i>Settings &gt; Focus</i> "
+                                    "and Pomo will learn what works for you.")
+        elif rated < insights.MIN_RATED:
+            lines["length"].setText(f"<b>Best focus length:</b> rate {insights.MIN_RATED - rated} more sessions "
+                                    "(tap a face when one ends) and Pomo will spot what works best for you.")
+        else:
+            lines["length"].setText(f"<b>Best focus length:</b> your {s.focus_min} minutes suits you well.")
+        lines["ratings"].setText(
+            f"<b>How sessions felt:</b> {counts[3]} great, {counts[2]} okay, {counts[1]} tough." if rated
+            else "<b>How sessions felt:</b> no ratings in this range yet.")
+
+        app_rows = storage.app_time(start)
+        score, distracted, _total = insights.focus_score(app_rows)
+        if score is not None:
+            lines["score"].setText(f"<b>Focus score:</b> {score:.0%} of focus time was away from distracting apps "
+                                   f"({fmt_hm(distracted)} on them).")
+        elif s.focus_guard:
+            lines["score"].setText("<b>Focus score:</b> Pomo needs a little more focus time to tell.")
+        else:
+            lines["score"].setText("<b>Focus score:</b> turn on <i>Notice distracting apps</i> in "
+                                   "<i>Settings &gt; Focus</i> to see where your focus time goes.")
+        self.apps.set_data(
+            [Bar(app, sec, f"{app}\n{fmt_hm(sec)} during focus" + ("  ·  on your distracting list" if bad else ""),
+                 fmt_hm(sec) + ("  ·  distracting" if bad else "")) for app, sec, bad in app_rows[:6]],
+            color)
+        self.apps.setVisible(bool(app_rows))
+        self.apps_title.setVisible(bool(app_rows))
 
     # ------------------------------------------------------------ coding agents
     def _build_agents_card(self) -> Card:
@@ -341,6 +415,10 @@ class Dashboard(QWidget):
                                           ("approvals", "Approved here"))):
             self.agent_tiles[key] = StatTile(label)
             grid.addWidget(self.agent_tiles[key], 0, i)
+        for i, (key, label) in enumerate((("agent_time", "Agents worked"), ("with_focus", "While you focused"),
+                                          ("with_breaks", "During your breaks"))):
+            self.agent_tiles[key] = StatTile(label)
+            grid.addWidget(self.agent_tiles[key], 1, i * 2, 1, 2)
         card.body.addLayout(grid)
         card.body.addSpacing(10)
         self.agent_live = _label("", "secondary", wrap=True)
@@ -360,6 +438,14 @@ class Dashboard(QWidget):
         tiles["files"].set(str(sm.files_edited), f"+{sm.lines_added} / -{sm.lines_removed} lines")
         tiles["commands"].set(str(sm.commands))
         tiles["approvals"].set(str(sm.approvals_allowed), f"{sm.approvals_denied} denied")
+        overlap = insights.agent_overlap(self.ctrl.storage.agent_events(since=today),
+                                         self.ctrl.storage.sessions(since=today), today)
+        tiles["agent_time"].set(fmt_hm(overlap.agent_sec), plural(overlap.turns, "finished turn"))
+        def share(seconds: float) -> str:
+            return f"{seconds / overlap.agent_sec:.0%} of their time" if overlap.agent_sec else ""
+
+        tiles["with_focus"].set(fmt_hm(overlap.during_focus_sec), share(overlap.during_focus_sec))
+        tiles["with_breaks"].set(fmt_hm(overlap.during_break_sec), share(overlap.during_break_sec))
         hub = self.ctrl.agents
         from html import escape
         rows = [f"<b>{escape(a.project)}</b> &middot; {escape(a.status_text)}"

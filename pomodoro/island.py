@@ -18,7 +18,7 @@ from PySide6.QtWidgets import QToolTip, QWidget
 
 from .engine import State
 from .icons import draw_glyph
-from .music_card import now_playing_tip, paint_cover
+from .music_card import now_playing_tip, paint_cover, songs_left_text
 from .orb import TimeEdit, apply_typed_time
 from .pomo import Pomo, mood_for
 from .stats import fmt_clock
@@ -241,7 +241,7 @@ class IslandWidget(QWidget):
             e = self.engine
             self.pomo.set_mood(mood_for(e.state, e.mode.is_break, self.ctrl.idle_seconds()))
             self.pomo.signal = self.ctrl.agent_signal()
-            self.pomo.outfit = self.ctrl.settings.pomo_outfit
+            self.pomo.outfit = self.ctrl.current_outfit()
             self.pomo.listening = self.ctrl.pomo_listening()
             anchor, size = self._pomo_place()
             cursor = QPointF(self.mapFromGlobal(QCursor.pos())) - anchor
@@ -574,8 +574,10 @@ class IslandWidget(QWidget):
         byline_font = self._font(11)
         p.setFont(byline_font)
         p.setPen(QColor(t.muted))
+        left = songs_left_text(self.ctrl)
+        byline = f"{track.artist}  ·  {left}" if left and track.artist else left or track.byline
         p.drawText(QRectF(x, cover.top() + 16, width, 15), Qt.AlignLeft | Qt.AlignVCenter,
-                   QFontMetricsF(byline_font).elidedText(track.byline, Qt.ElideRight, width))
+                   QFontMetricsF(byline_font).elidedText(byline, Qt.ElideRight, width))
 
         for name, (center, radius, enabled) in self._music_buttons().items():
             hot = name == self._hot

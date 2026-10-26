@@ -3,13 +3,39 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import QPropertyAnimation, QRect, QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen
+from PySide6.QtCore import QPointF, QPropertyAnimation, QRect, QRectF, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QToolButton, QVBoxLayout, QWidget
 
 SHADOW = 14
 WIDTH = 300
 GAP = 10
+BODY_WIDTH = WIDTH - 28  # inside the card's side margins
+RATINGS = ((1, "ouch", "Tough"), (2, "idle", "Okay"), (3, "happy", "Great"))  # rating, Pomo's face, label
+_face_icons: dict[str, QIcon] = {}
+
+
+def face_icon(face: str, size: int = 30) -> QIcon:
+    """Pomo making a face, as a small button icon."""
+    if face not in _face_icons:
+        import random
+
+        from .pomo import BODY_RY, Pomo
+
+        pm = QPixmap(size * 2, size * 2)
+        pm.setDevicePixelRatio(2.0)
+        pm.fill(Qt.transparent)
+        pomo = Pomo(random.Random(0))
+        pomo.outfit = "none"
+        pomo._next_blink = 99
+        if face != "idle":
+            pomo._react(face, 99)
+        painter = QPainter(pm)
+        body = size * 0.9
+        pomo.paint(painter, QPointF(size / 2, size - body * BODY_RY - 2), body, ground_shadow=False)
+        painter.end()
+        _face_icons[face] = QIcon(pm)
+    return _face_icons[face]
 
 
 class ToastCard(QWidget):
@@ -43,11 +69,19 @@ class ToastCard(QWidget):
         self._body = QLabel()
         self._body.setWordWrap(True)
         self._body.setProperty("role", "secondary")
+        self._body.setFixedWidth(BODY_WIDTH)  # a known width, so its height can be measured (see _fit_body)
         self._buttons = QHBoxLayout()
         self._buttons.setSpacing(8)
         outer.addLayout(head)
         outer.addWidget(self._body)
         outer.addSpacing(8)
+        outer.addWidget(self._build_rate_row())
+        self._chips_box = QWidget()
+        self._chips = QHBoxLayout(self._chips_box)
+        self._chips.setContentsMargins(0, 0, 0, 4)
+        self._chips.setSpacing(6)
+        self._chips_box.hide()
+        outer.addWidget(self._chips_box)
         outer.addLayout(self._buttons)
 
         self._timer = QTimer(self)
@@ -56,6 +90,48 @@ class ToastCard(QWidget):
         self._fade = QPropertyAnimation(self, b"windowOpacity", self)
         self._fade.setDuration(180)
         self._fade.finished.connect(self._after_fade)
+
+    def _build_rate_row(self) -> QWidget:
+        """'How was that?' with three Pomo faces: tough, okay, great."""
+        self._rate_box = box = QWidget()
+        lay = QHBoxLayout(box)
+        lay.setContentsMargins(0, 0, 0, 6)
+        lay.setSpacing(4)
+        self._rate_label = QLabel("How was that?")
+        self._rate_label.setProperty("role", "muted")
+        lay.addWidget(self._rate_label)
+        lay.addSpacing(4)
+        self._rate_buttons = []
+        for rating, face, label in RATINGS:
+            button = QToolButton()
+            button.setIcon(face_icon(face))
+            button.setIconSize(QSize(30, 30))
+            button.setToolTip(label)
+            button.setAutoRaise(True)
+            button.setCursor(Qt.PointingHandCursor)
+            button.clicked.connect(lambda _=False, r=rating: self._rated(r))
+            lay.addWidget(button)
+            self._rate_buttons.append(button)
+        lay.addStretch(1)
+        box.hide()
+        self._on_rate: Callable[[int], None] | None = None
+        return box
+
+    def _fit_body(self) -> None:
+        # word-wrapped labels misreport their height (too little, or the last text's), so measure the text
+        self._body.ensurePolished()
+        bounds = QFontMetrics(self._body.font()).boundingRect(QRect(0, 0, BODY_WIDTH, 100_000), Qt.TextWordWrap,
+                                                              self._body.text())
+        self._body.setFixedHeight(max(1, bounds.height() + 2))
+
+    def _rated(self, rating: int) -> None:
+        callback, self._on_rate = self._on_rate, None
+        for button, (value, _face, _label) in zip(self._rate_buttons, RATINGS):
+            button.setVisible(value == rating)
+            button.setEnabled(False)
+        self._rate_label.setText("Thanks! Pomo is learning.")
+        if callback is not None:
+            callback(rating)
 
     def show_message(
         self,
@@ -67,15 +143,38 @@ class ToastCard(QWidget):
         timeout_ms: int = 20000,
         tag: object = None,
         on_dismiss: Callable[[], None] | None = None,
+        rate: Callable[[int], None] | None = None,
+        extras: list[tuple[str, Callable[[], None]]] | None = None,
     ) -> None:
         """tag identifies what is shown (e.g. an agent approval); on_dismiss runs if the card
-        closes without one of its buttons being clicked (timeout, close button, replaced)."""
+        closes without one of its buttons being clicked (timeout, close button, replaced).
+        rate adds "How was that?" with three faces; extras adds a row of small chips (Breathe, Play...)."""
         self._fire_dismiss()
+        self._on_rate = rate
+        self._rate_box.setVisible(rate is not None)
+        self._rate_label.setText("How was that?")
+        for button in self._rate_buttons:
+            button.setVisible(True)
+            button.setEnabled(True)
+        while self._chips.count():
+            item = self._chips.takeAt(0)
+            if item.widget():
+                item.widget().hide()
+                item.widget().deleteLater()
+        for text, fn in extras or []:
+            chip = QPushButton(text)
+            chip.setCursor(Qt.PointingHandCursor)
+            chip.setStyleSheet("QPushButton { padding: 3px 10px; border-radius: 11px; font-size: 12px; }")
+            chip.clicked.connect(lambda _=False, f=fn: self._act(f))
+            self._chips.addWidget(chip)
+        self._chips.addStretch(1)
+        self._chips_box.setVisible(bool(extras))
         self.tag = tag
         self._on_dismiss = on_dismiss
         self._accent = QColor(accent)
         self._title.setText(title)
         self._body.setText(body)
+        self._fit_body()
         while self._buttons.count():
             item = self._buttons.takeAt(0)
             if item.widget():
@@ -95,7 +194,9 @@ class ToastCard(QWidget):
             button.clicked.connect(lambda _=False, f=fn: self._act(f))
             self._buttons.addWidget(button)
         self._buttons.addStretch(1)
-        self.adjustSize()
+        self.layout().invalidate()  # drop the last card's size: rows may have been hidden since
+        self.layout().activate()
+        self.resize(self.width(), self.layout().sizeHint().height())
         self._position(anchor)
         self._closing = False
         if not self.isVisible():

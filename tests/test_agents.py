@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 os.environ["POMO_AGENT_PIPE"] = f"Pomo-agents-test-{os.getpid()}"
 
-from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, QTimer
 
 from pomodoro import claude_hooks
 from pomodoro.agents import AgentHub, activity_text
@@ -22,6 +22,12 @@ from pomodoro.storage import Storage
 
 ROOT = Path(__file__).resolve().parent.parent
 _app = QCoreApplication.instance() or QCoreApplication([])
+
+
+def settle(seconds=0.2):
+    """Let queued socket events and deferred deletes run while their objects are still alive."""
+    wait_for(lambda: False, timeout=seconds)
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
 def wait_for(predicate, timeout=8.0):
@@ -111,6 +117,7 @@ class AgentHubTests(unittest.TestCase):
 
     def tearDown(self):
         self.hub.shutdown()
+        settle()
         self.storage.close()
         self.dir.cleanup()
 
@@ -162,6 +169,7 @@ class HookRoundTripTests(unittest.TestCase):
 
     def tearDown(self):
         self.hub.shutdown()
+        settle()
         self.storage.close()
         self.dir.cleanup()
 

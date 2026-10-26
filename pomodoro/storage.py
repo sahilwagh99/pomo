@@ -21,10 +21,21 @@ class SessionRecord:
     actual_sec: int
     completed: bool
     task: str = ""
+    rating: int = 0          # how it went, from the "How was that?" card: 1 tough, 2 okay, 3 great; 0 = not rated
+    distracted_sec: int = 0  # time spent on distracting apps or sites (when the check-in is on)
 
     @property
     def day(self) -> date:
         return self.started_at.date()
+
+
+@dataclass(frozen=True)
+class Thought:
+    """Something parked during a focus session, for later."""
+    id: int
+    created: datetime
+    text: str
+    done: bool = False
 
 
 @dataclass(frozen=True)
@@ -80,6 +91,27 @@ class Storage(QObject):
             )"""
         )
         self._db.execute("CREATE INDEX IF NOT EXISTS idx_agent_events_day ON agent_events(day)")
+        columns = {row[1] for row in self._db.execute("PRAGMA table_info(sessions)")}
+        for name in ("rating", "distracted_sec"):  # added in 1.4
+            if name not in columns:
+                self._db.execute(f"ALTER TABLE sessions ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0")
+        self._db.execute(
+            """CREATE TABLE IF NOT EXISTS thoughts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created TEXT NOT NULL,
+                text TEXT NOT NULL,
+                done INTEGER NOT NULL DEFAULT 0
+            )"""
+        )
+        self._db.execute(
+            """CREATE TABLE IF NOT EXISTS app_time (
+                day TEXT NOT NULL,
+                app TEXT NOT NULL,
+                seconds INTEGER NOT NULL DEFAULT 0,
+                distracting INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (day, app)
+            )"""
+        )
         self._db.commit()
 
     def add(self, rec: SessionRecord) -> None:
@@ -87,8 +119,8 @@ class Storage(QObject):
 
     def add_many(self, records: list[SessionRecord]) -> None:
         self._db.executemany(
-            "INSERT INTO sessions (started_at, ended_at, day, mode, planned_sec, actual_sec, completed, task)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO sessions (started_at, ended_at, day, mode, planned_sec, actual_sec, completed, task,"
+            " rating, distracted_sec) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
                     r.started_at.isoformat(timespec="seconds"),
@@ -99,6 +131,8 @@ class Storage(QObject):
                     int(r.actual_sec),
                     int(bool(r.completed)),
                     r.task,
+                    int(r.rating),
+                    int(r.distracted_sec),
                 )
                 for r in records
             ],
@@ -107,7 +141,8 @@ class Storage(QObject):
         self.changed.emit()
 
     def sessions(self, since: date | None = None) -> list[SessionRecord]:
-        sql = "SELECT started_at, ended_at, mode, planned_sec, actual_sec, completed, task FROM sessions"
+        sql = ("SELECT started_at, ended_at, mode, planned_sec, actual_sec, completed, task, rating, distracted_sec"
+               " FROM sessions")
         args: tuple = ()
         if since is not None:
             sql += " WHERE day >= ?"
@@ -122,9 +157,64 @@ class Storage(QObject):
                 actual_sec=row[4],
                 completed=bool(row[5]),
                 task=row[6] or "",
+                rating=row[7] or 0,
+                distracted_sec=row[8] or 0,
             )
             for row in self._db.execute(sql, args)
         ]
+
+    def rate_last_focus(self, rating: int) -> bool:
+        """Store how the most recent finished focus session went (1 tough, 2 okay, 3 great)."""
+        row = self._db.execute(
+            "SELECT id FROM sessions WHERE mode = 'focus' AND completed = 1 ORDER BY id DESC LIMIT 1").fetchone()
+        if row is None:
+            return False
+        self._db.execute("UPDATE sessions SET rating = ? WHERE id = ?", (max(0, min(3, int(rating))), row[0]))
+        self._db.commit()
+        self.changed.emit()
+        return True
+
+    def lifetime_pomodoros(self) -> int:
+        return self._db.execute("SELECT COUNT(*) FROM sessions WHERE mode = 'focus' AND completed = 1").fetchone()[0]
+
+    # ------------------------------------------------------------ thoughts
+    def add_thought(self, text: str) -> Thought:
+        now = datetime.now().replace(microsecond=0)
+        cur = self._db.execute("INSERT INTO thoughts (created, text) VALUES (?, ?)",
+                               (now.isoformat(timespec="seconds"), text.strip()))
+        self._db.commit()
+        return Thought(cur.lastrowid, now, text.strip())
+
+    def thoughts(self, include_done: bool = False) -> list[Thought]:
+        sql = "SELECT id, created, text, done FROM thoughts"
+        if not include_done:
+            sql += " WHERE done = 0"
+        return [Thought(r[0], datetime.fromisoformat(r[1]), r[2], bool(r[3]))
+                for r in self._db.execute(sql + " ORDER BY id")]
+
+    def set_thought_done(self, thought_id: int, done: bool = True) -> None:
+        self._db.execute("UPDATE thoughts SET done = ? WHERE id = ?", (int(done), thought_id))
+        self._db.commit()
+
+    def clear_done_thoughts(self) -> None:
+        self._db.execute("DELETE FROM thoughts WHERE done = 1")
+        self._db.commit()
+
+    # ------------------------------------------------------------ app time
+    def add_app_time(self, day: date, app: str, seconds: int, distracting: bool) -> None:
+        """Time spent in front of an app or site during focus (names only, never window contents)."""
+        self._db.execute(
+            "INSERT INTO app_time (day, app, seconds, distracting) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT(day, app) DO UPDATE SET seconds = seconds + excluded.seconds,"
+            " distracting = excluded.distracting",
+            (day.isoformat(), app, int(seconds), int(distracting)))
+        self._db.commit()
+
+    def app_time(self, since: date) -> list[tuple[str, int, bool]]:
+        """(app, seconds, distracting) summed since a day, most time first."""
+        return [(r[0], r[1], bool(r[2])) for r in self._db.execute(
+            "SELECT app, SUM(seconds), MAX(distracting) FROM app_time WHERE day >= ? GROUP BY app"
+            " ORDER BY SUM(seconds) DESC", (since.isoformat(),))]
 
     def add_agent_event(self, ev: AgentEvent) -> None:
         self._db.execute(
@@ -164,6 +254,7 @@ class Storage(QObject):
     def clear(self) -> None:
         self._db.execute("DELETE FROM sessions")
         self._db.execute("DELETE FROM agent_events")
+        self._db.execute("DELETE FROM app_time")
         self._db.commit()
         self.changed.emit()
         self.agents_changed.emit()
@@ -172,7 +263,8 @@ class Storage(QObject):
         records = self.sessions()
         with open(path, "w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh)
-            writer.writerow(["date", "start", "end", "type", "task", "planned_min", "actual_min", "result"])
+            writer.writerow(["date", "start", "end", "type", "task", "planned_min", "actual_min", "result",
+                             "rating", "distracted_min"])
             for r in records:
                 writer.writerow([
                     r.day.isoformat(),
@@ -183,6 +275,8 @@ class Storage(QObject):
                     round(r.planned_sec / 60, 2),
                     round(r.actual_sec / 60, 2),
                     "completed" if r.completed else "stopped early",
+                    {1: "tough", 2: "okay", 3: "great"}.get(r.rating, ""),
+                    round(r.distracted_sec / 60, 2),
                 ])
         return len(records)
 

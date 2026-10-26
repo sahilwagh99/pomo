@@ -7,7 +7,9 @@ from PySide6.QtCore import QLineF, QPointF, QRect, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor, QFont, QFontMetricsF, QGuiApplication, QImage, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QToolTip, QWidget
 
+from .engine import Mode, State
 from .icons import draw_glyph
+from .insights import songs_left
 from .pomo import Pomo
 from .theme import FONT_FAMILY, mode_color
 
@@ -18,11 +20,22 @@ POMO_SIZE = 44.0
 TIPS = {"previous": "Previous", "next": "Next"}
 
 
+def songs_left_text(ctrl) -> str:
+    """'about 3 songs left' in the focus session, while one runs and music plays."""
+    track, e = ctrl.track, ctrl.engine
+    if track is None or not track.playing or e.mode is not Mode.FOCUS or e.state is not State.RUNNING:
+        return ""
+    return songs_left(e.remaining, track.duration, track.position_now())
+
+
 def now_playing_tip(ctrl) -> str:
     track = ctrl.track
     if track is None:
         return ""
     lines = [track.title] + ([track.byline] if track.byline else [])
+    left = songs_left_text(ctrl)
+    if left:
+        lines.append(f"Focus time left: {left}")
     if ctrl.pomo_listening():
         lines.append("Pomo is listening too ♪")
     return "\n".join(lines)
@@ -91,7 +104,7 @@ class MusicCard(QWidget):
             y = anchor.top() - SHADOW
         self.move(max(geo.left() - SHADOW, min(x, geo.right() + 1 - w + SHADOW)),
                   max(geo.top() - SHADOW, min(y, geo.bottom() + 1 - h + SHADOW)))
-        self.pomo.outfit = self.ctrl.settings.pomo_outfit
+        self.pomo.outfit = self.ctrl.current_outfit()
         self.show()
         self.raise_()
 
@@ -116,7 +129,7 @@ class MusicCard(QWidget):
         dt, self._last = now - self._last, now
         listening = self.ctrl.pomo_listening()
         self.pomo.listening = listening
-        self.pomo.outfit = self.ctrl.settings.pomo_outfit
+        self.pomo.outfit = self.ctrl.current_outfit()
         self.pomo.set_mood("break" if listening else "idle")  # eyes closed, enjoying it
         anchor = self._pomo_anchor()
         cursor = QPointF(self.mapFromGlobal(QCursor.pos())) - anchor
@@ -187,13 +200,14 @@ class MusicCard(QWidget):
         p.setPen(QColor(t.muted))
         p.drawText(QRectF(x, card.top() + 35, width, 16), Qt.AlignLeft | Qt.AlignVCenter,
                    QFontMetricsF(small).elidedText(track.byline, Qt.ElideRight, width))
-        if self.ctrl.pomo_listening():
+        left = songs_left_text(self.ctrl)
+        if left or self.ctrl.pomo_listening():
             note = self._font(11.5)
             p.setFont(note)
             p.setPen(QColor(t.ink_2))
             draw_glyph(p, "note", QPointF(x + 5, card.top() + 60), 11, QColor(accent).darker(115))
             p.drawText(QRectF(x + 14, card.top() + 52, width - 14, 16), Qt.AlignLeft | Qt.AlignVCenter,
-                       "Pomo is listening too")
+                       left[:1].upper() + left[1:] if left else "Pomo is listening too")
         elif not track.playing:
             p.setFont(self._font(11.5))
             p.setPen(QColor(t.muted))

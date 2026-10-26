@@ -4,30 +4,38 @@ from __future__ import annotations
 import time
 
 from PySide6.QtCore import QPointF, Qt, QTimer, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QPainter, QTextDocument
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QPainter, QTextDocument
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from . import keystore
-from .ai import KEYS_URL, QUICK_ACTIONS, ChatWorker, KeyCheckWorker, build_context, quick_prompt
-from .config import AI_MODELS
+from .ai import QUICK_ACTIONS, KeyCheckWorker, build_context, make_worker, quick_prompt, tool_results_messages
+from .planner import MAX_TOOL_ROUNDS, ToolError, run_tool
+from .providers import PROVIDERS, model_for, model_label, provider, set_model
 from .pomo import BODY_RY, Pomo
 from .winutil import set_dark_title_bar
 
 GREETING = ("Hi, I'm Pomo! Ask me to plan your work into pomodoros, look at how your focus is going, "
             "or catch you up on what your coding agents did today.")
 KEY_TITLE = "Bring your own key"
-KEY_TEXT = ("Pomo chats with Claude using your own Anthropic API key, so you only pay Anthropic for what you "
-            "use. The key is stored encrypted for your Windows account and is only ever sent to Anthropic.")
+
+
+def key_text(provider_key: str) -> str:
+    p = provider(provider_key)
+    who = p.short if p.key != "anthropic" else "Anthropic"
+    return (f"Pomo chats through {p.label} using your own API key, so you only pay {who} for what you use. "
+            f"The key is stored encrypted for your Windows account and is only ever sent to {who}.")
 
 
 class PomoAvatar(QWidget):
@@ -136,6 +144,9 @@ class ChatWindow(QWidget):
         self._reply: Bubble | None = None
         self._reply_text = ""
         self._pending: list = []
+        self._continue: list | None = None  # tool results to send back once the current reply's thread ends
+        self._history_provider = ctrl.settings.ai_provider
+        self._rounds = 0
         self.setWindowTitle("Ask Pomo")
         self.setWindowIcon(ctrl.icon)
         self.resize(460, 640)
@@ -152,23 +163,32 @@ class ChatWindow(QWidget):
 
         head = QHBoxLayout()
         self.avatar = PomoAvatar(58)
-        self.avatar.outfit_source = lambda: self.ctrl.settings.pomo_outfit
+        self.avatar.outfit_source = self.ctrl.current_outfit
         self.avatar.listening_source = self.ctrl.pomo_listening
         head.addWidget(self.avatar)
         titles = QVBoxLayout()
         titles.setSpacing(0)
         title = QLabel("Ask Pomo")
         title.setProperty("role", "h1")
-        self.subtitle = QLabel()
-        self.subtitle.setProperty("role", "muted")
+        # the model in use; click it to switch provider or model
+        self.subtitle = QToolButton()
+        self.subtitle.setAutoRaise(True)
+        self.subtitle.setPopupMode(QToolButton.InstantPopup)
+        self.subtitle.setCursor(Qt.PointingHandCursor)
+        self.subtitle.setToolTip("Choose the AI provider and model")
+        self.subtitle.setStyleSheet(f"QToolButton {{ color: {self.theme.muted}; font-size: 12px; border: none;"
+                                    " padding: 0; text-align: left; } QToolButton::menu-indicator { image: none; }")
+        self.model_menu = QMenu(self.subtitle)
+        self.model_menu.aboutToShow.connect(self._fill_model_menu)
+        self.subtitle.setMenu(self.model_menu)
         titles.addStretch(1)
         titles.addWidget(title)
-        titles.addWidget(self.subtitle)
+        titles.addWidget(self.subtitle, 0, Qt.AlignLeft)
         titles.addStretch(1)
         head.addLayout(titles, 1)
         key_button = QPushButton("Key")
         key_button.setObjectName("ghost")
-        key_button.setToolTip("Your Anthropic API key")
+        key_button.setToolTip("Your API key")
         key_button.clicked.connect(lambda: self._show_key_panel(not self.key_panel.isVisible()))
         head.addWidget(key_button, 0, Qt.AlignTop)
         clear = QPushButton("New chat")
@@ -233,13 +253,13 @@ class ChatWindow(QWidget):
         lay.setSpacing(8)
         title = QLabel(KEY_TITLE)
         title.setProperty("role", "title")
-        text = QLabel(KEY_TEXT)
+        self.key_text = text = QLabel()
         text.setProperty("role", "secondary")
         text.setWordWrap(True)
         row = QHBoxLayout()
         self.key_input = QLineEdit()
         self.key_input.setEchoMode(QLineEdit.Password)
-        self.key_input.setPlaceholderText("Paste your key (sk-ant-\u2026)")
+        self.key_input.setPlaceholderText("Paste your key")
         self.key_input.returnPressed.connect(self._save_key)
         self.key_save = QPushButton("Save key")
         self.key_save.setObjectName("primary")
@@ -249,7 +269,7 @@ class ChatWindow(QWidget):
         links = QHBoxLayout()
         get_key = QPushButton("Get a key")
         get_key.setObjectName("ghost")
-        get_key.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(KEYS_URL)))
+        get_key.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(provider(self.ctrl.settings.ai_provider).keys_url)))
         self.key_remove = QPushButton("Remove saved key")
         self.key_remove.setObjectName("ghost")
         self.key_remove.clicked.connect(self._remove_key)
@@ -268,12 +288,15 @@ class ChatWindow(QWidget):
         return panel
 
     def _show_key_panel(self, show: bool) -> None:
+        p = provider(self.ctrl.settings.ai_provider)
+        self.key_text.setText(key_text(p.key))
+        self.key_input.setPlaceholderText(f"Paste your {p.short} key ({p.key_hint})")
         saved = self.ctrl.ai_key()
         self.key_remove.setVisible(bool(saved))
         if saved:
             self._set_key_status(f"Using your saved key ({keystore.mask(saved)}). Paste a new one to replace it.")
         elif self.ctrl.has_ai_key():
-            self._set_key_status("Using the key from your environment (ANTHROPIC_API_KEY).")
+            self._set_key_status(f"Using the key from your environment ({' or '.join(p.env)}).")
         else:
             self._set_key_status("")
         self.key_panel.setVisible(show)
@@ -286,7 +309,8 @@ class ChatWindow(QWidget):
             self.key_input.setFocus()
 
     def refresh_key(self) -> None:
-        """The key changed elsewhere (Settings): ask for one only if there is none."""
+        """The key or provider changed elsewhere (Settings): ask for a key only if there is none."""
+        self._update_subtitle()
         self._show_key_panel(not self.ctrl.has_ai_key())
 
     def _set_key_status(self, text: str, tone: str | None = None) -> None:
@@ -306,8 +330,9 @@ class ChatWindow(QWidget):
             return
         self.key_input.clear()
         self.key_save.setEnabled(False)
-        self._set_key_status("Checking your key with Anthropic\u2026")
-        self._key_check = KeyCheckWorker(key, self.ctrl.settings.ai_model, self)
+        s = self.ctrl.settings
+        self._set_key_status(f"Checking your key with {provider(s.ai_provider).short}\u2026")
+        self._key_check = KeyCheckWorker(s.ai_provider, key, model_for(s), self)
         self._key_check.result.connect(self._on_key_checked)
         self._key_check.finished.connect(self._key_check_done)
         self._key_check.start()
@@ -334,14 +359,57 @@ class ChatWindow(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         set_dark_title_bar(self, self.theme.dark)
-        self.subtitle.setText(AI_MODELS.get(self.ctrl.settings.ai_model, self.ctrl.settings.ai_model).replace(" (default)", ""))
+        self._update_subtitle()
         self.input.setFocus()
+
+    def _update_subtitle(self) -> None:
+        s = self.ctrl.settings
+        p = provider(s.ai_provider)
+        self.privacy.setText("Your question and a short summary of your focus stats, tasks and agent activity "
+                             f"are sent to {p.label}.")
+        label = model_label(p.key, model_for(s))
+        self.subtitle.setText(f"{label}  ·  {p.short}  ▾" if p.key != "anthropic" else f"{label}  ▾")
+
+    def _fill_model_menu(self) -> None:
+        menu, s = self.model_menu, self.ctrl.settings
+        menu.clear()
+        heading = QFont(self.font())
+        heading.setBold(True)
+        for i, p in enumerate(PROVIDERS.values()):
+            if i:
+                menu.addSeparator()
+            title = menu.addAction(p.label)  # a heading: menu sections don't draw their text in every style
+            title.setEnabled(False)
+            title.setFont(heading)
+            current = model_for(s, p.key)
+            models = list(p.models)
+            if current not in dict(models):
+                models.append((current, current))  # a model typed in Settings
+            for model, label in models:
+                act = menu.addAction(label)
+                act.setCheckable(True)
+                act.setChecked(p.key == s.ai_provider and model == model_for(s))
+                act.triggered.connect(lambda _=False, k=p.key, m=model: self.choose_model(k, m))
+        menu.addSeparator()
+        menu.addAction("More models and keys in Settings…").triggered.connect(lambda: self.ctrl.open_settings("AI"))
+
+    def choose_model(self, provider_key: str, model: str) -> None:
+        s = self.ctrl.settings
+        switching = provider_key != s.ai_provider
+        s.ai_provider = provider_key
+        set_model(s, provider_key, model)
+        self.ctrl.save_settings()
+        self._update_subtitle()
+        if switching and self.history and self.worker is None:
+            self.new_chat()  # each provider keeps the conversation in its own format
+        self.refresh_key()
 
     def new_chat(self) -> None:
         if self.worker is not None:
             self.worker.cancel()  # its late signals find no reply bubble and no pending turn
         self._reply = None
         self._pending = []
+        self._continue = None
         self.history.clear()
         while self.thread.count() > 1:
             item = self.thread.takeAt(0)
@@ -366,6 +434,15 @@ class ChatWindow(QWidget):
         self.thread.insertWidget(self.thread.count() - 1, bubble)
         QTimer.singleShot(0, self._scroll_to_end)
         return bubble
+
+    def _add_note(self, text: str) -> None:
+        """A small line for something Pomo did (started a session, planned tasks)."""
+        note = QLabel(f"✓  {text}")
+        note.setProperty("role", "muted")
+        note.setWordWrap(True)
+        note.setAlignment(Qt.AlignCenter)
+        self.thread.insertWidget(self.thread.count() - 1, note)
+        QTimer.singleShot(0, self._scroll_to_end)
 
     def _scroll_to_end(self) -> None:
         bar = self.scroll.verticalScrollBar()
@@ -394,11 +471,21 @@ class ChatWindow(QWidget):
         self._add_bubble(text, mine=True)
         user = {"role": "user", "content": text}
         context = {"role": "system", "content": build_context(self.ctrl)}
-        self._pending = [user, context]
+        self._rounds = 0
+        if self.history and self._history_provider != self.ctrl.settings.ai_provider:
+            self.history.clear()  # it was in another provider's format; this question starts afresh
+        self._history_provider = self.ctrl.settings.ai_provider
+        self._request([user, context])
+
+    def _request(self, pending: list) -> None:
+        """Ask Claude to reply to the history plus these new messages (a question, or tool results)."""
+        self._pending = pending
         self._reply = self._add_bubble("", mine=False)
         self._reply_text = ""
         self.avatar.pomo.signal = "busy"
-        self.worker = ChatWorker(self.ctrl.ai_key(), self.ctrl.settings.ai_model, self.history + self._pending, self)
+        s = self.ctrl.settings
+        self.worker = make_worker(s.ai_provider, self.ctrl.ai_key() or self.ctrl.env_ai_key(), model_for(s),
+                                  self.history + self._pending, self)
         self.worker.text.connect(self._on_text)
         self.worker.completed.connect(self._on_completed)
         self.worker.refused.connect(lambda: self._end("Sorry, I can't help with that one. Try asking another way?"))
@@ -413,13 +500,40 @@ class ChatWindow(QWidget):
             self._reply.set_text(self._reply_text)
             self._scroll_to_end()
 
-    def _on_completed(self, final) -> None:
+    def _on_completed(self, reply) -> None:
         if not self._pending:  # the chat was reset while this reply streamed
             return
         # append-only history: the user turn, its context, and the reply exactly as returned
-        self.history += self._pending + [{"role": "assistant", "content": final.content}]
+        self.history += self._pending + [reply.assistant_message]
         self._pending = []
-        self.avatar.pomo.hello()
+        if not reply.tool_calls:
+            self.avatar.pomo.hello()
+            return
+        results, notes = [], []
+        cut_off = not reply.complete  # e.g. out of tokens: the input may be incomplete
+        for call in reply.tool_calls:
+            if cut_off:
+                results.append((call.id, "Not run: the reply was cut off before the call was complete.", True))
+                continue
+            try:
+                if call.input is None:
+                    raise ToolError(f"the arguments weren't valid JSON: {call.raw[:200]}")
+                result, note = run_tool(self.ctrl, call.name, call.input)
+            except ToolError as exc:
+                results.append((call.id, str(exc), True))
+                continue
+            results.append((call.id, result, False))
+            if note:
+                notes.append(note)
+        if notes:
+            self._add_note("  ·  ".join(notes))
+            self.avatar.pomo.hello()
+        self._rounds += 1
+        messages = tool_results_messages(self.ctrl.settings.ai_provider, results)  # every call answered
+        if cut_off or self._rounds > MAX_TOOL_ROUNDS:
+            self.history += messages
+        else:
+            self._continue = messages  # the model finishes its answer once this thread is done
 
     def _end(self, message: str) -> None:
         if self._reply is not None:
@@ -427,6 +541,7 @@ class ChatWindow(QWidget):
         self._pending = []
 
     def _stop(self) -> None:
+        self._continue = None
         if self.worker is not None:
             self.worker.cancel()
             if self._reply is not None:
@@ -436,6 +551,14 @@ class ChatWindow(QWidget):
     def _on_thread_done(self) -> None:
         self.worker = None
         self.avatar.pomo.signal = None
+        if self._reply is not None and not self._reply_text and not self._reply.text.strip("…"):
+            self._reply.hide()  # the reply was only tool calls
+            self._reply.deleteLater()
+            self._reply = None
+        follow_up, self._continue = self._continue, None
+        if follow_up is not None:
+            self._request(follow_up)
+            return
         self._set_busy(False)
 
     def _set_busy(self, busy: bool) -> None:
