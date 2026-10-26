@@ -81,11 +81,15 @@ class AgentPacer(QObject):
             return ""
         latest: dict[str, tuple[str, str]] = {}
         for kind, project, detail in held:
+            if kind == "finished" and latest.get(project, ("",))[0] == "review":
+                continue  # "has changes for you to review" already says it finished
             latest[project] = (kind, detail)  # the newest news per project
         parts = []
         for project, (kind, detail) in latest.items():
             if kind == "finished":
                 parts.append(f"{project} finished" + (f" ({detail})" if detail else ""))
+            elif kind == "review":
+                parts.append(f"{project} has changes for you to review" + (f" ({detail})" if detail else ""))
             else:
                 parts.append(f"{project} is waiting for you")
         return "While you focused: " + ", ".join(parts) + "."

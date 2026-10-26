@@ -79,6 +79,35 @@ def set_app_user_model_id() -> None:
         pass
 
 
+def activate_window(hwnd: int) -> bool:
+    """Bring another app's window back to the front (restored if minimized). False if it's gone.
+
+    Windows lets a process do this right after the user clicked it, which is when Pomo asks.
+    """
+    if sys.platform != "win32" or not hwnd:
+        return False
+    import ctypes
+
+    user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+    if not user32.IsWindow(hwnd):
+        return False
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    if user32.SetForegroundWindow(hwnd):
+        return True
+    # not allowed this time: borrow the foreground thread's input state for a moment
+    front = user32.GetForegroundWindow()
+    theirs = user32.GetWindowThreadProcessId(front, None) if front else 0
+    ours = kernel32.GetCurrentThreadId()
+    attached = bool(theirs) and theirs != ours and user32.AttachThreadInput(ours, theirs, True)
+    try:
+        user32.BringWindowToTop(hwnd)
+        return bool(user32.SetForegroundWindow(hwnd))
+    finally:
+        if attached:
+            user32.AttachThreadInput(ours, theirs, False)
+
+
 def bring_to_front(widget) -> None:
     """Raise and focus a window even when another app is in front (Windows allows it right after our hotkey)."""
     widget.raise_()

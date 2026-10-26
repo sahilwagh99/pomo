@@ -103,6 +103,7 @@ class BreatheWindow(QWidget):
                 self._done = True
                 self.pomo.celebrate()
                 self.pomo.outfit = self.ctrl.current_outfit()
+                self.ctrl.quest_event("breathe")
         index, _x = self.current()
         kind = self.steps[index][3] if index < len(self.steps) else "done"
         p = self.pomo

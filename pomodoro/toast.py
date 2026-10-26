@@ -91,6 +91,11 @@ class ToastCard(QWidget):
         self._fade.setDuration(180)
         self._fade.finished.connect(self._after_fade)
 
+    @property
+    def showing(self) -> bool:
+        """On screen and not on its way out."""
+        return self.isVisible() and not self._closing
+
     def _build_rate_row(self) -> QWidget:
         """'How was that?' with three Pomo faces: tough, okay, great."""
         self._rate_box = box = QWidget()

@@ -41,17 +41,23 @@ Pomo used to be called FocusOrb. Run `Pomo-Setup.exe` and it removes FocusOrb fo
 - **Pomodoro turns.** Dots show your place in the cycle before the long break, and *3/8 today* tracks your daily goal.
 - **Alerts when a session ends:** a Windows notification, a sound (four built in), a pop-up card with *Start break* / *Skip* and a one-tap *How was that?*, and a soft glow on the timer.
 - **Pomo helps you focus.** It learns your best session length from one-tap ratings, gives you a side-eye when YouTube sneaks into a focus session, lets you park stray thoughts with a hotkey, and pauses when you step away.
-- **Agent-paced pomodoros.** Take your break while Claude works on a long task, and get agent news on your break instead of in the middle of focus.
+- **"Where was I?" after breaks.** When a break ends, Pomo shows your task, the window you were working in, what your agents did while you were away and your parked thoughts. One click brings that window back to the front.
+- **Sessions named for you.** Pomo picks up the project and git branch open in your editor and offers it as the session's task, so the dashboard shows focus per project with no typing.
+- **Focus sounds.** Rain, café murmur, brown noise and a soft lo-fi loop, made by Pomo on your PC with nothing to download. Pomo puts on headphones and listens too.
+- **Talk to Pomo.** Hold a shortcut and ask out loud, and let a soft voice read the replies.
+- **Pomo on the taskbar.** The countdown fills Pomo's taskbar button, with reset, play/pause and skip when you hover it, like a music player.
+- **Agent-paced pomodoros.** Take your break while your agent works on a long task, and get agent news on your break instead of in the middle of focus.
 - **Ask Pomo can act.** "45 minutes on the thesis, then 10 off, three rounds" sets up the plan and starts the timer.
 - **Breathe with Pomo.** A short guided break: box breathing, rest your eyes, stretch.
+- **Daily quests and badges.** Three small goals a day, like "2 pomodoros before 10 AM", with a badge for each and new outfits now and then.
 - **Focus garden.** A sakura tree that grows with every pomodoro and unlocks new outfits.
-- **Global shortcuts.** Start, pause, skip, park a thought or play music from any app.
-- **Eight pastel themes and eighteen outfits.** Pick your colors and dress Pomo up, or let Pomo dress for what you're doing; four outfits are earned in the focus garden.
-- **Answer Claude from Pomo.** See Claude Code's exact message and options, pick an answer to its questions, and reply when it finishes a turn.
-- **Things to play with.** Pet Pomo, feed treats you earn by focusing, and play Petal Catch on your break.
+- **Global shortcuts.** Start, pause, skip, park a thought, play music or talk to Pomo from any app.
+- **Eight pastel themes and twenty-one outfits.** Pick your colors and dress Pomo up, or let Pomo dress for what you're doing; four outfits are earned in the focus garden and three with daily quests.
+- **Answer your coding agent from Pomo.** See its exact message, answer Claude's questions, approve requests, and reply when it finishes a turn.
+- **Things to play with.** Pet Pomo, feed treats you earn by focusing, and play Petal Catch, Mochi Stack or Memory Match on your break.
 - **Music controls.** See what's playing on Spotify, YouTube or any other player, and play, pause or skip it from Pomo. Pomo puts on headphones and listens along.
-- **Dashboard.** KPIs, charts, your agents' activity, a session log and CSV export.
-- **Keeps an eye on your coding agents.** See when Claude Code is working, done, or needs you, and approve its requests from Pomo.
+- **Dashboard.** KPIs, charts, quests and badges, your agents' activity, a session log and CSV export.
+- **Keeps an eye on your coding agents.** Claude Code, OpenAI's Codex CLI and Google's Gemini CLI: see when one is working, done, or needs you. When one changes files, Pomo suggests reviewing them as your next focus task.
 - **Ask Pomo, with the AI you like.** Claude, ChatGPT, Gemini, Grok or anything on OpenRouter, with your own key and your choice of model, to plan your work into pomodoros or look back at your week.
 - **Runs on startup** if you want it to: one switch in *Settings > General*.
 
@@ -70,6 +76,14 @@ Pomo used to be called FocusOrb. Run `Pomo-Setup.exe` and it removes FocusOrb fo
 **The orb** floats in the bottom-right corner, just above the taskbar. Drag it anywhere. Hover it for the buttons: dashboard, Ask Pomo, timer style and settings along the top, and play, reset and skip below the time.
 
 <div align="center"><img src="docs/orb.png" alt="The orb while focusing, on hover with its buttons, and when a session ends" width="760"></div>
+
+### On the taskbar
+
+Pomo also has a button on the Windows taskbar. While a session runs, the countdown fills it (green while it runs, yellow while it's paused), and its label counts down too. Hover it for a live picture of the timer with **reset**, **play/pause** and **skip** underneath, like a music player. When a coding agent needs you, a small "!" appears on the button. Click the button to bring the timer up.
+
+<div align="center"><img src="docs/taskbar.png" alt="The taskbar preview: Pomo, 24:57 and Focus inside the progress ring, with reset, pause and skip buttons below" width="276"></div>
+
+Prefer Pomo in the tray only? Turn off *Show Pomo on the taskbar* in *Settings > General*. *Close window* on the button hides it until Pomo next starts.
 
 ## Meet Pomo
 
@@ -91,7 +105,12 @@ Don't want a buddy? Turn off *Show Pomo* in *Settings > Appearance*.
 - **Pet:** rub your cursor back and forth over Pomo for hearts.
 - **Twirl:** double-click Pomo.
 - **Treats:** every finished focus session earns a dango (you can save up to 9). Click the dango next to Pomo to feed one.
-- **Petal Catch:** click the petal next to Pomo (it shows on hover and during breaks) for a 30-second game. Move Pomo with your mouse or the arrow keys to catch falling sakura petals. Golden petals are worth 3, and your best score is saved. Open it during a focus session and Pomo will suggest saving it for your break.
+- **Games:** click the petal next to Pomo (it shows on hover and during breaks), or *Play a game* in the right-click menu, and pick one of three. Each keeps your best score. Open one during a focus session and Pomo will suggest saving it for your break.
+  - **Petal Catch:** a 30-second round. Move Pomo with your mouse or the arrow keys to catch falling sakura petals. Golden petals are worth 3.
+  - **Mochi Stack:** a mochi glides back and forth above a tower of mochis. Click (or press Space) to drop it onto the one below. Land it close and the tower grows; a dead-center drop is worth 2. Miss by more than half a mochi and it tumbles off. Each one glides a little faster.
+  - **Memory Match:** sixteen cards, eight of Pomo's outfits in pairs. Turn two at a time and clear the board in as few moves as you can.
+
+<div align="center"><img src="docs/games.png" alt="The games picker, a seven-mochi tower in Mochi Stack, and Memory Match with three pairs found" width="100%"></div>
 
 <div align="center"><img src="docs/game.png" alt="Petal Catch: the start screen, and a round in progress" width="620"></div>
 
@@ -111,6 +130,21 @@ Playing music on Spotify, YouTube in your browser, or any app that shows up in W
 <div align="center"><img src="docs/music_orb.png" alt="The mini player next to the orb: cover, song, play and skip buttons, and Pomo listening with headphones" width="684"></div>
 
 Pomo reads what's playing through Windows' own media controls, and nothing leaves your PC. Turn either part off in *Settings > General*.
+
+### Focus sounds
+
+No music app needed: Pomo makes its own focus sounds. Pick one with the headphones button beside Pomo on the island (or on the orb's rim), in *Focus sounds* in the right-click menu, or in *Settings > General*:
+
+- **Rain:** steady rain with slow gusts, small drops and the odd heavy one.
+- **Café murmur:** low room tone, indistinct chatter from a few tables, a cup now and then.
+- **Brown noise:** deep and even, to cover a noisy room.
+- **Lo-fi loop:** a soft eight-bar loop, with a lazy beat and a little vinyl crackle.
+
+By default they play only while you focus and fade out for your breaks (pick one outside a session and you hear a few seconds of it). Turn off *Only while I focus* to keep them on. Pomo puts on headphones and listens along.
+
+Every sound is synthesized on your PC the first time you play it (a second or two) and kept in Pomo's cache folder. Nothing is downloaded, and they play alongside your alert sounds without touching your system volume.
+
+<div align="center"><img src="docs/sounds.png" alt="The island with Pomo in headphones, the headphones button beside him, and the focus sounds menu: Off, Rain, Café murmur, Brown noise, Lo-fi loop, Only while I focus, Volume" width="750"></div>
 
 ## Pomo helps you focus
 
@@ -133,6 +167,33 @@ Pomo only looks at which app is in front, plus the site name in a browser's titl
 If the keyboard and mouse have been still for 5 minutes during a focus session, Pomo pauses it and gives that time back. When you return, choose *Resume*, or *It was focus time* if you were reading or thinking. Change the wait, or turn it off, in *Settings > Focus*.
 
 <div align="center"><img src="docs/presence.png" alt="The Psst... YouTube? card, and the Welcome back card after being away" width="746"></div>
+
+### A little cheer
+
+Pomo cheers you on during a focus session, gently: at halfway, with 5 minutes left and in the last minute, he gives a small hop and says a few warm words (*Halfway through Thesis!*, *5 minutes to go. Finish strong!*) in a little bubble beside the timer. It fades after a few seconds, makes no sound, and clicks go straight through it. Short sessions get fewer cheers, and Pomo stays quiet while a card is on screen. Turn it off with *During focus* in *Settings > Focus*.
+
+<div align="center"><img src="docs/cheer.png" alt="Halfway through Thesis! in a bubble under the island" width="543"></div>
+
+### Where was I?
+
+When a break ends, the card tells you where you left off:
+
+- **your task**,
+- **the window you were working in** (say, *VS Code · pomo* or *Word · Thesis draft*),
+- **what your coding agents did while you were away** (*api finished and changed 4 files, web is waiting for you*),
+- **your parked thoughts**, and a review your agent left you, if there is one.
+
+**Back to VS Code** starts your focus session and brings that window back to the front in one click. *Start here* just starts the session. You get the same card if you skip a break. Turn it off with *When a break ends* in *Settings > Focus*.
+
+### Sessions named after your project
+
+Start a focus session without a task and Pomo looks at the editor you were just in: the project open there and its git branch. It asks *Working on pomo?*, and one click names the session *pomo* (or *pomo · fix-login* away from the main branch), so the dashboard's *Top tasks* shows your focus per project without any typing. *Always, without asking* names them for you from then on; set it back in *Settings > Focus*.
+
+It works with VS Code and the editors built on it (Cursor, Windsurf, VSCodium...), JetBrains IDEs, Visual Studio and Sublime Text, and with a terminal that shows its folder in the title. Pomo matches the window title to folders your editor recently opened and folders your coding agents work in, then reads the branch from the repository's `.git/HEAD`. The project also appears first in *Set task*.
+
+Window titles stay in memory: Pomo never writes them down.
+
+<div align="center"><img src="docs/recap.png" alt="Where was I? with the task, VS Code · pomo, agent news, a parked thought and a review waiting, and Working on pomo? offering to name the session pomo · quests" width="728"></div>
 
 ### Park a thought
 
@@ -161,6 +222,7 @@ Windows doesn't let apps switch on its own Focus or Do not disturb (that API is 
 | **Ctrl+Alt+Shift+N** | Park a thought |
 | **Ctrl+Alt+Shift+M** | Play or pause music |
 | **Ctrl+Alt+Shift+H** | Show or hide the timer |
+| **Ctrl+Alt+Shift+Space** (hold) | Talk to Pomo: speak while you hold it, let go to ask |
 
 They work from any app. Change or turn them off in *Settings > Shortcuts*.
 
@@ -170,15 +232,36 @@ Every finished pomodoro grows a sakura tree on your dashboard. It goes from a sp
 
 <div align="center"><img src="docs/garden.png" alt="The focus garden: a sakura tree in bloom" width="460"></div>
 
+## Daily quests and badges
+
+Each morning Pomo picks three small quests for the day, from the ones that fit how you use it (no agent quests if you don't use coding agents, no early-bird quest after 9). For example:
+
+| Quest | Goal |
+|---|---|
+| Early bird | Finish 2 pomodoros before 10 AM |
+| Laser focus | Finish a whole session with no pauses or distractions |
+| Hat trick | Finish 3 pomodoros in a row, none stopped early |
+| Deep dive | Finish a focus session of 45 minutes or more |
+| Parking pro | Park 2 stray thoughts instead of chasing them |
+| Playtime | Play a mini game on a break |
+| Code reviewer | Finish a focus session reviewing your agent's changes |
+| Perfect timing | Take a break while a coding agent works |
+
+There are thirteen in all. Each one you finish earns its badge (badges count up when you earn them again), and finishing all three in a day earns *Perfect day*. Quests also unlock outfits: a star clip at 5 quests, bunny ears at 15 and a strawberry hat at 30.
+
+Pomo tells you when you finish one, on your break card if you're mid-session. Today's quests are in the right-click menu, and the dashboard shows them with your badge shelf. Turn them off in *Settings > Focus*.
+
+<div align="center"><img src="docs/quests.png" alt="Today's quests: Hat trick and Parking pro done, Cozy vibes at 0 of 1; and the badge shelf with earned badges in color" width="100%"></div>
+
 ## Themes and outfits
 
 Pick a theme in *Settings > Appearance* or from the right-click menu: **Matcha** (the default), **Sakura**, **Lavender**, **Peach** and **Mint** are light; **Cocoa**, **Blueberry** and **Plum** are dark.
 
 <div align="center"><img src="docs/themes.png" alt="The orb in all eight themes: Matcha, Sakura, Lavender, Peach, Mint, Cocoa, Blueberry and Plum" width="100%"></div>
 
-Pomo has eighteen outfits; the last four are earned in the [focus garden](#focus-garden) (the number is the pomodoros it takes). Choose one under *Pomo's outfit* in *Settings > Appearance* or in the right-click menu.
+Pomo has twenty-one outfits. Four are earned in the [focus garden](#focus-garden) (the number is the pomodoros it takes) and three with [daily quests](#daily-quests-and-badges). Choose one under *Pomo's outfit* in *Settings > Appearance* or in the right-click menu.
 
-<div align="center"><img src="docs/wardrobe.png" alt="All eighteen outfits, from the sakura blossom to the wizard hat" width="100%"></div>
+<div align="center"><img src="docs/wardrobe.png" alt="All twenty-one outfits, from the sakura blossom to the strawberry hat" width="100%"></div>
 
 **Pomo dresses for what you're doing.** A sweatband while you focus, a sun hat on breaks, a hard hat while your agents work, headphones when music plays, a beret in Ask Pomo, glasses on the dashboard, a party hat in Petal Catch and a nightcap when the timer's been idle a while. Your own pick shows the rest of the time. Turn it off in *Settings > Appearance* to keep one outfit on.
 
@@ -186,7 +269,7 @@ Pomo has eighteen outfits; the last four are earned in the [focus garden](#focus
 
 ## Keep an eye on your coding agents
 
-Pomo can watch your [Claude Code](https://code.claude.com) sessions, so you can stay in your focus session and still know when an agent needs you.
+Pomo can watch your [Claude Code](https://code.claude.com), [Codex CLI](https://github.com/openai/codex) and [Gemini CLI](https://github.com/google-gemini/gemini-cli) sessions, so you can stay in your focus session and still know when an agent needs you.
 
 <div align="center"><img src="docs/agents.png" alt="Pomo with a thought bubble while an agent works, and an approval card with Allow, Deny and In terminal" width="662"></div>
 
@@ -198,6 +281,16 @@ What you get:
 - **Approvals from Pomo.** When Claude Code would ask for permission, a card shows the project and the exact command or file, with **Allow**, **Deny** and **In terminal**. If you don't answer within the wait time (60 seconds by default), Claude Code asks in the terminal as usual. Nothing is ever approved without your click.
 - **Heads-up when it's done.** A notification when an agent finishes a long task (longer than 30 seconds by default) or is waiting for your input.
 - **Today's activity** on the dashboard: sessions, prompts, tool calls, files edited, commands and approvals.
+- **Changes to review.** When an agent finishes a turn that changed files, Pomo offers them as your next focus task (see [below](#review-your-agents-changes)).
+
+### Codex CLI and Gemini CLI
+
+Connect them the same way, with **Connect Codex** and **Connect Gemini** in *Settings > Agents*:
+
+- **Codex CLI:** Pomo adds its hooks to `%USERPROFILE%\.codex\hooks.json`. Codex asks you to trust new hooks once: run `/hooks` in Codex and trust Pomo's. You get live status, approvals in Pomo (Allow, Deny, Deny with a note), changes to review (Codex's patches are counted file by file), and replies when a turn ends.
+- **Gemini CLI:** Pomo adds its hooks to `%USERPROFILE%\.gemini\settings.json` (needs a Gemini CLI with hooks). Gemini runs every hook in line, so Pomo only listens to what it needs: your prompts, file edits and commands, the end of a turn and its notifications. You get live status, changes to review, a heads-up when it waits for permission in the terminal, and replies when a turn ends.
+
+Cards and notifications name the agent (*web: Codex finished*). As with Claude Code, your other settings are kept, a backup is saved the first time, and *Disconnect* removes only Pomo's entries. Multiple-choice questions are answered in Pomo for Claude Code only, since only Claude Code lets a hook answer them.
 
 ### Answer Claude from Pomo
 
@@ -211,6 +304,18 @@ At your terminal, nothing waits: Claude Code asks and stops there as usual, and 
 
 <div align="center"><img src="docs/agent_reply.png" alt="Claude's question with two options, and Claude's message at the end of a turn with a reply box" width="760"></div>
 
+### Review your agents' changes
+
+Agents write code; somebody has to read it. When an agent finishes a turn that changed files, Pomo turns that into focus work for you:
+
+- **The finish notice offers it.** *api: Claude finished. It changed 4 files (+138 / -26 lines): limits.py, app.py, test_limits.py and README.md. Review them in your next focus session?* **Review next** makes *Review Claude's changes in api* your next focus task (straight after the session you're in, or first in your plan).
+- **It waits for you.** Reviews you leave for later wait in *Reviews waiting* in the right-click menu, on the dashboard, and on the "Where was I?" card when your break ends. More changes in the same project add up to one review.
+- **Done when you've focused on it.** Finish a focus session on a review and it leaves the list (and counts toward the *Code reviewer* quest).
+
+During quiet focus the offer waits for your break card. Turn it off in *Settings > Agents*. Line counts are estimated from the edits the agent made.
+
+<div align="center"><img src="docs/review.png" alt="api: Claude finished. Done after 06:41. It changed 4 files (+138 / -26 lines). Review them in your next focus session? Review next, Later" width="328"></div>
+
 ### Agent-paced pomodoros
 
 Pomo fits your focus sessions around your agents:
@@ -223,9 +328,9 @@ Pomo fits your focus sessions around your agents:
 
 <div align="center"><img src="docs/pacing.png" alt="web is on a long task: Claude has been working for 4 minutes. Good moment for your break?" width="328"></div>
 
-Watching never slows Claude Code down: everything except answering runs in the background. If Pomo isn't running, Claude Code behaves exactly as before. Agent events stay on your PC: they travel over a local named pipe that only your Windows account can open.
+Watching never slows Claude Code or Codex down: everything except answering runs in the background. (Gemini CLI runs every hook in line, so Pomo listens to only a few of its events, each a quick hand-off.) If Pomo isn't running, your agent behaves exactly as before. Agent events stay on your PC: they travel over a local named pipe that only your Windows account can open.
 
-To stop, click **Disconnect Claude Code** in the same place. Only Pomo's own entries are removed.
+To stop, click **Disconnect** for that agent in the same place. Only Pomo's own entries are removed.
 
 ## Ask Pomo
 
@@ -265,6 +370,27 @@ New models come out all the time, so in *Settings > AI* you can also click **Loa
 
 **Privacy:** nothing is sent until you ask something. Then Pomo sends, to the provider you picked, your question plus a short summary: timer state, focus stats, task names, your plan, parked thoughts, how your sessions felt, your focus score, and agent activity (project names, prompts and tool counts).
 
+### Talk to Pomo
+
+Ask out loud instead of typing:
+
+- **From any app:** hold **Ctrl+Alt+Shift+Space**, say your question, and let go. A little card shows Pomo listening; then Ask Pomo opens with your question and answers it.
+- **In Ask Pomo:** hold the mic button while you speak, or click it once and just talk: Pomo stops when you pause (or when you click again).
+- **Replies read aloud:** click the speaker in Ask Pomo's header (or turn on *Read Pomo's replies aloud* in *Settings > AI*) and Pomo reads its answers in a soft voice, its mouth moving along. It stops when you ask something new.
+
+Who turns your voice into text is up to you (*Settings > AI*, *Talk to Pomo: hear me with*):
+
+| Choice | How | Your voice goes to |
+|---|---|---|
+| This PC | Windows' own speech recognition, offline | Nowhere: it stays on your PC |
+| OpenAI | OpenAI's transcription, with your OpenAI key (the most accurate) | OpenAI |
+| Gemini | A Gemini model, with your Gemini key | Google |
+| Automatic (the default) | OpenAI or Gemini when Ask Pomo already uses that provider, this PC otherwise | As above |
+
+Replies are read by a Windows voice on your PC (pick one in *Settings > AI*). Pomo uses Windows' speech engines through Windows PowerShell, so there's nothing extra to install. Windows asks whether desktop apps may use your microphone (*Settings > Privacy & security > Microphone*); Pomo only listens while you hold the shortcut or the mic.
+
+<div align="center"><img src="docs/talk.png" alt="The Listening card with Pomo in headphones and a level meter, and Ask Pomo reading its plan aloud with the speaker on" width="760"></div>
+
 ## Using the timer
 
 | Action | How |
@@ -275,10 +401,12 @@ New models come out all the time, so in *Settings > AI* you can also click **Loa
 | Nudge the time | Scroll over the timer: 1 min per notch (Shift or Ctrl: 5 min), or **Up** / **Down** |
 | Dashboard, Ask Pomo, timer style, settings | The small buttons along the top of the timer (hover to see them) |
 | Move it | Drag the orb anywhere. The island stays at the top center. |
-| Play | Poke, pet or double-click Pomo; click the dango to feed a treat or the petal for Petal Catch |
+| Play | Poke, pet or double-click Pomo; click the dango to feed a treat or the petal for the games |
 | Music | The now-playing row on the island, or the music badge on the orb: previous, play/pause, next |
-| From any app | The [global shortcuts](#global-shortcuts): start or pause, skip, park a thought, music, show or hide |
-| Everything else | Right-click: switch mode, add time, set task, your plan, park a thought, parked thoughts, daily goal, timer style, theme, outfit, Breathe with Pomo, music, run on startup, coding agents, hide, quit |
+| Focus sounds | The headphones button beside Pomo on the island, or on the orb's rim |
+| From any app | The [global shortcuts](#global-shortcuts): start or pause, skip, park a thought, music, show or hide, talk to Pomo |
+| Taskbar | Hover Pomo's taskbar button for reset, play/pause and skip; click it to bring the timer up |
+| Everything else | Right-click: switch mode, add time, set task, your plan, park a thought, parked thoughts, daily goal, timer style, theme, outfit, Ask Pomo, Talk to Pomo, games, Breathe with Pomo, focus sounds, today's quests, music, reviews waiting, coding agents, run on startup, hide, quit |
 | Tray icon | Click to bring the timer back; double-click for the dashboard |
 
 ## Dashboard
@@ -292,7 +420,8 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 - **Charts:** daily focus with a goal line, a consistency heatmap, top tasks, time of day and weekday rhythm.
 - **Focus garden:** your sakura tree and the next outfit to earn.
 - **Insights:** your best focus length, how your sessions felt, your focus score, and where your focus time went.
-- **Coding agents:** today's sessions, prompts, tool calls, files edited, commands and approvals, how long agents worked and how much of it overlapped with your focus and breaks, plus what is running right now.
+- **Quests and badges:** today's three quests with their progress, and every badge you've earned.
+- **Coding agents:** today's sessions, prompts, tool calls, files edited, commands and approvals, how long agents worked and how much of it overlapped with your focus and breaks, what is running right now, and the changes waiting for your review.
 - **Session log:** a table of every session, with CSV export.
 - **Range filter:** 7 days, 30 days, 90 days or all time.
 
@@ -301,15 +430,15 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 | Tab | What you can change |
 |---|---|
 | Timer | Focus, short and long break lengths; long break interval; daily goal; auto-start for breaks and for focus |
-| Focus | Session ratings and length tips, away detection, the distraction check-in and its list, quiet focus, the break card |
+| Focus | Session ratings and length tips, Pomo cheering you on, away detection, the distraction check-in and its list, quiet focus, the break card, "Where was I?" when a break ends, naming sessions after your project (ask, automatically or off), daily quests |
 | Alerts | Notifications, pop-up card, sound, volume, repeats, idle reminder |
 | Appearance | Theme, timer style (island or orb), show Pomo, Pomo's outfit, Pomo dressing for what you're doing, tuck the island away when idle, orb size, opacity, fade while focusing, always on top, show task, colors for each mode |
-| Agents | Connect or disconnect Claude Code, answer permission requests in Pomo, how long to wait for your answer, finish notifications, answering Claude's questions, replying when a turn ends (and how long Claude waits), break suggestions for long agent tasks |
-| AI | Provider and model for Ask Pomo, your key for each provider (save, check, remove), load your models, when to offer the day review |
-| Shortcuts | Global shortcuts on or off, and each key combination |
-| General | Run Pomo on startup, music controls, Pomo listening along, music following the timer, move the orb back to its corner, open the data folder, export CSV, clear history |
+| Agents | Connect or disconnect Claude Code, Codex CLI and Gemini CLI, suggesting reviews of agent changes, answer permission requests in Pomo, how long to wait for your answer, finish notifications, answering Claude's questions, replying when a turn ends (and how long the agent waits), break suggestions for long agent tasks |
+| AI | Provider and model for Ask Pomo, your key for each provider (save, check, remove), load your models, when to offer the day review, who hears you when you talk to Pomo, reading replies aloud and the voice |
+| Shortcuts | Global shortcuts on or off, and each key combination (including the talk shortcut) |
+| General | Run Pomo on startup, Pomo on the taskbar, focus sounds (which one, volume, only while focusing), music controls, Pomo listening along, music following the timer, move the orb back to its corner, open the data folder, export CSV, clear history |
 
-Your data lives in `%APPDATA%\Pomo`: `settings.json`, `history.db` (pomodoros with their ratings, agent activity, parked thoughts and, if the check-in is on, minutes per app) and, if you saved one, `ai_key.bin` (your API key, encrypted).
+Your data lives in `%APPDATA%\Pomo`: `settings.json` (with your quests, badges and reviews waiting), `history.db` (pomodoros with their ratings, agent activity, parked thoughts and, if the check-in is on, minutes per app), `cache\` (the focus sounds once they're made) and, if you saved one, `ai_key.bin` (your API key, encrypted). Window titles (for "Where was I?" and project names) are never written to disk. When you talk to Pomo, the recording and the replies it reads aloud only pass through a temporary file in `cache\`, deleted as soon as Windows is done with it.
 
 ## For developers
 
@@ -362,11 +491,22 @@ pomodoro/engine.py          timer state machine (monotonic clock, cycles, loggin
 pomodoro/island.py          the top-of-screen island (the default timer style)
 pomodoro/orb.py             the floating round timer
 pomodoro/pomo.py            Pomo: drawing, moods, outfits and animation (all in code, no image files)
-pomodoro/game.py            Petal Catch
+pomodoro/game.py            the games window and Petal Catch
+pomodoro/stack.py           Mochi Stack
+pomodoro/memory.py          Memory Match
 pomodoro/toast.py           pop-up cards (session alerts, welcome, agent approvals)
-pomodoro/agents.py          live Claude Code sessions and approvals, over a local named pipe
-pomodoro/hook.py            the hook client Claude Code runs (standard library only, starts fast)
+pomodoro/agents.py          live coding-agent sessions and approvals, over a local named pipe
+pomodoro/hook.py            the hook client the agents run, translating Codex and Gemini into Claude Code's terms
 pomodoro/claude_hooks.py    connects / disconnects Pomo in Claude Code's settings.json
+pomodoro/agent_hooks.py     connects / disconnects Pomo in Codex CLI's hooks.json and Gemini CLI's settings.json
+pomodoro/reviews.py         the agent review queue: changed files turned into focus tasks
+pomodoro/workspace.py       the window you worked in, and the project and git branch open in your editor
+pomodoro/quests.py          daily quests, badges and their drawings
+pomodoro/cheer.py           a few warm words from Pomo during focus, in a bubble that fades
+pomodoro/soundscapes.py     focus sounds (rain, café, brown noise, lo-fi), synthesized as seamless loops
+pomodoro/audio.py           sound in and out through Windows' waveOut and waveIn (focus sounds, the mic)
+pomodoro/voice.py           Talk to Pomo: push-to-talk, speech to text, replies read aloud
+pomodoro/taskbar.py         the taskbar button: progress, thumbnail buttons and the live preview
 pomodoro/ai.py              Ask Pomo: context, streaming replies and key checks (Anthropic SDK, OpenAI-compatible APIs)
 pomodoro/providers.py       the AI providers and their models
 pomodoro/agent_card.py      Claude Code's questions, permission prompts and end-of-turn messages, answered in Pomo
@@ -392,7 +532,7 @@ pomodoro/stats.py           KPI calculations
 pomodoro/sounds.py          alert sounds synthesized at runtime
 pomodoro/theme.py           the five pastel themes, stylesheet
 pomodoro/icons.py           button glyphs and the Pomo app icon
-pomodoro/winutil.py         Windows helpers: run on startup, dark title bars
+pomodoro/winutil.py         Windows helpers: run on startup, dark title bars, bringing a window back to the front
 installer/Pomo.iss          Inno Setup installer script (also removes FocusOrb when upgrading)
 tools/prepare_build.py      generates the .exe icon, installer artwork and version info
 tests/                      unit tests

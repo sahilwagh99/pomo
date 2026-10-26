@@ -34,8 +34,16 @@ OUTFITS = {  # Pomo's wardrobe: key -> label
     "flowercrown": "Flower crown",
     "gradcap": "Graduation cap",
     "wizard": "Wizard hat",
+    # earned with daily quests
+    "starclip": "Star clip",
+    "bunnyears": "Bunny ears",
+    "strawberry": "Strawberry hat",
 }
 UNLOCKS = {"catears": 10, "flowercrown": 25, "gradcap": 50, "wizard": 100}  # outfit -> lifetime pomodoros
+QUEST_UNLOCKS = {"starclip": 5, "bunnyears": 15, "strawberry": 30}  # outfit -> daily quests finished
+FOCUS_SOUNDS = {"off": "Off", "rain": "Rain", "cafe": "Café murmur", "brown": "Brown noise", "lofi": "Lo-fi loop"}
+AUTO_TASK = ("ask", "auto", "off")  # name sessions after the project in your editor
+VOICE_INPUT = ("auto", "windows", "openai", "gemini")  # who turns your voice into text
 ORB_SIZES = {"Small": 150, "Medium": 190, "Large": 230}
 THEME_KEYS = ("light", "sakura", "lavender", "peach", "mint", "dark", "blueberry", "plum")  # see theme.THEMES
 DEFAULT_DISTRACTING = ("youtube", "netflix", "twitch", "tiktok", "instagram", "facebook", "reddit", "twitter",
@@ -46,6 +54,7 @@ HOTKEYS = {  # action -> (setting, label)
     "park": ("hotkey_park", "Park a thought"),
     "music": ("hotkey_music", "Play or pause music"),
     "show": ("hotkey_show", "Show or hide the timer"),
+    "talk": ("hotkey_talk", "Talk to Pomo (hold while you speak)"),
 }
 
 
@@ -129,6 +138,8 @@ class Settings:
     agent_questions: bool = True      # answer Claude's multiple-choice questions in Pomo
     agent_reply: bool = True          # reply to Claude in Pomo when a turn ends (while you're away from the terminal)
     agent_reply_wait_s: int = 45      # how long Claude waits for that reply
+    agent_reviews: bool = True        # when an agent changes files, suggest reviewing them as a focus task
+    reviews: list[dict] = field(default_factory=list)  # {"project", "agent", "files", "added", "removed", "at"}
 
     # Focus helpers
     rate_sessions: bool = True         # ask "how was that?" after each focus session
@@ -139,17 +150,31 @@ class Settings:
     distracting: list[str] = field(default_factory=lambda: list(DEFAULT_DISTRACTING))
     quiet_focus: bool = True           # hold Pomo's non-urgent alerts until the break
     break_card: bool = True            # when a break starts: breathe, parked thoughts, play
+    break_recap: bool = True           # when a break ends: "Where was I?" with your task, window and agent news
+    cheer_on: bool = True              # a few warm words from Pomo at halfway, 5 minutes left and the last minute
+    auto_task: str = "ask"             # name a session after the project in your editor: ask | auto | off
     hotkeys_on: bool = True
     hotkey_toggle: str = "Ctrl+Alt+Shift+P"
     hotkey_skip: str = "Ctrl+Alt+Shift+K"
     hotkey_park: str = "Ctrl+Alt+Shift+N"
     hotkey_music: str = "Ctrl+Alt+Shift+M"
     hotkey_show: str = "Ctrl+Alt+Shift+H"
+    hotkey_talk: str = "Ctrl+Alt+Shift+Space"
 
     # Music (whatever plays on this PC: Spotify, YouTube in a browser, ...)
     music_controls: bool = True   # show what's playing, with play/pause and skip
     pomo_listens: bool = True     # Pomo wears headphones and sways along while music plays
     music_follows: bool = False   # play while focusing, pause on breaks (opt-in: it touches your music)
+
+    # Focus sounds, made on this PC (no downloads)
+    focus_sound: str = "off"          # off | rain | cafe | brown | lofi
+    focus_sound_volume: int = 45
+    focus_sound_follows: bool = True  # only while a focus session runs (off: whenever one is picked)
+
+    # Talk to Pomo
+    voice_input: str = "auto"     # auto (the chat's provider if it can listen, else this PC) | windows | openai | gemini
+    voice_replies: bool = False   # Pomo reads its replies aloud
+    voice_name: str = ""          # a Windows voice; "" lets Pomo pick a soft one
 
     # AI (Ask Pomo): your own key, with the provider and model you pick
     ai_provider: str = "anthropic"    # anthropic | openai | gemini | xai | openrouter
@@ -164,8 +189,22 @@ class Settings:
     # Focus garden
     unlocks_seen: list[str] = field(default_factory=list)  # outfits whose unlock was celebrated
 
+    # Daily quests and badges
+    quests_on: bool = True
+    quest_day: str = ""                                     # the day today's quests were picked
+    quests: list[str] = field(default_factory=list)         # today's quests
+    quests_done: list[str] = field(default_factory=list)    # today's finished quests
+    quest_counts: dict = field(default_factory=dict)        # today's counters (breaths, parked thoughts...)
+    badges: dict = field(default_factory=dict)              # badge -> times earned
+    quests_total: int = 0                                   # quests ever finished (they unlock outfits)
+
+    # Mini games
+    stack_best: int = 0      # Mochi Stack: the tallest tower
+    memory_best: int = 0     # Memory Match: fewest moves (0 = not played yet)
+
     # General
     start_with_windows: bool = False
+    taskbar_button: bool = True  # the countdown on Pomo's taskbar button, with play, pause and skip on hover
     dashboard_range: int = 7  # 0 = all time
 
     # Runtime state that survives restarts
@@ -237,7 +276,25 @@ class Settings:
                            for t in self.task_queue
                            if isinstance(t, dict) and isinstance(t.get("task"), str) and t["task"].strip()
                            and isinstance(t.get("pomodoros", 1), int)][:20]
-        self.unlocks_seen = [k for k in self.unlocks_seen if k in UNLOCKS]
+        self.unlocks_seen = [k for k in self.unlocks_seen if k in UNLOCKS or k in QUEST_UNLOCKS]
+        if self.focus_sound not in FOCUS_SOUNDS:
+            self.focus_sound = "off"
+        self.focus_sound_volume = _clip(self.focus_sound_volume, 0, 100)
+        if self.auto_task not in AUTO_TASK:
+            self.auto_task = "ask"
+        if self.voice_input not in VOICE_INPUT:
+            self.voice_input = "auto"
+        self.reviews = [r for r in self.reviews if isinstance(r, dict) and isinstance(r.get("project"), str)
+                        and isinstance(r.get("files"), list)][-10:]
+        self.quests = [q for q in self.quests if isinstance(q, str)][:3]
+        self.quests_done = [q for q in self.quests_done if q in self.quests]
+        self.quest_counts = {k: v for k, v in self.quest_counts.items()
+                             if isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool)}
+        self.badges = {k: v for k, v in self.badges.items()
+                       if isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool) and v > 0}
+        self.quests_total = max(0, int(self.quests_total))
+        self.stack_best = max(0, int(self.stack_best))
+        self.memory_best = max(0, int(self.memory_best))
         if self.ai_provider not in PROVIDERS:
             self.ai_provider = "anthropic"
         if not self.ai_model.strip():  # any model id may be typed in; just not an empty one

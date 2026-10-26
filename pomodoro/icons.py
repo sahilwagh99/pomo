@@ -149,6 +149,40 @@ def draw_glyph(p: QPainter, name: str, c: QPointF, size: float, color: QColor) -
         p.setPen(_pen(color, max(1.0, stroke * 0.8)))
         p.setBrush(QColor("#f6a9bd"))
         p.drawPath(petal)
+    elif name == "headphones":  # focus sounds
+        r = s * 0.31
+        p.setPen(_pen(color, stroke))
+        p.drawArc(QRectF(c.x() - r, c.y() - r * 1.1, 2 * r, 2 * r), 0, 180 * 16)
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        for side in (-1, 1):
+            p.drawRoundedRect(QRectF(c.x() + side * r - s * 0.1, c.y() - s * 0.06, s * 0.2, s * 0.32), s * 0.07, s * 0.07)
+    elif name in ("speaker", "speaker_off"):  # Pomo reads replies aloud (or doesn't)
+        cone = QPainterPath(QPointF(c.x() - s * 0.38, c.y() - s * 0.11))
+        for dx, dy in ((-0.2, -0.11), (0.0, -0.3), (0.0, 0.3), (-0.2, 0.11), (-0.38, 0.11)):
+            cone.lineTo(c.x() + dx * s, c.y() + dy * s)
+        cone.closeSubpath()
+        p.setPen(_pen(color, stroke * 0.8))
+        p.setBrush(color)
+        p.drawPath(cone)
+        p.setBrush(Qt.NoBrush)
+        p.setPen(_pen(color, stroke))
+        if name == "speaker":
+            for r in (0.16, 0.3):
+                p.drawArc(QRectF(c.x() + s * 0.02 - r * s, c.y() - r * s, 2 * r * s, 2 * r * s), -50 * 16, 100 * 16)
+        else:
+            d = s * 0.1
+            x = c.x() + s * 0.24
+            p.drawLine(QPointF(x - d, c.y() - d), QPointF(x + d, c.y() + d))
+            p.drawLine(QPointF(x - d, c.y() + d), QPointF(x + d, c.y() - d))
+    elif name == "mic":
+        w, h = s * 0.26, s * 0.42
+        p.setPen(_pen(color, stroke))
+        p.drawRoundedRect(QRectF(c.x() - w / 2, c.y() - s * 0.4, w, h), w / 2, w / 2)
+        arc = QRectF(c.x() - s * 0.24, c.y() - s * 0.2, s * 0.48, s * 0.42)
+        p.drawArc(arc, 200 * 16, 140 * 16)
+        p.drawLine(QPointF(c.x(), c.y() + s * 0.22), QPointF(c.x(), c.y() + s * 0.36))
+        p.drawLine(QPointF(c.x() - s * 0.12, c.y() + s * 0.36), QPointF(c.x() + s * 0.12, c.y() + s * 0.36))
     elif name == "close":
         p.setPen(_pen(color, stroke))
         d = s * 0.26

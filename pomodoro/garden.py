@@ -13,7 +13,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
-from .config import OUTFITS, UNLOCKS
+from .config import OUTFITS, QUEST_UNLOCKS, UNLOCKS
 
 STAGES = ((0, "Sprout"), (5, "Sapling"), (25, "Young tree"), (100, "Sakura tree"), (250, "Grand sakura"))
 TRUNK = QColor("#7d5148")
@@ -26,8 +26,16 @@ def stage(lifetime: int) -> tuple[int, str]:
     return index, STAGES[index][1]
 
 
-def is_unlocked(outfit: str, lifetime: int) -> bool:
-    return lifetime >= UNLOCKS.get(outfit, 0)
+def is_unlocked(outfit: str, lifetime: int, quests: int = 0) -> bool:
+    """Garden outfits need lifetime pomodoros; quest outfits need daily quests finished."""
+    return lifetime >= UNLOCKS.get(outfit, 0) and quests >= QUEST_UNLOCKS.get(outfit, 0)
+
+
+def unlock_hint(outfit: str) -> str:
+    """'(25 pomodoros)' or '(15 quests)': what it takes to earn an outfit."""
+    if outfit in QUEST_UNLOCKS:
+        return f"{QUEST_UNLOCKS[outfit]} quests"
+    return f"{UNLOCKS[outfit]} pomodoros" if outfit in UNLOCKS else ""
 
 
 def next_unlock(lifetime: int) -> tuple[str, int] | None:

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QPointF, Qt, QTimer, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QPainter, QTextDocument
+from PySide6.QtCore import QPointF, QSize, Qt, QTimer, QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QPainter, QPixmap, QTextDocument
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from . import keystore
 from .ai import QUICK_ACTIONS, KeyCheckWorker, build_context, make_worker, quick_prompt, tool_results_messages
+from .icons import draw_glyph
 from .planner import MAX_TOOL_ROUNDS, ToolError, run_tool
 from .providers import PROVIDERS, model_for, model_label, provider, set_model
 from .pomo import BODY_RY, Pomo
@@ -186,6 +187,17 @@ class ChatWindow(QWidget):
         titles.addWidget(self.subtitle, 0, Qt.AlignLeft)
         titles.addStretch(1)
         head.addLayout(titles, 1)
+        self.read_aloud = QToolButton()
+        self.read_aloud.setCheckable(True)
+        self.read_aloud.setAutoRaise(True)
+        self.read_aloud.setCursor(Qt.PointingHandCursor)
+        self.read_aloud.setIconSize(QSize(20, 20))
+        self.read_aloud.setChecked(ctrl.settings.voice_replies)
+        self.read_aloud.setStyleSheet("QToolButton { border: none; padding: 4px; border-radius: 6px; }"
+                                      f" QToolButton:hover {{ background: {self.theme.hover}; }}")
+        self._show_read_aloud(ctrl.settings.voice_replies)
+        self.read_aloud.toggled.connect(self._toggle_read_aloud)
+        head.addWidget(self.read_aloud, 0, Qt.AlignTop)
         key_button = QPushButton("Key")
         key_button.setObjectName("ghost")
         key_button.setToolTip("Your API key")
@@ -232,8 +244,21 @@ class ChatWindow(QWidget):
         self.send_button.setObjectName("primary")
         self.send_button.setCursor(Qt.PointingHandCursor)
         self.send_button.clicked.connect(self._send_clicked)
+        self.mic = QPushButton()
+        self.mic.setIcon(self._mic_icon(QColor(self.theme.ink_2)))
+        self.mic.setIconSize(QSize(20, 20))
+        self.mic.setCursor(Qt.PointingHandCursor)
+        self.mic.setToolTip("Talk to Pomo: hold while you speak, or click and just talk")
+        self.mic.pressed.connect(self._mic_down)
+        self.mic.released.connect(self._mic_up)
+        self._mic_pressed_at = 0.0
+        self._to_speak = ""
         row.addWidget(self.input, 1)
-        row.addWidget(self.send_button, 0, Qt.AlignBottom)
+        buttons = QVBoxLayout()
+        buttons.setSpacing(6)
+        buttons.addWidget(self.mic)
+        buttons.addWidget(self.send_button)
+        row.addLayout(buttons)
         root.addLayout(row)
         self.privacy = QLabel("Your question and a short summary of your focus stats, tasks and agent activity "
                               "are sent to Anthropic.")
@@ -355,6 +380,64 @@ class ChatWindow(QWidget):
         keystore.delete_key(self.ctrl.ai_key_path)
         self._show_key_panel(True)
 
+    # ----------------------------------------------------------------- voice
+    @staticmethod
+    def _glyph_icon(name: str, color: QColor) -> QIcon:
+        pm = QPixmap(40, 40)
+        pm.setDevicePixelRatio(2.0)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        draw_glyph(p, name, QPointF(10, 10), 18, color)
+        p.end()
+        return QIcon(pm)
+
+    def _mic_icon(self, color: QColor) -> QIcon:
+        return self._glyph_icon("mic", color)
+
+    def _show_read_aloud(self, on: bool) -> None:
+        self.read_aloud.setIcon(self._glyph_icon("speaker" if on else "speaker_off", QColor(self.theme.ink_2)))
+        self.read_aloud.setToolTip("Pomo reads replies aloud (click to stop)" if on else
+                                   "Read replies aloud, with a Windows voice on this PC")
+
+    def _mic_down(self) -> None:
+        ctrl = self.ctrl
+        ctrl._ensure_voice()
+        talk = ctrl.talk
+        try:
+            talk.state_changed.disconnect(self._on_talk_state)
+        except (RuntimeError, TypeError):
+            pass
+        talk.state_changed.connect(self._on_talk_state)
+        if talk.recorder.recording:
+            talk.end()  # a second click: done talking
+            return
+        self._mic_pressed_at = time.monotonic()
+        talk.begin(None, show_card=False)
+
+    def _mic_up(self) -> None:
+        talk = self.ctrl.talk
+        if talk is not None and talk.recorder.recording and time.monotonic() - self._mic_pressed_at > 0.45:
+            talk.end()  # held while talking: letting go sends it
+        # a quick click keeps listening until you pause (or click again)
+
+    def _on_talk_state(self, state: str) -> None:
+        t = self.theme
+        listening = state == "listening"
+        self.mic.setIcon(self._mic_icon(QColor(t.danger if listening else t.ink_2)))
+        self.input.setPlaceholderText({"listening": "Listening… pause or click the mic when you're done",
+                                       "thinking": "Turning your words into text…"}.get(
+                                          state, "Ask Pomo anything about your focus…"))
+
+    def _toggle_read_aloud(self, on: bool) -> None:
+        self._show_read_aloud(on)
+        self.ctrl.settings.voice_replies = on
+        self.ctrl.save_settings()
+        if not on:
+            self._stop_speaking()
+        else:
+            self.ctrl.speak_reply("Okay! I'll read my replies to you.")
+
     # ----------------------------------------------------------------- state
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -468,6 +551,8 @@ class ChatWindow(QWidget):
     def send(self, text: str) -> None:
         if self.worker is not None:
             return
+        self._stop_speaking()  # a new question: Pomo stops reading the last answer
+        self._to_speak = ""
         self._add_bubble(text, mine=True)
         user = {"role": "user", "content": text}
         context = {"role": "system", "content": build_context(self.ctrl)}
@@ -508,6 +593,7 @@ class ChatWindow(QWidget):
         self._pending = []
         if not reply.tool_calls:
             self.avatar.pomo.hello()
+            self._to_speak = reply.text  # read aloud once the reply is all in (if you asked for that)
             return
         results, notes = [], []
         cut_off = not reply.complete  # e.g. out of tokens: the input may be incomplete
@@ -560,11 +646,23 @@ class ChatWindow(QWidget):
             self._request(follow_up)
             return
         self._set_busy(False)
+        speak, self._to_speak = self._to_speak, ""
+        if speak and hasattr(self.ctrl, "speak_reply"):
+            self.ctrl.speak_reply(speak)
 
     def _set_busy(self, busy: bool) -> None:
         self.send_button.setText("Stop" if busy else "Send")
         for chip in self.chip_buttons:
             chip.setEnabled(not busy and self.ctrl.has_ai_key())
+
+    def _stop_speaking(self) -> None:
+        speaker = getattr(self.ctrl, "speaker", None)
+        if speaker is not None:
+            speaker.stop()
+
+    def closeEvent(self, event) -> None:
+        self._stop_speaking()
+        super().closeEvent(event)
 
     def shutdown(self) -> None:
         if self.worker is not None:

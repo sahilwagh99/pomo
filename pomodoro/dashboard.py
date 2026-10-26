@@ -25,8 +25,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import garden, insights
+from . import garden, insights, quests, reviews
 from .charts import Bar, CalendarHeatmap, ColumnChart, HBarChart, Meter
+from .quests import BadgeShelf, QuestList
 from .engine import State
 from .garden import GardenWidget
 from .stats import (
@@ -203,6 +204,7 @@ class Dashboard(QWidget):
         root.addLayout(row4)
 
         root.addLayout(self._build_insights_row())
+        root.addLayout(self._build_quests_row())
         root.addWidget(self._build_agents_card())
 
         log_card = Card("Session log", "Most recent first. Export the full history as CSV from the top right.")
@@ -331,6 +333,7 @@ class Dashboard(QWidget):
             focus_color, label_every=1,
         )
         self._refresh_insights(records, start, today, summary, focus_color)
+        self._refresh_quests(records, today)
         self._refresh_table([r for r in records if start <= r.day <= today])
         self._refresh_agents()
 
@@ -404,9 +407,42 @@ class Dashboard(QWidget):
         self.apps.setVisible(bool(app_rows))
         self.apps_title.setVisible(bool(app_rows))
 
+    # --------------------------------------------------------- quests and badges
+    def _build_quests_row(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(16)
+        quests_card = Card("Today's quests", "Three small goals a day. Each one you finish earns its badge.")
+        self.quest_list = QuestList(self.theme)
+        quests_card.body.addWidget(self.quest_list)
+        quests_card.body.addStretch(1)
+        badges_card = Card("Badges", "Every badge you've earned. Hover one to see how.")
+        self.badge_shelf = BadgeShelf(self.theme)
+        badges_card.body.addWidget(self.badge_shelf)
+        self.badge_note = _label("", "secondary", wrap=True)
+        badges_card.body.addWidget(self.badge_note)
+        badges_card.body.addStretch(1)
+        row.addWidget(quests_card, 2)
+        row.addWidget(badges_card, 3)
+        return row
+
+    def _refresh_quests(self, records, today: date) -> None:
+        s = self.ctrl.settings
+        rows = []
+        if s.quests_on and s.quest_day == today.isoformat():
+            for key in s.quests:
+                quest = quests.QUESTS.get(key)
+                if quest is not None:
+                    rows.append((quest, quests.progress(quest, s, records, today), quests.target_of(quest, s),
+                                 key in s.quests_done))
+        self.quest_list.set_rows(rows)
+        self.badge_shelf.set_badges(s.badges)
+        earned = sum(1 for v in s.badges.values() if v)
+        self.badge_note.setText(f"{plural(s.quests_total, 'quest')} finished  ·  {earned} of "
+                                f"{len(quests.QUESTS) + 1} badges\n{quests.next_outfit_text(s.quests_total)}")
+
     # ------------------------------------------------------------ coding agents
     def _build_agents_card(self) -> Card:
-        card = Card("Coding agents", "What your Claude Code sessions did today, as Pomo saw it.")
+        card = Card("Coding agents", "What your coding agents (Claude Code, Codex, Gemini) did today, as Pomo saw it.")
         grid = QGridLayout()
         grid.setSpacing(12)
         self.agent_tiles: dict[str, StatTile] = {}
@@ -448,16 +484,22 @@ class Dashboard(QWidget):
         tiles["with_breaks"].set(fmt_hm(overlap.during_break_sec), share(overlap.during_break_sec))
         hub = self.ctrl.agents
         from html import escape
-        rows = [f"<b>{escape(a.project)}</b> &middot; {escape(a.status_text)}"
+        rows = [f"<b>{escape(a.project)}</b>" + (f" ({escape(a.agent_label)})" if a.agent != "claude" else "")
+                + f" &middot; {escape(a.status_text)}"
                 + (f" &middot; {escape(a.activity)}" if a.status == "working" and a.activity else "")
                 for a in hub.live_sessions()[:6]]
         if rows:
-            self.agent_live.setText("Live now:<br>" + "<br>".join(rows))
+            text = "Live now:<br>" + "<br>".join(rows)
         elif sm.sessions:
-            self.agent_live.setText("No sessions running right now.")
+            text = "No sessions running right now."
         else:
-            self.agent_live.setText("No agent activity yet today. Connect Claude Code in "
-                                    "<b>Settings &gt; Agents</b> and Pomo will keep an eye on your sessions.")
+            text = ("No agent activity yet today. Connect Claude Code, Codex or Gemini in "
+                    "<b>Settings &gt; Agents</b> and Pomo will keep an eye on your sessions.")
+        waiting = self.ctrl.settings.reviews
+        if waiting:
+            items = [f"<b>{escape(r['project'])}</b> &middot; {escape(reviews.summary(r))}" for r in reversed(waiting[-4:])]
+            text += "<br><br>Waiting for your review (right-click the timer to start one):<br>" + "<br>".join(items)
+        self.agent_live.setText(text)
 
     def _refresh_today(self, today: Summary, color: QColor) -> None:
         goal = self.ctrl.settings.daily_goal

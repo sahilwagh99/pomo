@@ -1,11 +1,13 @@
-"""Live view of Claude Code sessions, fed by Pomo's hook client (hook.py).
+"""Live view of coding-agent sessions (Claude Code, Codex CLI, Gemini CLI), fed by Pomo's hook client (hook.py).
 
 Each hook run connects to a local named pipe and sends one JSON line. Some keep
 the connection open until the user answers in Pomo (or the wait runs out, and
-Claude Code carries on in the terminal as usual):
-  permission  a permission prompt: allow, deny (with a note for Claude), or in terminal
+the agent carries on in the terminal as usual):
+  permission  a permission prompt: allow, deny (with a note for the agent), or in terminal
   question    Claude's multiple-choice question (AskUserQuestion): pick an answer
-  reply       the end of a turn: Claude's own words, and a box to reply
+  reply       the end of a turn: the agent's own words, and a box to reply
+
+When a turn ends after the agent changed files, review_ready offers them as focus work for you.
 """
 from __future__ import annotations
 
@@ -33,6 +35,8 @@ VERBS = {
 }
 STATUS_TEXT = {"working": "working", "approval": "needs your OK", "waiting": "waiting for you",
                "done": "finished", "idle": "ready"}
+AGENT_LABELS = {"claude": "Claude", "codex": "Codex", "gemini": "Gemini"}
+EDIT_TOOLS = ("Edit", "MultiEdit", "Write", "NotebookEdit")
 
 
 def activity_text(tool: str, detail: str) -> str:
@@ -40,9 +44,9 @@ def activity_text(tool: str, detail: str) -> str:
     return f"{verb} {detail}".strip() if detail and tool != "TodoWrite" else verb
 
 
-def project_name(cwd: str) -> str:
+def project_name(cwd: str, agent: str = "claude") -> str:
     name = PureWindowsPath(cwd).name if cwd else ""
-    return name or "Claude Code"
+    return name or {"codex": "Codex", "gemini": "Gemini CLI"}.get(agent, "Claude Code")
 
 
 @dataclass
@@ -50,6 +54,7 @@ class AgentSession:
     id: str
     project: str
     cwd: str
+    agent: str = "claude"   # claude | codex | gemini
     status: str = "idle"
     activity: str = ""
     started: datetime = field(default_factory=datetime.now)
@@ -59,10 +64,24 @@ class AgentSession:
     tools: int = 0
     edits: int = 0
     commands: int = 0
+    turn_files: dict = field(default_factory=dict)  # files changed since the last finished turn: path -> [added, removed]
 
     @property
     def status_text(self) -> str:
         return STATUS_TEXT.get(self.status, self.status)
+
+    @property
+    def agent_label(self) -> str:
+        return AGENT_LABELS.get(self.agent, "Claude")
+
+
+def review_of(session: AgentSession) -> dict:
+    """The files a finished turn changed, as an item for the review queue (see reviews.py)."""
+    files = sorted(session.turn_files.items(), key=lambda kv: -(kv[1][0] + kv[1][1]))
+    return {"project": session.project, "agent": session.agent, "cwd": session.cwd,
+            "files": [path for path, _ in files][:30],
+            "added": sum(a for _, (a, _r) in files), "removed": sum(r for _, (_a, r) in files),
+            "at": datetime.now().replace(microsecond=0).isoformat()}
 
 
 @dataclass
@@ -85,6 +104,7 @@ class AgentHub(QObject):
     approval_closed = Signal(object)       # Approval resolved or cancelled
     turn_finished = Signal(object, float)  # AgentSession, seconds the turn took
     needs_input = Signal(object, str)      # AgentSession, notification kind
+    review_ready = Signal(object)          # a turn changed files: {"project", "agent", "files", "added", ...}
 
     def __init__(self, ctrl, parent: QObject | None = None):
         super().__init__(parent)
@@ -181,7 +201,9 @@ class AgentHub(QObject):
             if event == "SessionEnd":
                 return
             cwd = str(msg.get("cwd", ""))
-            session = self.sessions[sid] = AgentSession(sid, project_name(cwd), cwd)
+            agent = str(msg.get("agent") or "claude")
+            session = self.sessions[sid] = AgentSession(sid, project_name(cwd, agent), cwd,
+                                                        agent if agent in AGENT_LABELS else "claude")
         session.last_event = now
 
         if event == "SessionStart":
@@ -199,11 +221,18 @@ class AgentHub(QObject):
             session.turn_started = session.turn_started or now
         elif event == "PostToolUse":
             session.tools += 1
-            session.edits += tool in ("Edit", "MultiEdit", "Write", "NotebookEdit")
+            session.edits += tool in EDIT_TOOLS
             session.commands += tool == "Bash"
             if session.status == "approval":
                 session.status = "working"
-            self._record(session, event, tool, detail, int(msg.get("added") or 0), int(msg.get("removed") or 0))
+            files = self._changed_files(msg, tool, detail)
+            if not files:
+                self._record(session, event, tool, detail, int(msg.get("added") or 0), int(msg.get("removed") or 0))
+            for path, added, removed in files:  # a patch can touch several files: one event each
+                self._record(session, event, tool, path, added, removed)
+                tally = session.turn_files.setdefault(path, [0, 0])
+                tally[0] += added
+                tally[1] += removed
         elif event == "PermissionRequest":
             session.status = "approval"
             session.activity = activity_text(tool, detail)
@@ -222,10 +251,28 @@ class AgentHub(QObject):
             self._record(session, event, detail=detail)
             if msg.get("wait"):
                 self._open_reply(session, session.message, sock)
+            if session.turn_files:  # queued first, so the finish notice can offer it
+                review, session.turn_files = review_of(session), {}
+                if self.ctrl.settings.agent_reviews:
+                    self.review_ready.emit(review)
             self.turn_finished.emit(session, seconds)
         elif event == "SessionEnd":
             self.sessions.pop(sid, None)
         self.changed.emit()
+
+    @staticmethod
+    def _changed_files(msg: dict, tool: str, detail: str) -> list[tuple[str, int, int]]:
+        """(path, lines added, lines removed) for each file a tool call changed."""
+        files = msg.get("files")
+        if isinstance(files, list):
+            out = []
+            for item in files:
+                if isinstance(item, list) and len(item) == 3 and isinstance(item[0], str) and item[0]:
+                    out.append((item[0], int(item[1] or 0), int(item[2] or 0)))
+            return out
+        if tool in EDIT_TOOLS and detail:  # an older hook client: one file, in the detail
+            return [(detail, int(msg.get("added") or 0), int(msg.get("removed") or 0))]
+        return []
 
     def _record(self, session: AgentSession, event: str, tool: str = "", detail: str = "",
                 added: int = 0, removed: int = 0) -> None:

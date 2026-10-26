@@ -57,15 +57,28 @@ def idle_seconds() -> float:
 
 def foreground() -> tuple[str, str, int] | None:
     """(exe name without .exe, window title, process id) of the window in front, or None."""
+    front = foreground_window()
+    return None if front is None else front[1:]
+
+
+def foreground_window() -> tuple[int, str, str, int] | None:
+    """(window handle, exe name without .exe, window title, process id) of the window in front, or None."""
     if sys.platform != "win32":
         return None
+    import ctypes
+
+    hwnd = ctypes.windll.user32.GetForegroundWindow()
+    if not hwnd:
+        return None
+    return (int(hwnd), *window_info(hwnd))
+
+
+def window_info(hwnd: int) -> tuple[str, str, int]:
+    """(exe name without .exe, title, process id) of a window."""
     import ctypes
     from ctypes import wintypes
 
     user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
-    hwnd = user32.GetForegroundWindow()
-    if not hwnd:
-        return None
     pid = wintypes.DWORD()
     user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
     length = user32.GetWindowTextLengthW(hwnd)

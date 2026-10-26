@@ -26,7 +26,7 @@ SHADOW = 14
 WIDTH = 400
 GAP = 10
 MESSAGE_MAX_H = 260
-TITLES = {"permission": "Claude needs your OK", "question": "Claude has a question", "reply": "Claude finished"}
+TITLES = {"permission": "{who} needs your OK", "question": "{who} has a question", "reply": "{who} finished"}
 
 
 class _ReplyBox(QPlainTextEdit):
@@ -65,7 +65,8 @@ class AgentCard(QWidget):
         self._clear(self._root)
         head = QHBoxLayout()
         head.addSpacing(14)  # the accent dot is painted here
-        self._title = title = QLabel(TITLES[approval.kind])
+        who = approval.session.agent_label
+        self._title = title = QLabel(TITLES[approval.kind].format(who=who))
         title.setProperty("role", "title")
         close = QToolButton()
         close.setObjectName("close")
@@ -81,9 +82,9 @@ class AgentCard(QWidget):
         self._root.addWidget(sub)
         {"permission": self._build_permission, "question": self._build_question,
          "reply": self._build_reply}[approval.kind](approval)
-        hint = QLabel({"permission": f"If you don't answer within {wait_s} s, Claude asks in the terminal.",
-                       "question": f"If you don't answer within {wait_s} s, Claude asks in the terminal.",
-                       "reply": f"Claude waits {wait_s} s for a reply, then stops as usual."}[approval.kind])
+        hint = QLabel({"permission": f"If you don't answer within {wait_s} s, {who} asks in the terminal.",
+                       "question": f"If you don't answer within {wait_s} s, {who} asks in the terminal.",
+                       "reply": f"{who} waits {wait_s} s for a reply, then stops as usual."}[approval.kind])
         hint.setProperty("role", "muted")
         hint.setWordWrap(True)
         self._root.addWidget(hint)
@@ -142,7 +143,7 @@ class AgentCard(QWidget):
     def _build_permission(self, approval) -> None:
         self._root.addWidget(self._message_view(approval.detail or approval.tool, markdown=False))
         self.note = QLineEdit()
-        self.note.setPlaceholderText("Tell Claude what to do instead (optional)")
+        self.note.setPlaceholderText(f"Tell {approval.session.agent_label} what to do instead (optional)")
         self.note.returnPressed.connect(lambda: self._resolve("deny", self.note.text()))
         self.note.hide()
         self._root.addWidget(self.note)
@@ -237,10 +238,11 @@ class AgentCard(QWidget):
 
     # ---------------------------------------------------------------- reply
     def _build_reply(self, approval) -> None:
-        self._root.addWidget(self._message_view(approval.message or "(Claude finished without a message.)",
+        who = approval.session.agent_label
+        self._root.addWidget(self._message_view(approval.message or f"({who} finished without a message.)",
                                                 markdown=True))
         self.reply_box = _ReplyBox(self._send_reply)
-        self.reply_box.setPlaceholderText("Reply to Claude (Enter sends)")
+        self.reply_box.setPlaceholderText(f"Reply to {who} (Enter sends)")
         self.reply_box.setFixedHeight(58)
         self._root.addWidget(self.reply_box)
         row = QHBoxLayout()

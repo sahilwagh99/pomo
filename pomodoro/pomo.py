@@ -138,6 +138,7 @@ class Pomo:
         self._dance_until = -1.0
         self.listening = False          # music is playing: headphones, a gentle sway and floating notes
         self._next_note = 0.0
+        self.talking = False            # reading a reply aloud: the mouth moves
 
     # ---------------------------------------------------------------- events
     @property
@@ -174,6 +175,12 @@ class Pomo:
         self._react("happy", 1.1)
         self.hop(2.0)
         self._burst("spark", 4, 1.3, 0.6)
+
+    def cheer(self) -> None:
+        """A small, quiet "you've got this" during focus: a little hop and a few sparks."""
+        self._react("happy", 0.9)
+        self.hop(1.4)
+        self._burst("spark", 3, 1.1, 0.5)
 
     def rub(self, direction: int) -> bool:
         """Cursor moving over him; back-and-forth rubbing pets him. Returns True when he loves it."""
@@ -343,7 +350,7 @@ class Pomo:
 
     def _settled(self, notes_ok: bool) -> bool:
         particles = all(p.kind == "note" for p in self.particles) if notes_ok else not self.particles
-        return (self.reaction is None and particles and not self._queued_hops
+        return (self.reaction is None and particles and not self._queued_hops and not self.talking
                 and self.signal != "alert"  # the "!" pulses; approvals are short-lived
                 and self.t > self._dance_until and self.t - self._spin_start > 0.7
                 and self.hop_y <= 0.0 and self.hop_v <= 0.0
@@ -531,6 +538,8 @@ class Pomo:
 
     def _paint_face(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
         eyes, mouth, brows = FACES.get(self.face, FACES["idle"])
+        if self.talking and self.reaction is None:
+            mouth = "o" if int(self.t * 7.0) % 3 else "smile"
         lx, ly = self.ex * rx * 0.1, self.ey * ry * 0.1
         if eyes in ("happy", "sleep", "squeeze", "spiral"):
             lx *= 0.4
@@ -680,7 +689,8 @@ class Pomo:
             self._paint_headphones(p, c, rx, ry, s)
             return
         if outfit not in ("beanie", "party", "crown", "bow", "catears", "flowercrown", "gradcap", "wizard",
-                          "hardhat", "nightcap", "headband", "sunhat", "chefhat", "beret"):
+                          "hardhat", "nightcap", "headband", "sunhat", "chefhat", "beret", "starclip", "bunnyears",
+                          "strawberry"):
             return
         # hats wobble a little with the same spring as the blossom
         base = QPointF(c.x(), c.y() - ry * 0.85)
@@ -965,6 +975,73 @@ class Pomo:
         p.drawEllipse(QRectF(-rx * 0.95, -ry * 0.4, rx * 1.8, ry * 0.62))
         p.drawLine(QPointF(rx * 0.05, -ry * 0.4), QPointF(rx * 0.1, -ry * 0.58))  # the little stalk
         p.restore()
+
+    def _paint_starclip(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        center = QPointF(c.x() + rx * 0.52, c.y() - ry * 0.78)
+        star = QPainterPath()
+        for i in range(10):
+            a = -math.pi / 2 + i * math.pi / 5 + 0.15
+            r = s * (0.13 if i % 2 == 0 else 0.058)
+            point = QPointF(center.x() + math.cos(a) * r, center.y() + math.sin(a) * r)
+            star.moveTo(point) if i == 0 else star.lineTo(point)
+        star.closeSubpath()
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#f9dc8a"))
+        p.drawPath(star)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(255, 255, 255, 200))
+        p.drawEllipse(QPointF(center.x() - s * 0.025, center.y() - s * 0.03), s * 0.022, s * 0.022)
+        twinkle = 0.5 + 0.5 * math.sin(self.t * 3.0)  # a little sparkle beside it
+        p.setPen(QPen(QColor(245, 215, 126, int(120 + 120 * twinkle)), max(1.0, s * 0.018), Qt.SolidLine, Qt.RoundCap))
+        spark = QPointF(center.x() + s * 0.17, center.y() - s * 0.12)
+        arm = s * (0.025 + 0.02 * twinkle)
+        p.drawLine(QPointF(spark.x() - arm, spark.y()), QPointF(spark.x() + arm, spark.y()))
+        p.drawLine(QPointF(spark.x(), spark.y() - arm), QPointF(spark.x(), spark.y() + arm))
+
+    def _paint_bunnyears(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        for side in (-1, 1):
+            p.save()
+            p.translate(c.x() + side * rx * 0.36, c.y() - ry * 0.8)
+            p.rotate(side * 14 + side * math.sin(self.t * 1.3 + side) * 3)  # they twitch a little
+            ear = QRectF(-s * 0.085, -s * 0.5, s * 0.17, s * 0.52)
+            p.setPen(self._line(s))
+            p.setBrush(BODY)
+            p.drawRoundedRect(ear, s * 0.085, s * 0.085)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor("#f6b3c4"))
+            p.drawRoundedRect(ear.adjusted(s * 0.04, s * 0.06, -s * 0.04, -s * 0.12), s * 0.045, s * 0.045)
+            p.restore()
+
+    def _paint_strawberry(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        x, y = c.x(), c.y()
+        cap = QPainterPath(QPointF(x - rx * 0.8, y - ry * 0.62))
+        cap.cubicTo(x - rx * 0.85, y - ry * 1.55, x + rx * 0.85, y - ry * 1.55, x + rx * 0.8, y - ry * 0.62)
+        cap.quadTo(x, y - ry * 0.48, x - rx * 0.8, y - ry * 0.62)
+        p.setPen(self._line(s))
+        p.setBrush(QColor("#f28a95"))
+        p.drawPath(cap)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#fff2b8"))
+        for dx, dy in ((-0.5, -0.85), (-0.15, -1.0), (0.2, -0.88), (0.5, -0.78), (-0.32, -1.18), (0.05, -1.2),
+                       (0.35, -1.08)):
+            p.save()
+            p.translate(x + rx * dx, y + ry * dy)
+            p.rotate(20)
+            p.drawEllipse(QPointF(0, 0), s * 0.014, s * 0.022)
+            p.restore()
+        p.setPen(self._line(s, 0.022))
+        p.setBrush(QColor("#86b874"))
+        top = QPointF(x, y - ry * 1.3)
+        for angle in (-60, -20, 20, 60):
+            leaf = QPainterPath(top)
+            a = math.radians(angle - 90)
+            tip = QPointF(top.x() + math.cos(a) * s * 0.16, top.y() + math.sin(a) * s * 0.1 + s * 0.03)
+            side = QPointF(-math.sin(a) * s * 0.035, math.cos(a) * s * 0.035)
+            leaf.quadTo(QPointF((top.x() + tip.x()) / 2 + side.x(), (top.y() + tip.y()) / 2 + side.y()), tip)
+            leaf.quadTo(QPointF((top.x() + tip.x()) / 2 - side.x(), (top.y() + tip.y()) / 2 - side.y()), top)
+            p.drawPath(leaf)
+        p.setPen(QPen(QColor("#6f9d60"), max(1.0, s * 0.03), Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(top, QPointF(top.x() + s * 0.02, top.y() - s * 0.07))
 
     def _paint_glasses(self, p: QPainter, center: QPointF, rx: float, r: float, s: float) -> None:
         p.setPen(self._line(s, 0.024))

@@ -61,7 +61,7 @@ TIPS = {
     "chat": "Ask Pomo",
     "style": "Switch to the top island",
     "feed": "Feed Pomo a treat (you earn one per focus session)",
-    "play": "Play Petal Catch with Pomo",
+    "play": "Play a game with Pomo",
     "settings": "Settings",
     "pomo": "Pomo, your focus buddy. Poke him!",
     "time": "Double-click to type a time, scroll to adjust,\nright-click for more options",
@@ -398,6 +398,13 @@ class OrbWidget(QWidget):
     def anchor_rect_global(self) -> QRect:
         return self.circle_rect_global()
 
+    def whisper_anchor(self) -> QRect:
+        """Where Pomo's cheer bubble points: Pomo on top of the orb (hats included)."""
+        size = POMO_SIZE * self._k()
+        body = self.pomo.body_center(self._pomo_anchor(), size)
+        local = QRectF(body.x() - size / 2, body.y() - size * 0.9, size, size * 1.3).toRect()
+        return QRect(self.mapToGlobal(local.topLeft()), local.size())
+
     def move_circle_to(self, center: QPoint) -> None:
         local = self._center().toPoint()
         self.move(center.x() - local.x(), center.y() - local.y())
@@ -432,6 +439,12 @@ class OrbWidget(QWidget):
             c, r = self._center(), 0.21 * POMO_SIZE * self._k()
             d = (self._diam / 2 + r * 0.3) / math.sqrt(2)
             out["music"] = (QPointF(c.x() - d, c.y() - d), r, 1.0)
+        # focus sounds: on the upper-right rim, while one is picked or when you hover
+        c, r = self._center(), 0.21 * POMO_SIZE * self._k()
+        d = (self._diam / 2 + r * 0.3) / math.sqrt(2)
+        seen = 1.0 if self.ctrl.settings.focus_sound != "off" else self._hover
+        if seen > 0.05:
+            out["sounds"] = (QPointF(c.x() + d, c.y() - d), r, seen)
         if not self._pomo_on:
             return out
         anchor, size = self._pomo_anchor(), POMO_SIZE * self._k()
@@ -620,6 +633,13 @@ class OrbWidget(QWidget):
                 else:
                     draw_glyph(p, "note", center, r * 1.25, QColor(t.ink_2))
                 continue
+            if name == "sounds":
+                if self.ctrl.settings.focus_sound != "off":
+                    p.setBrush(Qt.NoBrush)
+                    p.setPen(QPen(QColor(t.focus), 1.6))
+                    p.drawEllipse(center, r, r)
+                draw_glyph(p, "headphones", center, r * 1.15, QColor(t.ink_2))
+                continue
             draw_glyph(p, "dango" if name == "feed" else "petal", center, r * 1.35, QColor(t.ink_2))
             if name == "feed" and self.ctrl.settings.treats > 1:
                 p.setFont(self._font(8.5 * k, QFont.DemiBold))
@@ -759,6 +779,10 @@ class OrbWidget(QWidget):
             text = f"Skip to {self.engine.skip_target().label.lower()}  (S)"
         elif name == "music":
             text = now_playing_tip(self.ctrl) + "\nClick for the music controls"
+        elif name == "sounds":
+            from .island import sounds_tip
+
+            text = sounds_tip(self.ctrl.settings)
         elif name == "pomo" and self.ctrl.agents.sessions:
             lines = [f"{a.project}: {a.status_text}" + (f" · {a.activity}" if a.status == "working" else "")
                      for a in self.ctrl.agents.live_sessions()[:5]]
@@ -908,6 +932,8 @@ class OrbWidget(QWidget):
             self.ctrl.open_game()
         elif name == "music":
             self.ctrl.open_music_card()
+        elif name == "sounds":
+            self.ctrl.open_sounds_menu(QCursor.pos())
 
     # ------------------------------------------------------------ inline edit
     def _layout_edit(self) -> None:

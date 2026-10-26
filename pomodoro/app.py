@@ -8,14 +8,16 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QTimer
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QImage
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QSystemTrayIcon
 
-from . import APP_NAME, claude_hooks, garden, insights, keystore, media, planner, providers
-from .agents import AgentHub, Approval
-from .config import HOTKEYS, OUTFITS, UNLOCKS, Settings
+from . import APP_NAME, agent_hooks, audio, claude_hooks, garden, insights, keystore, media, planner, providers
+from . import quests, reviews, soundscapes
+from .agents import EDIT_TOOLS, AgentHub, Approval
+from .config import FOCUS_SOUNDS, HOTKEYS, OUTFITS, Settings
 from .hotkeys import GlobalHotkeys
+from .hotkeys import parse as parse_hotkey
 from .pacing import AgentPacer, finished_detail
 from .presence import AwayWatcher, FocusGuard
 from .pomo import SLEEPY_AFTER
@@ -28,9 +30,12 @@ from .stats import fmt_clock, plural
 from .storage import Storage
 from .theme import THEMES, build_palette, build_qss, ensure_qss_assets, mode_color, theme_for
 from .toast import ToastCard
+from .workspace import FrontTracker, ProjectFinder
 from . import winutil
 
 GOAL_PRESETS = (4, 6, 8, 10, 12, 16)
+SOUND_VOLUMES = (20, 35, 50, 65, 80)
+SOUND_PREVIEW_S = 8.0  # picking a sound outside focus plays a taste of it
 
 
 def styled_menu(menu: QMenu) -> QMenu:
@@ -51,6 +56,9 @@ def _action(menu: QMenu, text: str, fn, *, checked: bool | None = None, enabled:
 
 
 class PomoApp(QObject):
+    sound_loaded = Signal(str, object)  # a focus sound finished loading (on a worker thread): name, samples
+    voices_found = Signal(list)         # Windows' voices, looked up on a worker thread for Settings
+
     def __init__(self, qapp: QApplication, data_dir: Path, demo: bool = False):
         super().__init__()
         self.qapp = qapp
@@ -102,6 +110,34 @@ class PomoApp(QObject):
         self._prev_timer = (self.engine.mode, self.engine.state)
         self._away_paused = False
 
+        # what you're working on: for "Where was I?" after a break, and naming sessions after your project
+        self.finder = ProjectFinder(extra_folders=lambda: [a.cwd for a in self.agents.sessions.values() if a.cwd])
+        self.tracker = FrontTracker(self.finder, parent=self)
+        self._recap_window = None      # the window you were in when focus stopped
+        self._away_since: datetime | None = None
+        self._break_over_pending = False
+        self._auto_task = ""           # the task Pomo named after your project, if it did
+        self._focus_paused = False     # this focus session was paused (for the Laser focus quest)
+        self._cheered: set[str] = set()  # the moments Pomo already cheered in this focus session
+        self.whisper = None              # Pomo's little speech bubble, made when first needed
+        # focus sounds, talking, the taskbar
+        self.sound_player = audio.LoopPlayer()
+        self._sounds: dict[str, object] = {}  # name -> samples, once made
+        self._sound_loading: set[str] = set()
+        self._sound_now: str | None = None
+        self._preview_until = 0.0
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.timeout.connect(self._sync_focus_sound)
+        self.speaker = None
+        self.talk = None
+        self.voices: list | None = None  # Windows' voices, once looked up
+        self.taskbar = None
+        self._taskbar_dismissed = False
+        self._fresh_review: dict | None = None
+        self._quest_pending: tuple[list, list] = ([], [])  # finished quests and unlocked outfits not shown yet
+        self._roll_quests()
+
         self.tray: QSystemTrayIcon | None = None
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray = QSystemTrayIcon(self.icon, self)
@@ -141,7 +177,9 @@ class PomoApp(QObject):
         self.agents.approval_closed.connect(self._on_approval_closed)
         self.agents.turn_finished.connect(self._on_agent_finished)
         self.agents.needs_input.connect(self._on_agent_needs_input)
+        self.agents.review_ready.connect(self._on_review_ready)
         self.agents.changed.connect(self._on_agents_changed)
+        self.sound_loaded.connect(self._on_sound_loaded)
         self.agents.changed.connect(self.island._update_targets)
         qapp.aboutToQuit.connect(self._on_quit)
         self.pacer.suggest_break.connect(self._on_suggest_break)
@@ -159,6 +197,10 @@ class PomoApp(QObject):
         self._sync_media()
         self._sync_hotkeys()
         self._sync_presence()
+        self.tracker.set_active(True)
+        self._sync_focus_sound()
+        QTimer.singleShot(1200, self._sync_taskbar)  # after the timer window, so it doesn't steal the first look
+        QTimer.singleShot(2000, self._check_quests)  # today's history may already have met a quest
         if not self.settings.welcomed:
             QTimer.singleShot(1800, self._welcome)
 
@@ -201,6 +243,22 @@ class PomoApp(QObject):
                 claude_hooks.refresh()
             except (claude_hooks.HookConfigError, OSError):
                 pass
+            for agent in agent_hooks.AGENTS:
+                try:
+                    agent_hooks.refresh(agent)
+                except (claude_hooks.HookConfigError, OSError):
+                    pass
+
+    def _uses_agents(self) -> bool:
+        """Does this person use coding agents with Pomo? (Agent quests are only picked if so.)"""
+        if self.settings.reviews or self.agents.sessions:
+            return True
+        try:
+            if claude_hooks.status() != "off":
+                return True
+            return any(agent_hooks.status(a) != "off" for a in agent_hooks.AGENTS)
+        except OSError:
+            return False
 
     def set_theme(self, key: str) -> None:
         new = self.settings.copy()
@@ -208,8 +266,11 @@ class PomoApp(QObject):
         new.clamp()
         self.apply_settings(new)
 
+    def outfit_unlocked(self, key: str) -> bool:
+        return garden.is_unlocked(key, self.lifetime, self.settings.quests_total)
+
     def set_outfit(self, key: str) -> None:
-        if not garden.is_unlocked(key, self.lifetime):
+        if not self.outfit_unlocked(key):
             return
         self.settings.pomo_outfit = key
         self.settings.clamp()
@@ -221,7 +282,7 @@ class PomoApp(QObject):
         """What Pomo wears right now: dressed for what you're doing, or your pick when nothing's on."""
         s = self.settings
         if s.outfit_follows:
-            for outfit in self._activity_outfits():
+            for outfit in self._activity_outfits():  # all from the wardrobe or the garden, none quest rewards
                 if garden.is_unlocked(outfit, self.lifetime):
                     return outfit
         return s.pomo_outfit
@@ -258,10 +319,12 @@ class PomoApp(QObject):
         self.view.pomo.munch()
         self.view.update()
 
-    def open_game(self) -> None:
+    def open_game(self, key: str | None = None) -> None:
+        """The games window: the picker, or straight into one game."""
         if self.game is None:
             from .game import GameWindow
             self.game = GameWindow(self)
+        self.game.open(key)
         self.game.show()
         self.game.setWindowState(self.game.windowState() & ~Qt.WindowMinimized)
         self.game.raise_()
@@ -303,7 +366,112 @@ class PomoApp(QObject):
         return self.track is not None and self.track.playing
 
     def pomo_listening(self) -> bool:
-        return self.settings.music_controls and self.settings.pomo_listens and self.music_playing()
+        """Pomo puts on headphones: for your music, or for Pomo's own focus sounds."""
+        s = self.settings
+        return s.pomo_listens and ((s.music_controls and self.music_playing()) or self.focus_sound_playing())
+
+    def game_played(self, key: str) -> None:
+        """A round of a mini game ended. Off focus time, it counts toward the Playtime quest."""
+        e = self.engine
+        if not (e.mode is Mode.FOCUS and e.state is State.RUNNING):
+            self.quest_event("play")
+
+    # ------------------------------------------------------------ focus sounds
+    def focus_sound_playing(self) -> bool:
+        return self._sound_now is not None and self.sound_player.playing
+
+    def _sound_volume(self) -> float:
+        return (self.settings.focus_sound_volume / 100) ** 1.25
+
+    def _wanted_sound(self) -> str | None:
+        """The focus sound that should play right now, if any."""
+        s, e = self.settings, self.engine
+        if s.focus_sound == "off":
+            return None
+        if not s.focus_sound_follows or time.monotonic() < self._preview_until:
+            return s.focus_sound
+        return s.focus_sound if e.mode is Mode.FOCUS and e.state is State.RUNNING else None
+
+    def _sync_focus_sound(self) -> None:
+        want = self._wanted_sound()
+        if want is None:
+            if self._sound_now is not None:
+                self._sound_now = None
+                self.sound_player.stop(fade_out_s=1.5)
+                self.view.update()
+            return
+        if want == self._sound_now and self.sound_player.playing:
+            self.sound_player.set_volume(self._sound_volume())
+            return
+        samples = self._sounds.get(want)
+        if samples is None:  # made the first time it's wanted, off the UI thread
+            if want not in self._sound_loading:
+                self._sound_loading.add(want)
+                import threading
+
+                def load(name=want, cache=self.cache_dir):
+                    try:
+                        made = soundscapes.load(cache, name)
+                    except Exception:  # a full disk or the like: no sound, no crash
+                        made = None
+                    self.sound_loaded.emit(name, made)
+
+                threading.Thread(target=load, name="pomo-sound-maker", daemon=True).start()
+            return
+        self._sound_now = want
+        self.sound_player.play(samples, soundscapes.RATE, self._sound_volume(), fade_in_s=2.5)
+        if self.pomo_listening():
+            self.view.pomo.new_song()
+
+    def _on_sound_loaded(self, name: str, samples) -> None:
+        self._sound_loading.discard(name)
+        if samples is not None:
+            self._sounds[name] = samples
+            self._sync_focus_sound()
+
+    def set_focus_sound(self, name: str) -> None:
+        s = self.settings
+        s.focus_sound = name if name in FOCUS_SOUNDS else "off"
+        self.save_settings()
+        e = self.engine
+        focusing = e.mode is Mode.FOCUS and e.state is State.RUNNING
+        if s.focus_sound != "off" and s.focus_sound_follows and not focusing:
+            self._preview_until = time.monotonic() + SOUND_PREVIEW_S  # a taste now; the rest when you focus
+            self._preview_timer.start(int(SOUND_PREVIEW_S * 1000) + 50)
+        else:
+            self._preview_until = 0.0
+        if self._sound_now is not None and self._sound_now != s.focus_sound:
+            self.sound_player.stop(fade_out_s=0.6)
+            self._sound_now = None
+        self._sync_focus_sound()
+
+    def set_focus_sound_volume(self, volume: int) -> None:
+        self.settings.focus_sound_volume = volume
+        self.settings.clamp()
+        self.save_settings()
+        self._sync_focus_sound()
+
+    def set_focus_sound_follows(self, follows: bool) -> None:
+        self.settings.focus_sound_follows = follows
+        self.save_settings()
+        self._sync_focus_sound()
+
+    def fill_sounds_menu(self, menu: QMenu) -> None:
+        s = self.settings
+        for key, label in FOCUS_SOUNDS.items():
+            _action(menu, label, lambda k=key: self.set_focus_sound(k), checked=key == s.focus_sound)
+        menu.addSeparator()
+        _action(menu, "Only while I focus", lambda: self.set_focus_sound_follows(not s.focus_sound_follows),
+                checked=s.focus_sound_follows)
+        volume = styled_menu(menu.addMenu(f"Volume: {s.focus_sound_volume}%"))
+        for v in SOUND_VOLUMES:
+            _action(volume, f"{v}%", lambda v=v: self.set_focus_sound_volume(v), checked=v == s.focus_sound_volume)
+
+    def open_sounds_menu(self, pos) -> None:
+        menu = styled_menu(QMenu())
+        self.fill_sounds_menu(menu)
+        menu.exec(pos)
+        menu.deleteLater()
 
     def media_command(self, name: str) -> None:
         if self.media is None or self.track is None:
@@ -413,6 +581,13 @@ class PomoApp(QObject):
         self._sync_media()
         self._sync_hotkeys()
         self._sync_presence()
+        self._sync_focus_sound()
+        self._taskbar_dismissed = False
+        self._sync_taskbar()
+        if self.taskbar is not None:
+            self.taskbar.refresh(force=True)
+        if self.speaker is not None and not self.settings.voice_replies:
+            self.speaker.stop()
         self.orb.apply_settings()
         self.island.apply_settings()
         if mode_changed:
@@ -506,6 +681,9 @@ class PomoApp(QObject):
 
     def edit_task(self) -> None:
         items = [self.engine.task] if self.engine.task else []
+        project = self.tracker.recent_project()
+        if project is not None and project.task not in items:
+            items.append(project.task)  # the project in your editor, ready to pick
         items += [t for t in self.settings.recent_tasks if t not in items]
         text, ok = QInputDialog.getItem(None, "Current task", "What are you focusing on?", items or [""], 0, True)
         if ok:
@@ -517,6 +695,7 @@ class PomoApp(QObject):
     def set_task(self, task: str) -> None:
         self.settings.remember_task(task)
         self.engine.task = self.settings.current_task
+        self._auto_task = ""
         self.save_settings()
         self.view.update()
 
@@ -604,15 +783,33 @@ class PomoApp(QObject):
             _action(themes, theme.label, lambda k=theme.key: self.set_theme(k), checked=theme.key == self.settings.theme)
         outfits = styled_menu(menu.addMenu("Pomo's outfit"))
         for key, label in OUTFITS.items():
-            if garden.is_unlocked(key, self.lifetime):
+            if self.outfit_unlocked(key):
                 _action(outfits, label, lambda k=key: self.set_outfit(k), checked=key == self.settings.pomo_outfit)
             else:
-                _action(outfits, f"{label}  ({UNLOCKS[key]} pomodoros)", lambda: None, enabled=False)
+                _action(outfits, f"{label}  ({garden.unlock_hint(key)})", lambda: None, enabled=False)
         menu.addSeparator()
 
         _action(menu, "Ask Pomo…", self.open_chat)
-        _action(menu, "Play Petal Catch…", self.open_game)
+        talk = self.settings.hotkey_talk if self.settings.hotkeys_on and self.settings.hotkey_talk else ""
+        _action(menu, f"Talk to Pomo\t{talk}" if talk else "Talk to Pomo", lambda: self.start_talk(None))
+        _action(menu, "Play a game…", self.open_game)
         _action(menu, "Breathe with Pomo…", self.open_breathe)
+        sound = self.settings.focus_sound
+        sounds = styled_menu(menu.addMenu(f"Focus sounds: {FOCUS_SOUNDS[sound]}" if sound != "off" else "Focus sounds"))
+        self.fill_sounds_menu(sounds)
+        if self.settings.quests_on and self.settings.quests:
+            done = len(self.settings.quests_done)
+            quest_menu = styled_menu(menu.addMenu(f"Today's quests ({done}/{len(self.settings.quests)})"))
+            records = self.storage.sessions(since=date.today())
+            for key in self.settings.quests:
+                quest = quests.QUESTS.get(key)
+                if quest is None:
+                    continue
+                mark = "✓ " if key in self.settings.quests_done else ""
+                _action(quest_menu, f"{mark}{quests.status_line(quest, self.settings, records, date.today())}"
+                        f"  ·  {quest.goal}", lambda: None, enabled=False)
+            quest_menu.addSeparator()
+            _action(quest_menu, "Badges on the dashboard…", self.open_dashboard)
         if self.track is not None:
             t = self.track
             title = t.title if len(t.title) <= 30 else t.title[:29] + "…"
@@ -622,10 +819,18 @@ class PomoApp(QObject):
             _action(music, "Pause" if t.playing else "Play", lambda: self.media_command("toggle"), enabled=t.can_toggle)
             _action(music, "Next", lambda: self.media_command("next"), enabled=t.can_next)
             _action(music, "Previous", lambda: self.media_command("previous"), enabled=t.can_previous)
+        if self.settings.reviews:
+            waiting = styled_menu(menu.addMenu(f"Reviews waiting ({len(self.settings.reviews)})"))
+            for item in reversed(self.settings.reviews):
+                _action(waiting, f"{reviews.title(item)}  ·  {reviews.lines_text(item)}",
+                        lambda r=item: self.start_review(r))
+            waiting.addSeparator()
+            _action(waiting, "Clear the list", self.clear_reviews)
         sessions = self.agents.live_sessions()
         agents = styled_menu(menu.addMenu(f"Coding agents ({len(sessions)})" if sessions else "Coding agents"))
         for session in sessions[:8]:
-            line = f"{session.project}: {session.status_text}"
+            who = f" ({session.agent_label})" if session.agent != "claude" else ""
+            line = f"{session.project}{who}: {session.status_text}"
             if session.status == "working" and session.activity:
                 line += f" · {session.activity[:40]}"
             _action(agents, line, lambda: None, enabled=False)
@@ -666,6 +871,24 @@ class PomoApp(QObject):
         if second != self._tray_second:
             self._tray_second = second
             self._update_tray()
+            self._refresh_taskbar()
+            self._maybe_cheer()
+
+    def _maybe_cheer(self) -> None:
+        """Halfway, 5 minutes left, the last minute: a few warm words from Pomo, once each per session."""
+        from . import cheer
+
+        e, s = self.engine, self.settings
+        if not s.cheer_on or e.mode is not Mode.FOCUS or e.state is not State.RUNNING:
+            return
+        moment = cheer.due(e.total, e.remaining, self._cheered)
+        if moment is None or not self.view.isVisible() or self.toast.showing or self._approval_on_screen():
+            return  # a card is up: let it be, this moment has passed
+        if s.show_buddy:
+            self.view.pomo.cheer()
+        if self.whisper is None:
+            self.whisper = cheer.Whisper(self)
+        self.whisper.say(cheer.line(moment, e.task), self.view.whisper_anchor())
 
     def _on_session_logged(self, record) -> None:
         if record.mode == "focus":
@@ -673,6 +896,17 @@ class PomoApp(QObject):
             if distracted:
                 record = replace(record, distracted_sec=min(distracted, record.actual_sec))
         self.storage.add(record)
+        if record.mode == "focus" and record.completed:  # counted for today's quests
+            s = self.settings
+            if not self._focus_paused and not record.distracted_sec:
+                quests.count(s, "clean")
+            if self.focus_sound_playing():
+                quests.count(s, "sound_session")
+            review = reviews.find(s, record.task)
+            if review is not None:  # that review is done
+                reviews.remove(s, review)
+                quests.count(s, "review")
+            self.save_settings()
 
     def _on_engine_changed(self) -> None:
         e = self.engine
@@ -682,8 +916,26 @@ class PomoApp(QObject):
         if focusing != was_focusing:
             self._sync_presence()
             self._follow_music(focusing)
+            self._sync_focus_sound()
             if was_focusing:
                 QTimer.singleShot(0, self._flush_held)  # a finished session shows them on its card instead
+                self._recap_window = self.tracker.last_work  # for "Where was I?" when the break ends
+                self._away_since = datetime.now()
+            elif prev_mode is not Mode.FOCUS or prev_state in (State.IDLE, State.FINISHED):
+                self._focus_paused = False  # a fresh session, not a resumed one
+                self._cheered = set()
+                QTimer.singleShot(0, self._offer_project_task)
+        if not focusing and self.whisper is not None:
+            self.whisper.fade_out()
+        if e.mode is Mode.FOCUS and e.state is State.PAUSED and prev_state is State.RUNNING:
+            self._focus_paused = True
+        if (e.mode.is_break and e.state is State.RUNNING and not (prev_mode.is_break and prev_state is State.RUNNING)
+                and self.agent_signal() == "busy"):
+            self.quest_event("agent_break", announce=False)  # shown on the next card
+        if prev_mode.is_break and prev_state in (State.RUNNING, State.PAUSED) and e.mode is Mode.FOCUS:
+            self._break_over_pending = True  # a finished break shows "Where was I?" on its card; a skipped one here
+            QTimer.singleShot(0, self._break_over)
+        self._refresh_taskbar()
         if e.state is State.RUNNING:
             self._idle_since = None
             self._idle_nudged = False
@@ -740,6 +992,14 @@ class PomoApp(QObject):
                 body = f"Goal already met. Up for another {minutes}-minute focus session?"
         extras: list[tuple[str, object]] = []
         rate = None
+        recap = finished.is_break and upcoming is Mode.FOCUS and s.break_recap
+        if finished.is_break:
+            self._break_over_pending = False  # this card is the "Where was I?"
+        if recap:
+            title = "Where was I?"
+            lines, recap_extras = self._recap_lines()
+            body = "\n".join([body] + lines)
+            extras += recap_extras
         if finished is Mode.FOCUS:
             next_task, plan_done = planner.advance(s)
             if next_task and next_task != self.engine.task:
@@ -759,14 +1019,20 @@ class PomoApp(QObject):
                 extras.append(("Wear it", lambda k=fresh[-1]: self.set_outfit(k)))
             if s.rate_sessions:
                 rate = self._rate_session
-            if s.break_card and upcoming.is_break:
-                extras.append(("Breathe", self.open_breathe))
-                waiting = len(self.storage.thoughts())
-                if waiting:
-                    extras.append((f"Thoughts ({waiting})", self.open_thoughts))
-                if len(extras) < 3:  # the card has room for three
-                    extras.append(("Play", self.open_game))
-        elif self.engine.task and upcoming is Mode.FOCUS:
+        self._check_quests()
+        quest_text, quest_outfit = self._quest_news(self._take_quest_news())
+        if quest_text:
+            body += f"\n{quest_text}"
+            if quest_outfit and not any(x[0] == "Wear it" for x in extras):
+                extras.insert(0, ("Wear it", lambda k=quest_outfit: self.set_outfit(k)))
+        if finished is Mode.FOCUS and s.break_card and upcoming.is_break:
+            extras.append(("Breathe", self.open_breathe))
+            waiting = len(self.storage.thoughts())
+            if waiting:
+                extras.append((f"Thoughts ({waiting})", self.open_thoughts))
+            if len(extras) < 3:  # the card has room for three
+                extras.append(("Play", self.open_game))
+        elif self.engine.task and upcoming is Mode.FOCUS and not recap:
             body += f"\nTask: {self.engine.task}"
 
         self.notifier.alert()
@@ -779,15 +1045,339 @@ class PomoApp(QObject):
             self.save_settings()
         if auto_started:
             view.flash()
+        if self.taskbar is not None:
+            self.taskbar.flash()
         if s.popup_card and view.isVisible() and not self._approval_on_screen():
             e = self.engine
-            if auto_started:
+            back = self._recap_window if recap and self._window_alive(self._recap_window) else None
+            if auto_started and back is not None:
+                actions = [(self._back_label(back), self._back_to_work, True), ("Pause", e.pause, False)]
+            elif auto_started:
                 actions = [("Pause", e.pause, True), ("Skip", e.skip, False)]
+            elif back is not None:
+                actions = [(self._back_label(back), lambda: self._back_to_work(start=True), True),
+                           ("Start here", e.start, False)]
             else:
                 actions = [(f"Start {upcoming.label.lower()}", e.start, True), ("Skip", e.skip, False)]
             accent = mode_color(self.theme, s, upcoming.value)
             self.toast.show_message(title, body, accent, actions, view.anchor_rect_global(),
                                     timeout_ms=30000 if rate or extras else 20000, rate=rate, extras=extras)
+
+    # ----------------------------------------------------------- where was I?
+    @staticmethod
+    def _window_alive(window) -> bool:
+        if window is None or sys.platform != "win32":
+            return False
+        import ctypes
+
+        return bool(ctypes.windll.user32.IsWindow(window.hwnd))
+
+    def _recap_lines(self) -> tuple[list[str], list[tuple[str, object]]]:
+        """"Where was I?": your task, the window you were in, your agents' news from the break, parked thoughts."""
+        s, e = self.settings, self.engine
+        lines: list[str] = []
+        extras: list[tuple[str, object]] = []
+        if e.task:
+            lines.append(f"Task: {e.task}")
+        if self._window_alive(self._recap_window):
+            lines.append(f"You were in: {self._recap_window.label}")
+        news = self._agent_news_since(self._away_since)
+        if news:
+            lines.append(f"While you were away: {news}.")
+        thoughts = self.storage.thoughts()
+        if thoughts:
+            first = thoughts[0].text if len(thoughts[0].text) <= 40 else thoughts[0].text[:39] + "…"
+            more = f" and {len(thoughts) - 1} more" if len(thoughts) > 1 else ""
+            lines.append(f"Parked: “{first}”{more}")
+            extras.append((f"Thoughts ({len(thoughts)})", self.open_thoughts))
+        review = reviews.latest(s)
+        if review is not None and not s.task_queue and reviews.title(review) != e.task:
+            lines.append(f"Waiting for you: {reviews.title(review)} ({reviews.lines_text(review)})")
+            extras.append(("Review it", lambda r=review: self.start_review(r)))
+        return lines, extras
+
+    def _agent_news_since(self, since: datetime | None) -> str:
+        """'api finished and changed 4 files, web is waiting for you'."""
+        if since is None:
+            return ""
+        per: dict[str, list] = {}
+        for ev in self.storage.agent_events(since=since.date()):
+            if ev.ts < since.replace(microsecond=0):
+                continue
+            entry = per.setdefault(ev.project, [0, set()])
+            if ev.event == "Stop":
+                entry[0] += 1
+            elif ev.event == "PostToolUse" and ev.tool in EDIT_TOOLS:
+                entry[1].add(ev.detail)
+        waiting = list(dict.fromkeys(a.project for a in self.agents.live_sessions()
+                                     if a.status in ("approval", "waiting")))
+        parts = [f"{project} is waiting for you" for project in waiting]
+        for project, (turns, files) in per.items():
+            if project in waiting or not turns:
+                continue
+            changed = f" and changed {plural(len(files), 'file')}" if files else ""
+            parts.append(f"{project} finished{changed}")
+        return ", ".join(parts[:3])
+
+    @staticmethod
+    def _back_label(window) -> str:
+        app = window.app if len(window.app) <= 14 else window.app[:13] + "…"
+        return f"Back to {app}"
+
+    def _back_to_work(self, start: bool = False) -> None:
+        """One click: the window you were working in comes back to the front (and focus starts)."""
+        if start and self.engine.state is not State.RUNNING:
+            self._start_focus_now()
+        if self._recap_window is not None:
+            winutil.activate_window(self._recap_window.hwnd)
+
+    def _break_over(self) -> None:
+        """A break was skipped or switched away from (not finished): "Where was I?" on its own card."""
+        if not self._break_over_pending:
+            return
+        self._break_over_pending = False
+        s = self.settings
+        if not s.break_recap or not s.popup_card or not self.view.isVisible() or self._approval_on_screen():
+            return
+        lines, extras = self._recap_lines()
+        if not lines:
+            return
+        back = self._recap_window if self._window_alive(self._recap_window) else None
+        if self.engine.state is State.RUNNING:
+            actions = [(self._back_label(back), self._back_to_work, True)] if back else [("OK", lambda: None, True)]
+        elif back is not None:
+            actions = [(self._back_label(back), lambda: self._back_to_work(start=True), True),
+                       ("Start here", self._start_focus_now, False)]
+        else:
+            actions = [("Start focus", self._start_focus_now, True), ("Later", lambda: None, False)]
+        self.toast.show_message("Where was I?", "\n".join(lines), mode_color(self.theme, s, "focus"), actions,
+                                self.view.anchor_rect_global(), timeout_ms=30000, extras=extras)
+
+    # ---------------------------------------------------- automatic task names
+    def _offer_project_task(self) -> None:
+        """A focus session started without a task: name it after the project in your editor (asking first)."""
+        s, e = self.settings, self.engine
+        if s.auto_task == "off" or not (e.mode is Mode.FOCUS and e.state is State.RUNNING):
+            return
+        if e.task and e.task != self._auto_task:
+            return  # you named it yourself
+        project = self.tracker.recent_project()
+        if project is None or project.task == e.task:
+            return
+        if s.auto_task == "auto":
+            self._use_project(project.task)
+            return
+        if not s.popup_card or not self.view.isVisible() or self._approval_on_screen() or self.toast.showing:
+            return
+        task = project.task
+        self.toast.show_message(
+            f"Working on {project.name}?",
+            f"Pomo saw {project.described}. Name this focus session after it, and your dashboard shows "
+            "your focus per project.",
+            mode_color(self.theme, s, "focus"),
+            [(f"Use “{task}”", lambda: self._use_project(task), True), ("No thanks", lambda: None, False)],
+            self.view.anchor_rect_global(), timeout_ms=20000,
+            extras=[("Always, without asking", lambda: self._always_use_project(task))])
+
+    def _use_project(self, task: str) -> None:
+        self.set_task(task)
+        self._auto_task = task
+
+    def _always_use_project(self, task: str) -> None:
+        self.settings.auto_task = "auto"
+        self._use_project(task)
+
+    # ------------------------------------------------------------ daily quests
+    def quest_event(self, counter: str, announce: bool = True) -> None:
+        """Something a quest counts happened (a breathing break, a parked thought...)."""
+        if not self.settings.quests_on:
+            return
+        quests.count(self.settings, counter)
+        self.save_settings()
+        self._check_quests()
+        if announce:
+            QTimer.singleShot(700, self._flush_quest_news)
+
+    def _check_quests(self) -> None:
+        """Note today's newly finished quests; their news waits for the next card (see _flush_quest_news)."""
+        s = self.settings
+        if not s.quests_on:
+            return
+        self._roll_quests()
+        before = s.quests_total
+        fresh = quests.check(s, self.storage.sessions(since=date.today()), date.today())
+        if not fresh:
+            return
+        unlocked = quests.unlocked_by(before, s.quests_total)
+        s.unlocks_seen += [k for k in unlocked if k not in s.unlocks_seen]
+        self.save_settings()
+        self._quest_pending[0].extend(fresh)
+        self._quest_pending[1].extend(unlocked)
+
+    def _roll_quests(self) -> bool:
+        """A new day: today's quests. (Which quests fit is only worked out then: it reads the agents' settings.)"""
+        s = self.settings
+        if s.quest_day == date.today().isoformat() and s.quests:
+            return False
+        self._quest_pending = ([], [])
+        return quests.roll_over(s, datetime.now(), self._uses_agents())
+
+    def _take_quest_news(self) -> tuple[list, list]:
+        news, self._quest_pending = self._quest_pending, ([], [])
+        return news
+
+    @staticmethod
+    def _quest_news(news: tuple[list, list]) -> tuple[str, str | None]:
+        """('Quest complete: Hat trick! New outfit unlocked: Bunny ears!', 'bunnyears')."""
+        fresh, unlocked = news
+        if not fresh:
+            return "", None
+        names = [q.title for q in fresh if q.key != quests.PERFECT_DAY]
+        text = f"Quest complete: {', '.join(names)}!" if names else ""
+        if any(q.key == quests.PERFECT_DAY for q in fresh):
+            text += " That's all three today: Perfect day!"
+        if unlocked:
+            text += f" New outfit unlocked: {', '.join(OUTFITS[k] for k in unlocked)}!"
+        return text.strip(), (unlocked[-1] if unlocked else None)
+
+    def _flush_quest_news(self) -> None:
+        """Show finished quests on a card of their own, when that won't get in the way."""
+        fresh, unlocked = self._quest_pending
+        if not fresh or self.pacer.should_hold():
+            return  # during focus they wait for the break card
+        s = self.settings
+        if s.popup_card and (self.toast.showing or not self.view.isVisible() or self._approval_on_screen()):
+            return  # try again later (housekeeping, or the next card)
+        self._quest_pending = ([], [])
+        quest = next((q for q in fresh if q.key != quests.PERFECT_DAY), fresh[0])
+        perfect = any(q.key == quests.PERFECT_DAY for q in fresh)
+        title = "Perfect day!" if quest.key == quests.PERFECT_DAY else f"Quest complete: {quest.title}"
+        times = s.badges.get(quest.key, 1)
+        body = f"{quest.goal}. The {quest.title} badge is yours" + (f" (×{times})." if times > 1 else ".")
+        if len(fresh) > 1:
+            body += "\n" + self._quest_news((fresh, []))[0]
+        if perfect and quest.key != quests.PERFECT_DAY:
+            body += "\nAll three of today's quests done!"
+        if unlocked:
+            body += f"\nNew outfit unlocked: {', '.join(OUTFITS[k] for k in unlocked)}!"
+        if not s.popup_card:
+            self.notifier.toast(title, body)
+            return
+        actions = [("Yay!", lambda: None, True)]
+        if unlocked:
+            actions = [("Wear it", lambda k=unlocked[-1]: self.set_outfit(k), True), ("Later", lambda: None, False)]
+        self.view.celebrate(big=perfect or bool(unlocked))
+        self.toast.show_message(title, body, mode_color(self.theme, s, "long"), actions,
+                                self.view.anchor_rect_global(), timeout_ms=15000,
+                                extras=[("Badges", self.open_dashboard)])
+
+    # ------------------------------------------------------- agent review queue
+    def _on_review_ready(self, review: dict) -> None:
+        item = reviews.add(self.settings, review)
+        self.save_settings()
+        self._fresh_review = item  # the finish notice that follows offers it
+        if self.pacer.should_hold():
+            self.pacer.hold("review", item["project"], reviews.lines_text(item))
+
+    def start_review(self, item: dict) -> None:
+        """Make reviewing an agent's changes your next focus task."""
+        title = reviews.title(item)
+        e, queue = self.engine, self.settings.task_queue
+        if e.mode is Mode.FOCUS and e.state in (State.RUNNING, State.PAUSED) and e.task and e.task != title:
+            # you're mid-session: the review comes right after it, then the rest of that task
+            rest = 0
+            if queue and queue[0]["task"] == e.task:
+                rest = queue.pop(0)["pomodoros"] - 1
+            queue[0:0] = [{"task": e.task, "pomodoros": 1}, {"task": title, "pomodoros": 1}] + (
+                [{"task": e.task, "pomodoros": rest}] if rest > 0 else [])
+            del queue[20:]
+            self.save_settings()
+        elif queue:
+            queue.insert(0, {"task": title, "pomodoros": 1})
+            del queue[20:]
+            self.plan_changed()
+        else:
+            self.set_task(title)
+        if self.view.isVisible():
+            self.view.pomo.hello()
+
+    def clear_reviews(self) -> None:
+        self.settings.reviews = []
+        self.save_settings()
+
+    # ---------------------------------------------------------------- taskbar
+    def _sync_taskbar(self) -> None:
+        want = self.settings.taskbar_button and sys.platform == "win32" and not self._taskbar_dismissed
+        if want and self.taskbar is None:
+            from .taskbar import TaskbarButton
+
+            self.taskbar = TaskbarButton(self)
+            self.taskbar.command.connect(self._on_taskbar_command)
+            self.taskbar.activated.connect(self._on_taskbar_activated)
+            self.taskbar.closed.connect(self._on_taskbar_closed)
+            self.taskbar.start()
+        elif not want and self.taskbar is not None:
+            self.taskbar.stop()
+            self.taskbar.deleteLater()
+            self.taskbar = None
+
+    def _refresh_taskbar(self) -> None:
+        if self.taskbar is not None:
+            self.taskbar.refresh()
+
+    def _on_taskbar_command(self, name: str) -> None:
+        e = self.engine
+        {"reset": e.reset, "toggle": e.toggle, "skip": e.skip}.get(name, lambda: None)()
+
+    def _on_taskbar_activated(self) -> None:
+        self.show_timer()
+        self.view.flash(1)
+
+    def _on_taskbar_closed(self) -> None:
+        """"Close window" on the taskbar button: the button goes, Pomo stays in the tray."""
+        self._taskbar_dismissed = True
+        self._sync_taskbar()
+        if self.tray is not None:
+            self.notifier.toast("Pomo is still here", "It's in the tray by the clock. Turn the taskbar button off "
+                                                       "for good in Settings > General.")
+
+    # ----------------------------------------------------------- talk to Pomo
+    def _ensure_voice(self) -> None:
+        if self.speaker is None:
+            from .voice import Speaker
+
+            self.speaker = Speaker(self.cache_dir, self)
+            self.speaker.started.connect(lambda: self._set_talking(True))
+            self.speaker.finished.connect(lambda: self._set_talking(False))
+        if self.talk is None:
+            from .voice import Talk
+
+            self.talk = Talk(self, self)
+            self.talk.heard.connect(self._on_heard)
+
+    def start_talk(self, held_key: int | None = None) -> None:
+        """Listen for a question. held_key: listen while that key is held (the shortcut); else until you stop."""
+        self._ensure_voice()
+        if self.talk.recorder.recording:
+            self.talk.end()  # a second press ends listening
+            return
+        self.talk.begin(held_key)
+
+    def _on_heard(self, text: str) -> None:
+        self.ask_pomo(text)
+
+    def _set_talking(self, talking: bool) -> None:
+        """Pomo's mouth moves while a reply is read aloud: on the timer and in Ask Pomo."""
+        for pomo in (self.orb.pomo, self.island.pomo, self.chat.avatar.pomo if self.chat is not None else None):
+            if pomo is not None:
+                pomo.talking = talking
+
+    def speak_reply(self, text: str) -> None:
+        """Read one of Pomo's replies aloud, if you asked for that."""
+        if not self.settings.voice_replies or not text.strip():
+            return
+        self._ensure_voice()
+        self.speaker.speak(text, self.settings.voice_name)
 
     # ----------------------------------------------------------- housekeeping
     def _housekeeping(self) -> None:
@@ -816,6 +1406,10 @@ class PomoApp(QObject):
                 actions = [("Start focus", self._start_focus_now, True), ("Later", lambda: None, False)]
                 self.toast.show_message(title, body, accent, actions, self.view.anchor_rect_global())
         self._maybe_offer_review()
+        if self.settings.quests_on and self._roll_quests():
+            self.save_settings()
+        self._check_quests()  # e.g. a quest your history already met when Pomo started
+        self._flush_quest_news()
 
     def _maybe_offer_review(self) -> None:
         s, e = self.settings, self.engine
@@ -847,15 +1441,15 @@ class PomoApp(QObject):
 
     def _on_approval_requested(self, approval: Approval) -> None:
         self._approval_queue.append(approval)
-        project = approval.session.project
+        project, who = approval.session.project, approval.session.agent_label
         if approval.kind != "reply":  # a reply is optional: the card itself is the "Claude finished" news
             self.view.flash(2)
             if self.settings.sound_enabled:
                 self.notifier.play("Soft", self.settings.volume, 1)
             if approval.kind == "question":
-                self.notifier.toast(f"{project}: Claude has a question", approval.detail)
+                self.notifier.toast(f"{project}: {who} has a question", approval.detail)
             else:
-                self.notifier.toast(f"{project}: Claude needs your OK", self._approval_text(approval))
+                self.notifier.toast(f"{project}: {who} needs your OK", self._approval_text(approval))
         if not self._approval_on_screen():
             self._show_next_approval()
 
@@ -892,6 +1486,9 @@ class PomoApp(QObject):
 
     def _on_agent_finished(self, session, seconds: float) -> None:
         s = self.settings
+        review, self._fresh_review = self._fresh_review, None
+        if review is not None and review.get("project") != session.project:
+            review = None
         if self.pacer.should_hold():  # quiet focus: it'll be on your break card
             if s.agent_notify_finish and seconds >= s.agent_notify_after_s:
                 self.pacer.hold("finished", session.project, finished_detail(seconds))
@@ -900,13 +1497,17 @@ class PomoApp(QObject):
             self.view.pomo.celebrate()
         if not s.agent_notify_finish or seconds < s.agent_notify_after_s:
             return
-        title = f"{session.project}: Claude finished"
-        if self.agents.awaiting_reply(session):  # its card already shows Claude's words, with a reply box
+        title = f"{session.project}: {session.agent_label} finished"
+        if self.agents.awaiting_reply(session):  # its card already shows the agent's words, with a reply box
             self.notifier.toast(title, session.message[:200] or "Your turn when you're ready.")
             return
         body = f"Done after {fmt_clock(seconds)}. Your turn when you're ready."
         actions = [("OK", lambda: None, False)]
-        if self.engine.mode.is_break:
+        if review is not None:  # its changes, as focus work for you
+            body = (f"Done after {fmt_clock(seconds)}. It changed {reviews.summary(review)}.\n"
+                    "Review them in your next focus session?")
+            actions = [("Review next", lambda r=review: self.start_review(r), True), ("Later", lambda: None, False)]
+        elif self.engine.mode.is_break:
             body = f"Done after {fmt_clock(seconds)}. Back to focus to look at it?"
             actions = [("Start focus", self._start_focus_now, True), ("Later", lambda: None, False)]
         self.notifier.toast(title, body)
@@ -921,7 +1522,7 @@ class PomoApp(QObject):
         if kind != "permission_prompt" and self.pacer.should_hold():
             self.pacer.hold("waiting", session.project)
             return
-        title = f"{session.project}: Claude is waiting for you"
+        title = f"{session.project}: {session.agent_label} is waiting for you"
         body = session.message or ("It's asking for permission in the terminal." if kind == "permission_prompt"
                                    else session.activity or "It needs your input in the terminal.")
         self.notifier.toast(title, body)
@@ -943,8 +1544,8 @@ class PomoApp(QObject):
         self.view.pomo.hello()
         self.toast.show_message(
             f"{agent.project} is on a long task",
-            f"Claude has been working for {plural(minutes, 'minute')}. Good moment for your break? "
-            "This focus session counts as done, and Pomo will tell you when Claude finishes.",
+            f"{agent.agent_label} has been working for {plural(minutes, 'minute')}. Good moment for your break? "
+            f"This focus session counts as done, and Pomo will tell you when {agent.agent_label} finishes.",
             mode_color(self.theme, self.settings, "short"),
             [("Break now", self.engine.finish_now, True), ("Keep focusing", lambda: None, False)],
             self.view.anchor_rect_global(), timeout_ms=30000)
@@ -954,7 +1555,8 @@ class PomoApp(QObject):
             return
         self.toast.show_message(
             f"{agent.project} is on a long task",
-            "Use the wait for a focus session of your own? Pomo will hold Claude's updates until your break.",
+            f"Use the wait for a focus session of your own? Pomo will hold {agent.agent_label}'s updates "
+            "until your break.",
             mode_color(self.theme, self.settings, "focus"),
             [("Start focus", self._start_focus_now, True), ("Not now", lambda: None, False)],
             self.view.anchor_rect_global(), timeout_ms=30000)
@@ -964,6 +1566,7 @@ class PomoApp(QObject):
         self.storage.rate_last_focus(rating)
         if rating == 3:
             self.view.pomo.hello()
+        self._check_quests()  # Check-in counts ratings; its card waits until this one closes
         s = self.settings
         if not s.suggest_length:
             return
@@ -1072,6 +1675,9 @@ class PomoApp(QObject):
                 self.hide_timer()
             else:
                 self.show_timer()
+        elif action == "talk":
+            parsed = parse_hotkey(self.settings.hotkey_talk)
+            self.start_talk(parsed[1] if parsed else None)  # listens while the key is held
 
     def park_thought(self) -> None:
         if self.park_card is None:
@@ -1085,6 +1691,7 @@ class PomoApp(QObject):
         if self.view.isVisible():
             self.view.pomo.squish.kick(3.0)  # a little nod: noted
         self.thoughts_changed()
+        self.quest_event("park")
 
     def thoughts_changed(self) -> None:
         if self.thoughts_window is not None and self.thoughts_window.isVisible():
@@ -1107,19 +1714,33 @@ class PomoApp(QObject):
         self.breathe.start()
 
     def ask_pomo(self, prompt: str) -> None:
-        """Open Ask Pomo and send a question (when a key is set; otherwise the key panel shows)."""
+        """Open Ask Pomo and send a question (when a key is set; otherwise the key panel shows,
+        and the question waits in the box)."""
         self.open_chat()
-        if self.chat is not None and self.chat.worker is None and self.has_ai_key():
+        if self.chat is None:
+            return
+        if self.chat.worker is None and self.has_ai_key():
             self.chat.send(prompt)
+        else:
+            self.chat.input.setPlainText(prompt)
 
     def _on_agents_changed(self) -> None:
         self._update_tray()
         self.view.update()
+        self._refresh_taskbar()
 
     def _on_quit(self) -> None:
         self.agents.shutdown()
         self.guard.set_active(False)  # saves what it counted
         self.hotkeys.unregister_all()
+        self.tracker.set_active(False)
+        self.sound_player.stop(fade_out_s=0.2, wait=True)  # let the sound thread let go of the device first
+        if self.talk is not None:
+            self.talk.shutdown()
+        if self.speaker is not None:
+            self.speaker.stop()
+        if self.taskbar is not None:
+            self.taskbar.stop()
         if self.media is not None:
             self.media.stop()
         if self.chat is not None:

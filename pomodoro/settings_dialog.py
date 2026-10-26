@@ -28,9 +28,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import APP_NAME, APP_VERSION, claude_hooks, keystore, media
+from . import APP_NAME, APP_VERSION, agent_hooks, claude_hooks, garden, keystore, media
 from .ai import KeyCheckWorker
-from .config import HOTKEYS, ORB_SIZES, OUTFITS, SOUND_NAMES, UNLOCKS, Settings
+from .config import FOCUS_SOUNDS, HOTKEYS, ORB_SIZES, OUTFITS, SOUND_NAMES, Settings
 from .providers import PROVIDERS, default_model, model_for, model_label, provider, set_model
 from .stats import plural
 from .theme import THEMES, theme_for
@@ -123,6 +123,9 @@ class SettingsDialog(QDialog):
     def __init__(self, ctrl):
         super().__init__(None)
         self.ctrl = ctrl
+        self._wanted_voice = ""
+        # Windows' voices are looked up on a worker thread; the app (which outlives this window) passes them on
+        ctrl.voices_found.connect(self._fill_voices)
         self.setWindowTitle(f"{APP_NAME} · Settings")
         self.setWindowIcon(ctrl.icon)
         self.setMinimumWidth(600)
@@ -198,8 +201,15 @@ class SettingsDialog(QDialog):
         self.focus_guard.toggled.connect(self.distracting.setEnabled)
         self.quiet_focus = QCheckBox("Hold agent updates until my break")
         self.break_card = QCheckBox("Offer breathing, parked thoughts and a game")
+        self.break_recap = QCheckBox("Show where I was: my task, window and agent news")
+        self.auto_task = QComboBox()
+        for key, label in (("ask", "Ask me first"), ("auto", "Automatically"), ("off", "Off")):
+            self.auto_task.addItem(label, key)
+        self.quests_on = QCheckBox("Three small quests a day, with badges and outfits")
+        self.cheer_on = QCheckBox("Cheer me on: a few words at halfway and near the end")
         form.addRow("After a session", self.rate_sessions)
         form.addRow("", self.suggest_length)
+        form.addRow("During focus", self.cheer_on)
         form.addRow("Away from the PC", self.away_after)
         form.addRow("", _hint("Pauses the focus session when the keyboard and mouse have\n"
                               "been still this long, and gives that time back."))
@@ -211,6 +221,13 @@ class SettingsDialog(QDialog):
         form.addRow("", _hint("Windows doesn't let apps turn on its own Focus or Do not disturb,\n"
                               "so Pomo keeps itself quiet. Permission requests still come through."))
         form.addRow("When a break starts", self.break_card)
+        form.addRow("When a break ends", self.break_recap)
+        form.addRow("", _hint("\"Where was I?\" brings back the window you were working in\n"
+                              "with one click. Window titles stay in memory, never on disk."))
+        form.addRow("Name sessions after", self.auto_task)
+        form.addRow("", _hint("the project and git branch open in your editor, so your\n"
+                              "dashboard shows focus per project with no typing."))
+        form.addRow("Daily quests", self.quests_on)
         return page
 
     def _keys_tab(self) -> QWidget:
@@ -273,10 +290,10 @@ class SettingsDialog(QDialog):
             self.theme_box.addItem(theme.label, theme.key)
         self.outfit_box = QComboBox()
         for key, label in OUTFITS.items():
-            if self.ctrl.lifetime >= UNLOCKS.get(key, 0):
+            if self.ctrl.outfit_unlocked(key):
                 self.outfit_box.addItem(label, key)
-            else:  # still growing in the garden
-                self.outfit_box.addItem(f"{label}  (at {UNLOCKS[key]} pomodoros)", key)
+            else:  # still growing in the garden, or a quest reward
+                self.outfit_box.addItem(f"{label}  (at {garden.unlock_hint(key)})", key)
                 self.outfit_box.model().item(self.outfit_box.count() - 1).setEnabled(False)
         self.style_box = QComboBox()
         self.style_box.addItems(["Floating orb", "Top island"])
@@ -337,6 +354,22 @@ class SettingsDialog(QDialog):
                               f"{claude_hooks.default_settings_path()}\n"
                               "Your other settings are kept, and a backup is\n"
                               "saved next to the file the first time."))
+        self.more_agents: dict[str, tuple[QLabel, QPushButton]] = {}
+        for key, info in agent_hooks.AGENTS.items():
+            status = QLabel()
+            status.setWordWrap(True)
+            status.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            button = QPushButton()
+            button.setCursor(Qt.PointingHandCursor)
+            button.clicked.connect(lambda _=False, k=key: self._toggle_agent(k))
+            self.more_agents[key] = (status, button)
+            form.addRow(info.label, status)
+            form.addRow("", button)
+        form.addRow("", _hint("Codex: Pomo's hooks go in ~/.codex/hooks.json; run /hooks in Codex\n"
+                              "once to trust them. Gemini: they go in ~/.gemini/settings.json.\n"
+                              "Questions with options are answered in Pomo for Claude Code only."))
+        self.agent_reviews = QCheckBox("When an agent changes files, suggest reviewing them as a focus task")
+        form.addRow("", self.agent_reviews)
         form.addRow("", self.approvals)
         form.addRow("Wait for my answer", self.approval_wait)
         form.addRow("", _hint("If you don't answer in time, or choose \"In terminal\",\n"
@@ -376,6 +409,39 @@ class SettingsDialog(QDialog):
         self.hooks_button.setText({"connected": "Disconnect Claude Code", "outdated": "Reconnect Claude Code",
                                    "off": "Connect Claude Code"}[state])
         self._hooks_state = state
+        self._agent_states: dict[str, str] = {}
+        for key, (label, button) in getattr(self, "more_agents", {}).items():
+            info = agent_hooks.AGENTS[key]
+            agent_state = agent_hooks.status(key)
+            self._agent_states[key] = agent_state
+            found = agent_hooks.detected(key)
+            label.setText({
+                "connected": f"Connected. {info.trust_hint}",
+                "outdated": "Connected to an older Pomo location. Reconnect to update.",
+                "off": "Not connected." + ("" if found else f" ({info.label} isn't installed on this PC yet.)"),
+            }[agent_state])
+            button.setText({"connected": f"Disconnect {info.short}", "outdated": f"Reconnect {info.short}",
+                            "off": f"Connect {info.short}"}[agent_state])
+
+    def _toggle_agent(self, key: str) -> None:
+        info = agent_hooks.AGENTS[key]
+        path = agent_hooks.settings_path(key)
+        try:
+            if self._agent_states.get(key) == "connected":
+                agent_hooks.uninstall(key, path)
+            else:
+                answer = QMessageBox.question(
+                    self, f"Connect {info.label}",
+                    f"Pomo will add its hooks to\n{path}\n\n{info.label} will then send Pomo a short summary of "
+                    "what each session does (prompts, tools, file names), and ask Pomo before showing a "
+                    f"permission prompt. {info.trust_hint}",
+                    QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Ok)
+                if answer != QMessageBox.Ok:
+                    return
+                agent_hooks.install(key, path)
+        except (claude_hooks.HookConfigError, OSError) as exc:
+            QMessageBox.warning(self, f"{info.label} settings", str(exc))
+        self._refresh_hooks_status()
 
     def _toggle_hooks(self) -> None:
         path = claude_hooks.default_settings_path()
@@ -461,12 +527,66 @@ class SettingsDialog(QDialog):
                               "stats, task names and agent activity to the provider you picked.\n"
                               "Nothing is sent until you ask something."))
         form.addRow("", open_chat)
+        self.voice_input = QComboBox()
+        for key, label in (("auto", "Automatic"), ("windows", "This PC (Windows speech recognition)"),
+                           ("openai", "OpenAI, with your key"), ("gemini", "Gemini, with your key")):
+            self.voice_input.addItem(label, key)
+        self.voice_replies = QCheckBox("Read Pomo's replies aloud")
+        self.voice_box = QComboBox()
+        self.voice_box.addItem("A soft voice (Pomo picks)", "")
+        try_voice = QPushButton("Try it")
+        try_voice.clicked.connect(self._try_voice)
+        voice_row = QWidget()
+        lay = QHBoxLayout(voice_row)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.voice_box, 1)
+        lay.addWidget(try_voice)
+        form.addRow("Talk to Pomo: hear me with", self.voice_input)
+        form.addRow("", _hint("Hold the talk shortcut (Shortcuts tab) or the mic in Ask Pomo.\n"
+                              "Automatic uses OpenAI or Gemini when Ask Pomo does, and this PC\n"
+                              "otherwise. On this PC, your voice never leaves it."))
+        form.addRow("", self.voice_replies)
+        form.addRow("Voice", voice_row)
+        self._load_voices()
         self._key_check: KeyCheckWorker | None = None
         self._pending_models = {k: model_for(self.ctrl.settings, k) for k in PROVIDERS}
         self._loaded_models: dict[str, list[str]] = {}
         self._shown_provider = self.ctrl.settings.ai_provider
         self.provider_box.currentIndexChanged.connect(self._provider_changed)
         return page
+
+    def _load_voices(self) -> None:
+        """Fill the voice list with Windows' voices (asked once, in the background)."""
+        voices = self.ctrl.voices
+        if voices is not None:
+            self._fill_voices(voices)
+            return
+        import threading
+
+        from .voice import list_voices
+
+        def look(ctrl=self.ctrl):
+            ctrl.voices = list_voices()
+            ctrl.voices_found.emit(ctrl.voices)
+
+        threading.Thread(target=look, daemon=True).start()
+
+    def _fill_voices(self, voices: list) -> None:
+        current = self.voice_box.currentData() or self._wanted_voice
+        for name, detail in voices:
+            if self.voice_box.findData(name) < 0:
+                self.voice_box.addItem(f"{name}  ·  {detail}", name)
+        self._set_voice(current)
+
+    def _set_voice(self, name: str) -> None:
+        self._wanted_voice = name
+        index = self.voice_box.findData(name)
+        self.voice_box.setCurrentIndex(index if index >= 0 else 0)
+
+    def _try_voice(self) -> None:
+        self.ctrl._ensure_voice()
+        self.ctrl.speaker.speak("Hi! I'm Pomo. This is how I'll read my replies to you.",
+                                self.voice_box.currentData() or "")
 
     def _provider(self) -> str:
         return self.provider_box.currentData() or "anthropic"
@@ -583,8 +703,22 @@ class SettingsDialog(QDialog):
         self.music_follows = QCheckBox("Play music while I focus, pause it on breaks")
         self.music_controls.toggled.connect(self.pomo_listens.setEnabled)
         self.music_controls.toggled.connect(self.music_follows.setEnabled)
+        self.taskbar = QCheckBox("Show Pomo on the taskbar")
+        self.sound_box = QComboBox()
+        for key, label in FOCUS_SOUNDS.items():
+            self.sound_box.addItem(label, key)
+        sound_volume_box, self.sound_volume = _slider(0, 100)
+        self.sound_follows = QCheckBox("Play them only while I focus")
         form.addRow("Startup", self.autostart)
         form.addRow("", _hint(f"Starts {APP_NAME} when you sign in to Windows."))
+        form.addRow("Taskbar", self.taskbar)
+        form.addRow("", _hint("The countdown shows as progress on Pomo's taskbar button,\n"
+                              "with reset, play/pause and skip when you hover it."))
+        form.addRow("Focus sounds", self.sound_box)
+        form.addRow("Sound volume", sound_volume_box)
+        form.addRow("", self.sound_follows)
+        form.addRow("", _hint("Rain, café murmur, brown noise and a lo-fi loop, made by Pomo\n"
+                              "on this PC the first time you play them. Nothing is downloaded."))
         form.addRow("Music", self.music_controls)
         form.addRow("", self.pomo_listens)
         form.addRow("", self.music_follows)
@@ -648,6 +782,18 @@ class SettingsDialog(QDialog):
         self.distracting.setEnabled(s.focus_guard)
         self.quiet_focus.setChecked(s.quiet_focus)
         self.break_card.setChecked(s.break_card)
+        self.break_recap.setChecked(s.break_recap)
+        self.cheer_on.setChecked(s.cheer_on)
+        self.auto_task.setCurrentIndex(max(0, self.auto_task.findData(s.auto_task)))
+        self.quests_on.setChecked(s.quests_on)
+        self.agent_reviews.setChecked(s.agent_reviews)
+        self.taskbar.setChecked(s.taskbar_button)
+        self.sound_box.setCurrentIndex(max(0, self.sound_box.findData(s.focus_sound)))
+        self.sound_volume.setValue(s.focus_sound_volume)
+        self.sound_follows.setChecked(s.focus_sound_follows)
+        self.voice_input.setCurrentIndex(max(0, self.voice_input.findData(s.voice_input)))
+        self.voice_replies.setChecked(s.voice_replies)
+        self._set_voice(s.voice_name)
         self.hotkeys_on.setChecked(s.hotkeys_on)
         for attr, edit in self.hotkey_edits.items():
             edit.setKeySequence(QKeySequence.fromString(getattr(s, attr), QKeySequence.PortableText))
@@ -713,6 +859,18 @@ class SettingsDialog(QDialog):
         s.distracting = [w.strip().lower() for w in self.distracting.text().split(",") if w.strip()]
         s.quiet_focus = self.quiet_focus.isChecked()
         s.break_card = self.break_card.isChecked()
+        s.break_recap = self.break_recap.isChecked()
+        s.cheer_on = self.cheer_on.isChecked()
+        s.auto_task = self.auto_task.currentData()
+        s.quests_on = self.quests_on.isChecked()
+        s.agent_reviews = self.agent_reviews.isChecked()
+        s.taskbar_button = self.taskbar.isChecked()
+        s.focus_sound = self.sound_box.currentData()
+        s.focus_sound_volume = self.sound_volume.value()
+        s.focus_sound_follows = self.sound_follows.isChecked()
+        s.voice_input = self.voice_input.currentData()
+        s.voice_replies = self.voice_replies.isChecked()
+        s.voice_name = self.voice_box.currentData() or ""
         s.hotkeys_on = self.hotkeys_on.isChecked()
         for attr, edit in self.hotkey_edits.items():
             setattr(s, attr, edit.keySequence().toString(QKeySequence.PortableText))

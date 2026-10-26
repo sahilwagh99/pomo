@@ -44,7 +44,7 @@ TIPS = {
     "chat": "Ask Pomo",
     "style": "Switch to the floating orb",
     "feed": "Feed Pomo a treat (you earn one per focus session)",
-    "play": "Play Petal Catch with Pomo",
+    "play": "Play a game with Pomo",
     "settings": "Settings",
     "pomo": "Pomo, your focus buddy. Poke him!",
     "time": "Double-click to type a time, scroll to adjust",
@@ -53,6 +53,16 @@ TIPS = {
 }
 MUSIC_GLYPHS = {"m_prev": "previous", "m_next": "skip"}
 MUSIC_COMMANDS = {"m_prev": "previous", "m_toggle": "toggle", "m_next": "next"}
+
+
+def sounds_tip(settings) -> str:
+    """The focus sounds badge's tooltip."""
+    from .config import FOCUS_SOUNDS
+
+    if settings.focus_sound == "off":
+        return "Focus sounds: rain, café, brown noise or lo-fi, made by Pomo.\nClick to pick one"
+    when = "while you focus" if settings.focus_sound_follows else "now"
+    return f"Focus sounds: {FOCUS_SOUNDS[settings.focus_sound]}, playing {when}\nClick to change"
 
 
 def _lerp(a: float, b: float, t: float) -> float:
@@ -207,6 +217,8 @@ class IslandWidget(QWidget):
             self._hover = hover
             if not hover:
                 self._set_hot(None)
+            elif getattr(self.ctrl, "whisper", None) is not None:
+                self.ctrl.whisper.fade_out()  # the island opens up where Pomo's bubble is
             self._update_targets()
 
     def pin(self, seconds: float) -> None:
@@ -278,6 +290,13 @@ class IslandWidget(QWidget):
         r = self._expanded_rect().toRect()
         return QRect(self.mapToGlobal(r.topLeft()), r.size())
 
+    def whisper_anchor(self) -> QRect:
+        """Where Pomo's cheer bubble points: his spot on the pill, down to the pill's bottom edge."""
+        rect, _ = self._pill()
+        anchor, size = self._pomo_place()
+        local = QRectF(anchor.x() - size / 2, rect.top(), size, rect.height()).toRect()
+        return QRect(self.mapToGlobal(local.topLeft()), local.size())
+
     @staticmethod
     def _path(rect: QRectF, radius: float) -> QPainterPath:
         f = min(FLARE, rect.height() * 0.6)
@@ -323,11 +342,12 @@ class IslandWidget(QWidget):
         }
 
     def _badges(self) -> dict[str, tuple[QPointF, float]]:
-        """Toys beside the big Pomo in the open island: treat (feed) and Petal Catch (play)."""
+        """Toys beside the big Pomo in the open island: treat (feed), games (play) and focus sounds."""
         if not self._pomo_on or self._expand < 0.8:
             return {}
         r = self._expanded_rect()
-        out = {"play": (QPointF(r.left() + 104, r.top() + 114), 11.0)}
+        out = {"play": (QPointF(r.left() + 104, r.top() + 114), 11.0),
+               "sounds": (QPointF(r.left() + 104, r.top() + 88), 11.0)}
         if self.ctrl.settings.treats > 0:
             out["feed"] = (QPointF(r.left() + 20, r.top() + 114), 11.0)
         return out
@@ -532,10 +552,12 @@ class IslandWidget(QWidget):
             self._paint_music(p, accent)
 
         for name, (center, radius) in self._badges().items():
-            p.setPen(QPen(QColor(t.orb_edge), 1))
+            sounding = name == "sounds" and s.focus_sound != "off"
+            p.setPen(QPen(QColor(t.focus if sounding else t.orb_edge), 1.6 if sounding else 1))
             p.setBrush(QColor(t.hover if name == self._hot else t.raised))
             p.drawEllipse(center, radius, radius)
-            draw_glyph(p, "dango" if name == "feed" else "petal", center, radius * 1.35, QColor(t.ink_2))
+            glyph = {"feed": "dango", "play": "petal", "sounds": "headphones"}[name]
+            draw_glyph(p, glyph, center, radius * (1.15 if name == "sounds" else 1.35), QColor(t.ink_2))
             if name == "feed" and s.treats > 1:
                 dot = QPointF(center.x() + radius * 0.75, center.y() - radius * 0.75)
                 p.setPen(Qt.NoPen)
@@ -624,6 +646,8 @@ class IslandWidget(QWidget):
             text = now_playing_tip(self.ctrl)
         elif name == "skip":
             text = f"Skip to {self.engine.skip_target().label.lower()}"
+        elif name == "sounds":
+            text = sounds_tip(self.ctrl.settings)
         else:
             text = TIPS.get(name, "")
         QToolTip.showText(QCursor.pos(), text, self)
@@ -735,6 +759,8 @@ class IslandWidget(QWidget):
             self.ctrl.feed_pomo()
         elif name == "play":
             self.ctrl.open_game()
+        elif name == "sounds":
+            self.ctrl.open_sounds_menu(QCursor.pos())
         elif name in MUSIC_COMMANDS:
             self.ctrl.media_command(MUSIC_COMMANDS[name])
 
