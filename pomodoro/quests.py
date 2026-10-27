@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QSizePolicy, QToolTip, QWidget
 
 from .config import OUTFITS, QUEST_UNLOCKS
@@ -197,6 +197,25 @@ def draw_badge(p: QPainter, c: QPointF, r: float, quest: Quest, earned: bool = T
     p.restore()
 
 
+_BADGES: dict[tuple, QPixmap] = {}
+
+
+def paint_badge(p: QPainter, c: QPointF, r: float, quest: Quest, earned: bool, ratio: float) -> None:
+    """draw_badge, from a picture drawn once and kept: shelves repaint often (scrolling, hovering)."""
+    side = 2 * r + 4
+    key = (quest.key, earned, r, ratio)
+    pixmap = _BADGES.get(key)
+    if pixmap is None:
+        pixmap = QPixmap(round(side * ratio), round(side * ratio))
+        pixmap.setDevicePixelRatio(ratio)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        draw_badge(painter, QPointF(side / 2, side / 2), r, quest, earned)
+        painter.end()
+        _BADGES[key] = pixmap
+    p.drawPixmap(QPointF(c.x() - side / 2, c.y() - side / 2), pixmap)
+
+
 def _glyph(p: QPainter, name: str, c: QPointF, s: float, ink: QColor, fill: QColor) -> None:
     pen = QPen(ink, max(1.0, s * 0.16), Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
     p.setPen(pen)
@@ -324,7 +343,7 @@ class QuestList(QWidget):
             return
         for i, (quest, value, target, done) in enumerate(self.rows):
             top = i * self.ROW
-            draw_badge(p, QPointF(22, top + self.ROW / 2), 18, quest, earned=done)
+            paint_badge(p, QPointF(22, top + self.ROW / 2), 18, quest, done, self.devicePixelRatioF())
             title = QFont(FONT_FAMILY)
             title.setPixelSize(13)
             title.setWeight(QFont.DemiBold)
@@ -403,7 +422,7 @@ class BadgeShelf(QWidget):
             cell = self._cell(i)
             times = self.badges.get(quest.key, 0)
             center = QPointF(cell.center().x(), cell.top() + 26)
-            draw_badge(p, center, 19, quest, earned=times > 0)
+            paint_badge(p, center, 19, quest, times > 0, self.devicePixelRatioF())
             if times > 1:
                 dot = QPointF(center.x() + 15, center.y() - 15)
                 p.setPen(Qt.NoPen)

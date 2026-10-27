@@ -141,3 +141,56 @@ class WorkerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NotificationClickTests(unittest.TestCase):
+    """With the timer hidden, 'Pomo X is available' comes as a Windows notification; clicking it offers the update."""
+
+    def make(self):
+        from unittest import mock
+
+        from pomodoro.config import Settings
+        from pomodoro.notifier import Notifier
+
+        class Tray:
+            shown = []
+
+            def isVisible(self):
+                return True
+
+            def icon(self):
+                return None
+
+            def showMessage(self, title, message, *_):
+                self.shown.append(title)
+
+        patch = mock.patch("pomodoro.notifier.QSystemTrayIcon.supportsMessages", return_value=True)
+        patch.start()
+        self.addCleanup(patch.stop)
+        return Notifier(Settings(), Path(tempfile.gettempdir()), Tray()), Tray.shown
+
+    def test_clicking_runs_what_that_notification_was_about(self):
+        notifier, shown = self.make()
+        clicks = []
+        self.assertTrue(notifier.toast("Pomo 9.9.0 is available", "Click here to update.", on_click=lambda: clicks.append(1)))
+        notifier.clicked()
+        notifier.clicked()  # once only
+        self.assertEqual((shown, clicks), (["Pomo 9.9.0 is available"], [1]))
+
+    def test_a_newer_notification_replaces_the_click(self):
+        notifier, _shown = self.make()
+        clicks = []
+        notifier.toast("Pomo 9.9.0 is available", "Click here to update.", on_click=lambda: clicks.append(1))
+        notifier.toast("Focus session complete", "Time for a break.")
+        notifier.clicked()
+        self.assertEqual(clicks, [])
+
+    def test_nothing_shown_when_notifications_are_off(self):
+        notifier, shown = self.make()
+        notifier.settings.desktop_notifications = False
+        self.assertFalse(notifier.toast("Pomo 9.9.0 is available", "Click here to update."))
+        self.assertEqual(shown, [])
+
+    def test_checks_every_hour(self):
+        self.assertEqual(updater.CHECK_EVERY_MS, 3600 * 1000)
+        self.assertGreater(updater.OFFER_AGAIN_S, 0)

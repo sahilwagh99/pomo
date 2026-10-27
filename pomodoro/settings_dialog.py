@@ -734,8 +734,9 @@ class SettingsDialog(QDialog):
         form.addRow("Updates", self.auto_update)
         form.addRow("", self.update_status)
         form.addRow("", update_row)
-        form.addRow("", _hint("Pomo asks GitHub for a new version every few hours. Updating\n"
-                              "takes one click and keeps your history and settings."))
+        form.addRow("", _hint("Pomo asks GitHub for a new version every hour and tells you when\n"
+                              "one is ready. Updating takes one click and keeps your history\n"
+                              "and settings."))
         self.ctrl.update_status_changed.connect(self._refresh_update_status)
         self._refresh_update_status()
         form.addRow("Taskbar", self.taskbar)

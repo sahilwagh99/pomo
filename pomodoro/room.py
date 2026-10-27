@@ -22,6 +22,7 @@ from PySide6.QtGui import (
     QPainter,
     QPainterPath,
     QPen,
+    QPixmap,
     QRadialGradient,
 )
 from PySide6.QtWidgets import QMenu, QSizePolicy, QToolTip, QWidget
@@ -790,7 +791,7 @@ def _paint_window(p: QPainter, r: QRectF, lw: float, scene: Scene) -> None:
     p.setPen(_pen(lw))
     p.setBrush(QColor("#fffdf8"))
     p.drawRoundedRect(r, 8, 8)
-    sky =QLinearGradient(pane.topLeft(), pane.bottomLeft())
+    sky = QLinearGradient(pane.topLeft(), pane.bottomLeft())
     sky.setColorAt(0, QColor(top))
     sky.setColorAt(1, QColor(bottom))
     p.setBrush(sky)
@@ -852,6 +853,25 @@ def thumbnail(p: QPainter, key: str, rect: QRectF, scene: Scene, line_px: float 
     p.restore()
 
 
+_THUMBS: dict[tuple, QPixmap] = {}
+
+
+def thumbnail_pixmap(key: str, w: int, h: int, ratio: float) -> QPixmap:
+    """An item's thumbnail, drawn once and kept: lists repaint often (scrolling, hovering)."""
+    cache_key = (key, w, h, ratio)
+    pixmap = _THUMBS.get(cache_key)
+    if pixmap is None:
+        pixmap = QPixmap(max(1, round(w * ratio)), max(1, round(h * ratio)))
+        pixmap.setDevicePixelRatio(ratio)
+        pixmap.fill(Qt.transparent)
+        p = QPainter(pixmap)
+        p.setRenderHint(QPainter.Antialiasing)
+        thumbnail(p, key, QRectF(0, 0, w, h), Scene(datetime(2026, 1, 1, 12), {}))
+        p.end()
+        _THUMBS[cache_key] = pixmap
+    return pixmap
+
+
 class RoomWidget(QWidget):
     """The room itself: click Pomo to poke him, click any spot to choose what goes there."""
 
@@ -867,12 +887,16 @@ class RoomWidget(QWidget):
         self.pomo = Pomo(random.Random())
         self.now: datetime | None = None  # fixed for screenshots and tests; None = the clock
         self._hover: str | None = None
+        self._back: QPixmap | None = None    # see _layers
+        self._front: QPixmap | None = None
+        self._layers_for: tuple = ()
         self._clock = QTimer(self)
         self._clock.setInterval(1000 // self.FPS)
         self._clock.timeout.connect(self._tick)
         self.setMinimumHeight(250)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setMouseTracking(True)
+        self.setAttribute(Qt.WA_OpaquePaintEvent)  # the room covers every pixel: nothing behind it to repaint
 
     def sizeHint(self) -> QSize:
         return QSize(560, 260)
@@ -906,7 +930,10 @@ class RoomWidget(QWidget):
             anchor = self._pomo_anchor()
             cursor = ((c.x() - anchor.x()) / POMO_SIZE, (c.y() - anchor.y()) / POMO_SIZE)
         self.pomo.update(1 / self.FPS, cursor)
-        self.update()
+        if self._layers_key() != self._layers_for:
+            self.update()  # a new minute on the clock, or a new part of the day
+        else:
+            self.update(self._pomo_rect())  # only Pomo moves
 
     def _now(self) -> datetime:
         return self.now or datetime.now()
@@ -947,14 +974,77 @@ class RoomWidget(QWidget):
         p.end()
 
     def paint_room(self, p: QPainter) -> None:
+        """The cached room, Pomo (the only thing that moves), and the evening light over both."""
+        back, front = self._layers()
+        p.drawPixmap(0, 0, back)
+        k, ox, oy = self._transform()
+        p.save()
+        p.setClipPath(self._clip())
+        p.translate(ox, oy)
+        p.scale(k, k)
+        self.pomo.paint(p, self._pomo_anchor(), POMO_SIZE)
+        if self._hover and self._hover != "pomo":
+            box = WINDOW if self._hover == "curtains" and "curtains" not in self.placed else SLOTS[self._hover][1]
+            p.setPen(QPen(QColor(self.theme.chart), 1.4, Qt.DashLine, Qt.RoundCap))
+            p.setBrush(QColor(255, 255, 255, 40))
+            p.drawRoundedRect(box.adjusted(-3, -3, 3, 3), 8, 8)
+        p.restore()
+        if front is not None:
+            p.drawPixmap(0, 0, front)
+
+    def _clip(self) -> QPainterPath:
+        clip = QPainterPath()
+        clip.addRoundedRect(QRectF(0, 0, self.width(), self.height()), 14, 14)
+        return clip
+
+    def _layers_key(self) -> tuple:
+        return (self.width(), self.height(), self.devicePixelRatioF(), self.theme.key,
+                tuple(sorted(self.placed.items())), tuple(sorted(self.badges.items())),
+                self._now().strftime("%Y%m%d%H%M"))
+
+    def _layers(self) -> tuple[QPixmap, QPixmap | None]:
+        """The room behind Pomo, and the evening light in front of him. Drawing them takes a while, so
+        they're drawn once and reused every frame until something in them changes (an item, the size,
+        the minute on the clock)."""
+        key = self._layers_key()
+        if key != self._layers_for or self._back is None:
+            self._layers_for = key
+            scene = Scene(self._now(), self.badges)
+            self._back = self._new_layer(QColor(self.theme.surface))  # the card's color, for the corners
+            p = QPainter(self._back)
+            p.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+            self._paint_back(p, scene)
+            p.end()
+            self._front = None
+            if scene.glow:
+                self._front = self._new_layer(Qt.transparent)
+                p = QPainter(self._front)
+                p.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+                self._paint_front(p, scene)
+                p.end()
+        return self._back, self._front
+
+    def _new_layer(self, fill) -> QPixmap:
+        ratio = self.devicePixelRatioF()
+        layer = QPixmap(max(1, round(self.width() * ratio)), max(1, round(self.height() * ratio)))
+        layer.setDevicePixelRatio(ratio)
+        layer.fill(fill)
+        return layer
+
+    def _pomo_rect(self):
+        """Where Pomo can be drawn (hops, hats and all), in the widget: the only part that changes."""
+        k, ox, oy = self._transform()
+        anchor = self._pomo_anchor()
+        r = QRectF(anchor.x() - POMO_SIZE, anchor.y() - 2.2 * POMO_SIZE, 2 * POMO_SIZE, 3.1 * POMO_SIZE)
+        return QRectF(ox + r.x() * k, oy + r.y() * k, r.width() * k, r.height() * k).toAlignedRect().adjusted(
+            -2, -2, 2, 2)
+
+    def _paint_back(self, p: QPainter, scene: Scene) -> None:
         k, ox, oy = self._transform()
         w, h = self.width(), self.height()
-        scene = Scene(self._now(), self.badges)
         dark = self.theme.dark
-        clip = QPainterPath()
-        clip.addRoundedRect(QRectF(0, 0, w, h), 14, 14)
         p.save()
-        p.setClipPath(clip)
+        p.setClipPath(self._clip())
         floor_top = oy + FLOOR_Y * k
         p.fillRect(QRectF(0, 0, w, floor_top), QColor("#433a4a" if dark else "#f8ebdc"))
         p.setPen(Qt.NoPen)
@@ -989,25 +1079,19 @@ class RoomWidget(QWidget):
         seat = self.placed.get("seat")
         if seat:
             draw_item(p, seat, SLOTS["seat"][1], lw, scene)
-        self.pomo.paint(p, self._pomo_anchor(), POMO_SIZE)
-        if self._hover and self._hover != "pomo":
-            box = WINDOW if self._hover == "curtains" and "curtains" not in self.placed else SLOTS[self._hover][1]
-            p.setPen(QPen(QColor(self.theme.chart), 1.4, Qt.DashLine, Qt.RoundCap))
-            p.setBrush(QColor(255, 255, 255, 40))
-            p.drawRoundedRect(box.adjusted(-3, -3, 3, 3), 8, 8)
         p.restore()
 
-        if scene.glow:  # dusk: the room dims a little and the lamps take over
-            p.save()
-            p.setClipPath(clip)
-            p.fillRect(QRectF(0, 0, w, h), QColor(40, 34, 90, int(46 * scene.glow)))
-            p.translate(ox, oy)
-            p.scale(k, k)
-            for slot in ("lights", "corner", "desk"):
-                key = self.placed.get(slot)
-                if key in ("lights", "floor_lamp", "study_desk"):
-                    self._relight(p, key, scene)
-            p.restore()
+    def _paint_front(self, p: QPainter, scene: Scene) -> None:
+        """Dusk: the room dims a little (Pomo too) and the lamps take over."""
+        k, ox, oy = self._transform()
+        p.setClipPath(self._clip())
+        p.fillRect(QRectF(0, 0, self.width(), self.height()), QColor(40, 34, 90, int(46 * scene.glow)))
+        p.translate(ox, oy)
+        p.scale(k, k)
+        for slot in ("lights", "corner", "desk"):
+            key = self.placed.get(slot)
+            if key in ("lights", "floor_lamp", "study_desk"):
+                self._relight(p, key, scene)
 
     def _relight(self, p: QPainter, key: str, scene: Scene) -> None:
         """Lamps stay bright when the room dims: their glow goes on top."""
@@ -1119,15 +1203,16 @@ class RoomShelf(QWidget):
         t = self.theme
         p = QPainter(self)
         p.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
-        scene = Scene(datetime(2026, 1, 1, 12), {})
         in_room = set(self.placed.values())
+        ratio = self.devicePixelRatioF()
         for i, key in enumerate(ITEMS):
             cell = self._cell(i)
             p.setPen(QPen(QColor(t.chart), 2) if key in in_room else Qt.NoPen)
             p.setBrush(QColor(t.raised))
             p.drawRoundedRect(cell.adjusted(1, 1, -1, -1), 10, 10)
             p.setOpacity(1.0 if key in self.have else 0.28)
-            thumbnail(p, key, cell.adjusted(6, 6, -6, -6), scene)
+            inner = cell.adjusted(6, 6, -6, -6)
+            p.drawPixmap(inner.topLeft(), thumbnail_pixmap(key, round(inner.width()), round(inner.height()), ratio))
             p.setOpacity(1.0)
         p.end()
 
@@ -1184,7 +1269,7 @@ class RoomGoals(QWidget):
             p.drawText(self.rect(), Qt.AlignCenter, "Pomo's room is complete. Every item earned!")
             p.end()
             return
-        scene = Scene(datetime(2026, 1, 1, 12), {})
+        ratio = self.devicePixelRatioF()
         title = QFont(FONT_FAMILY)
         title.setPixelSize(13)
         title.setWeight(QFont.DemiBold)
@@ -1196,7 +1281,7 @@ class RoomGoals(QWidget):
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(t.raised))
             p.drawRoundedRect(tile, 10, 10)
-            thumbnail(p, item.key, tile.adjusted(4, 4, -4, -4), scene)
+            p.drawPixmap(tile.adjusted(4, 4, -4, -4).topLeft(), thumbnail_pixmap(item.key, 36, 36, ratio))
             p.setFont(title)
             p.setPen(QColor(t.ink))
             p.drawText(QRectF(56, top + 8, w - 140, 18), Qt.AlignLeft | Qt.AlignVCenter, item.name)

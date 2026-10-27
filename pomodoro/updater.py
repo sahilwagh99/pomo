@@ -1,8 +1,8 @@
 """Updates from GitHub Releases, one click away.
 
-Every few hours Pomo asks GitHub for its latest release. When there's a newer one, it downloads
+Every hour Pomo asks GitHub for its latest release. When there's a newer one, it downloads
 Pomo-Setup.exe in the background and checks it against the SHA-256 GitHub publishes for it (a file
-that doesn't match is never run), then offers it: "Pomo 1.5.1 is ready. Update now?" One click starts
+that doesn't match is never run), then offers it: "Pomo 1.6.0 is available. Update now?" One click starts
 the installer silently and quits; the installer waits for Pomo to close, updates it in place (same
 folder, same startup and desktop-icon choices) and starts Pomo again, even if something went wrong.
 
@@ -25,8 +25,10 @@ REPO = "sahilwagh99/pomo"
 LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases/latest"
 ASSET = "Pomo-Setup.exe"
-CHECK_EVERY_MS = 6 * 3600 * 1000
+CHECK_EVERY_MS = 3600 * 1000  # GitHub allows 60 unsigned API calls an hour per address: one is plenty
 FIRST_CHECK_MS = 3 * 60 * 1000
+OFFER_AGAIN_S = 2 * 3600      # an update card that went unanswered comes back after this ("Later": tomorrow)
+AWAY_S = 120                  # no keyboard or mouse for this long: you're away, so the card waits for you
 MAX_BYTES = 300_000_000
 MAX_TRIES = 2          # installs of one version that didn't take, before Pomo offers the download page instead
 DETACHED_PROCESS, CREATE_NEW_PROCESS_GROUP = 0x8, 0x200

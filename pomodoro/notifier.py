@@ -23,12 +23,22 @@ class Notifier(QObject):
         self.tray = tray
         self._lengths: dict[Path, float] = {}
         self._pending: list[QTimer] = []
+        self.on_click = None  # what clicking the latest notification does, besides bringing the timer up
 
-    def toast(self, title: str, message: str) -> None:
+    def toast(self, title: str, message: str, on_click=None) -> bool:
+        """A Windows notification. True if it was shown."""
         if not self.settings.desktop_notifications or self.tray is None:
-            return
+            return False
         if self.tray.isVisible() and QSystemTrayIcon.supportsMessages():
+            self.on_click = on_click
             self.tray.showMessage(title, message, self.tray.icon(), 8000)
+            return True
+        return False
+
+    def clicked(self) -> None:
+        action, self.on_click = self.on_click, None
+        if action is not None:
+            action()
 
     def alert(self) -> None:
         if self.settings.sound_enabled:

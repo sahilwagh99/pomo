@@ -24,7 +24,7 @@
 
 Pomo opens as a little island at the top of your screen and says hi. Prefer a round timer you can drag anywhere? Click **Switch to orb** on the welcome card, or the style button on the timer whenever you like.
 
-- **Update:** Pomo updates itself. When a new version is out, it downloads it in the background, checks it against GitHub's checksum, and offers **Update now**: one click and Pomo restarts on the new version, history and settings kept. It never asks during a focus session, and *Later* waits until tomorrow (or use *Update to Pomo...* in the right-click menu). On 1.4 or earlier, download and run the newest installer once; from 1.5 on, updates come to you. The portable zip shows a download link instead.
+- **Update:** Pomo updates itself. It checks GitHub every hour. When a new version is out, it downloads it in the background, checks it against GitHub's checksum, and pops up *Pomo 1.6.0 is available* with **Update now**: one click and Pomo restarts on the new version, history and settings kept. During a focus session the card waits for your break, and when you're away it waits for you to come back. Unanswered, it comes back a couple of hours later; *Later* waits until tomorrow (or use *Update to Pomo...* in the right-click menu). With the timer hidden, you get a Windows notification instead: click it to update. On 1.4 or earlier, download and run the newest installer once; from 1.5 on, updates come to you. The portable zip shows a download link instead.
 - **Uninstall:** *Settings > Apps > Installed apps > Pomo*. You will be asked whether to keep your history.
 - **No installer:** download the [portable zip](../../releases/latest/download/Pomo-portable.zip), extract it anywhere and run `Pomo.exe`.
 
@@ -456,7 +456,7 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 | Shortcuts | Global shortcuts on or off, and each key combination (including the talk shortcut) |
 | General | Run Pomo on startup, updates (on or off, check now, update now), Pomo on the taskbar, focus sounds (which one, volume, only while focusing), music controls, Pomo listening along, music following the timer, move the orb back to its corner, open the data folder, export CSV, clear history |
 
-Your data lives in `%APPDATA%\Pomo`: `settings.json` (with your quests, badges and reviews waiting), `history.db` (pomodoros with their ratings, agent activity, parked thoughts and, if the check-in is on, minutes per app), `cache\` (the focus sounds once they're made), `updates\` (a downloaded update until it's installed) and, if you saved one, `ai_key.bin` (your API key, encrypted). Window titles (for "Where was I?" and project names) are never written to disk. When you talk to Pomo, the recording and the replies it reads aloud only pass through a temporary file in `cache\`, deleted as soon as Windows is done with it. To check for updates, Pomo asks GitHub's public API for the latest release every few hours; nothing about you is sent with it.
+Your data lives in `%APPDATA%\Pomo`: `settings.json` (with your quests, badges and reviews waiting), `history.db` (pomodoros with their ratings, agent activity, parked thoughts and, if the check-in is on, minutes per app), `cache\` (the focus sounds once they're made), `updates\` (a downloaded update until it's installed) and, if you saved one, `ai_key.bin` (your API key, encrypted). Window titles (for "Where was I?" and project names) are never written to disk. When you talk to Pomo, the recording and the replies it reads aloud only pass through a temporary file in `cache\`, deleted as soon as Windows is done with it. To check for updates, Pomo asks GitHub's public API for the latest release every hour; nothing about you is sent with it.
 
 ## For developers
 
@@ -497,7 +497,7 @@ The workflow in [`.github/workflows/release.yml`](.github/workflows/release.yml)
    git tag v1.2.0
    git push origin v1.2.0
    ```
-3. GitHub Actions builds `Pomo-Setup.exe` and `Pomo-portable.zip` and attaches them to the release, with `Pomo-Setup.exe.sha256`. Installed copies of Pomo find the release within a few hours, verify the installer against that checksum and offer the one-click update.
+3. GitHub Actions builds `Pomo-Setup.exe` and `Pomo-portable.zip` and attaches them to the release, with `Pomo-Setup.exe.sha256`. Installed copies of Pomo find the release within an hour, verify the installer against that checksum and offer the one-click update.
 
 The download button at the top of this README always points to the latest release, so it needs no edits.
 
@@ -551,7 +551,7 @@ pomodoro/config.py          settings, outfits and the FocusOrb to Pomo data move
 pomodoro/storage.py         SQLite history (pomodoros and agent events)
 pomodoro/stats.py           KPI calculations
 pomodoro/sounds.py          alert sounds synthesized at runtime
-pomodoro/theme.py           the five pastel themes, stylesheet
+pomodoro/theme.py           the eight pastel themes, stylesheet
 pomodoro/icons.py           button glyphs and the Pomo app icon
 pomodoro/winutil.py         Windows helpers: run on startup, dark title bars, bringing a window back to the front
 installer/Pomo.iss          Inno Setup installer script (also removes FocusOrb when upgrading, and runs silent updates)

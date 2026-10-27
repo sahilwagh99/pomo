@@ -19,7 +19,7 @@ from .config import FOCUS_SOUNDS, HOTKEYS, OUTFITS, Settings
 from .hotkeys import GlobalHotkeys
 from .hotkeys import parse as parse_hotkey
 from .pacing import AgentPacer, finished_detail
-from .presence import AwayWatcher, FocusGuard
+from .presence import AwayWatcher, FocusGuard, idle_seconds
 from .pomo import SLEEPY_AFTER
 from .engine import Mode, State, TimerEngine
 from .icons import app_icon, render_tray_icon
@@ -141,6 +141,9 @@ class PomoApp(QObject):
         self._update_worker = None
         self._update_error = ""
         self._updating = False
+        self._update_manual = False      # the check under way was "Check now"
+        self._update_snooze = 0.0        # an unanswered update card waits until then (monotonic seconds)
+        self._update_toasted = ""        # the version a Windows notification already announced (this run)
         self._update_timer = QTimer(self)
         self._update_timer.setInterval(updater.CHECK_EVERY_MS)
         self._update_timer.timeout.connect(self.check_for_updates)
@@ -155,7 +158,7 @@ class PomoApp(QObject):
             self._populate_menu(self._tray_menu)
             self.tray.setContextMenu(self._tray_menu)
             self.tray.activated.connect(self._on_tray_activated)
-            self.tray.messageClicked.connect(self.show_timer)
+            self.tray.messageClicked.connect(self._on_message_clicked)
             self.tray.show()
         self.notifier = Notifier(self.settings, self.cache_dir, self.tray, self)
 
@@ -712,6 +715,11 @@ class PomoApp(QObject):
         self.view.show()
         self.view.ensure_on_screen()
         self.view.raise_()
+
+    def _on_message_clicked(self) -> None:
+        """A Windows notification was clicked: bring the timer up, and do what that notification was about."""
+        self.show_timer()
+        QTimer.singleShot(250, self.notifier.clicked)  # once the timer is up, so a card can sit beside it
 
     def hide_timer(self) -> None:
         if self.tray is not None:
@@ -1439,6 +1447,7 @@ class PomoApp(QObject):
             return
         download = self.update_mode == "installer"
         self._update_error = ""
+        self._update_manual = manual
         self._update_worker = worker = updater.UpdateWorker(APP_VERSION, self.data_dir / "updates", download, self)
         worker.checked.connect(self._on_update_checked)
         worker.ready.connect(self._on_update_ready)
@@ -1471,7 +1480,8 @@ class PomoApp(QObject):
         self.settings.update_file = path
         self.save_settings()
         self.update_status_changed.emit()
-        QTimer.singleShot(0, self._maybe_offer_update)
+        manual = self._update_manual
+        QTimer.singleShot(0, lambda: self._maybe_offer_update(manual))
 
     def _on_update_failed(self, message: str, worth_telling: bool) -> None:
         self._update_error = message
@@ -1484,31 +1494,56 @@ class PomoApp(QObject):
         return (self.update_mode == "installer" and bool(s.update_file) and Path(s.update_file).exists()
                 and updater.is_newer(s.update_version, APP_VERSION) and s.update_tries < updater.MAX_TRIES)
 
-    def _maybe_offer_update(self) -> None:
-        """'Pomo 1.5.1 is ready. Update now?' once a day, never in the middle of a focus session."""
-        s, e = self.settings, self.engine
+    def _update_waits(self) -> bool:
+        """News of an update waits for your break (mid-focus) or for you to come back (away)."""
+        e = self.engine
+        focusing = e.mode is Mode.FOCUS and e.state in (State.RUNNING, State.PAUSED)
+        return focusing or idle_seconds() > updater.AWAY_S
+
+    def _maybe_offer_update(self, manual: bool = False) -> None:
+        """'Pomo 1.6.0 is available. Update now?' as soon as it's downloaded and verified: at your break if
+        you're focusing, when you're back if you're away, again in a while if the card went unanswered,
+        and tomorrow if you said Later. With the timer hidden (or cards off), a Windows notification."""
+        s = self.settings
         if not self.update_ready():
-            if s.update_file and s.update_tries >= updater.MAX_TRIES:
-                self._tell_about_update()  # the one-click update didn't take: offer the download instead
+            if (s.update_file and s.update_tries >= updater.MAX_TRIES) or self.update_mode == "manual":
+                self._tell_about_update()  # it can't be one click here: offer the download instead
             return
-        if s.update_offered == date.today().isoformat():
+        if not manual:
+            if s.update_offered == date.today().isoformat() or time.monotonic() < self._update_snooze:
+                return
+            if self._update_waits():
+                return
+        if self.toast.showing or self._approval_on_screen():
+            return  # housekeeping tries again in a moment
+        if not s.popup_card or not self.view.isVisible():
+            if self._update_toasted != s.update_version and self.notifier.toast(
+                    f"Pomo {s.update_version} is available",
+                    "A new version of Pomo is ready to install. Click here to update.",
+                    on_click=self._offer_update_card):
+                self._update_toasted = s.update_version
             return
-        if e.mode is Mode.FOCUS and e.state in (State.RUNNING, State.PAUSED):
+        self._offer_update_card()
+
+    def _offer_update_card(self) -> None:
+        s = self.settings
+        if not self.update_ready():
             return
-        if not s.popup_card or not self.view.isVisible() or self.toast.showing or self._approval_on_screen():
-            return
-        s.update_offered = date.today().isoformat()
-        self.save_settings()
-        notes = f"{s.update_notes}\n" if s.update_notes else ""
+        self._update_snooze = time.monotonic() + updater.OFFER_AGAIN_S  # unanswered, it comes back later
+        notes = f"\n{s.update_notes}" if s.update_notes else ""
         self.view.pomo.hello()
         self.toast.show_message(
-            f"Pomo {s.update_version} is ready",
-            f"{notes}Update now and Pomo restarts on the new version in a few seconds. "
+            f"Pomo {s.update_version} is available",
+            f"A new version of Pomo is here.{notes}\nUpdate now and Pomo restarts on it in a few seconds. "
             "Your history and settings stay just as they are.",
             mode_color(self.theme, s, "long"),
-            [("Update now", self.install_update, True), ("Later", lambda: None, False)],
+            [("Update now", self.install_update, True), ("Later", self._update_later, False)],
             self.view.anchor_rect_global(), timeout_ms=60000,
             extras=[("What's new", self._open_update_page)])
+
+    def _update_later(self) -> None:
+        self.settings.update_offered = date.today().isoformat()  # ask again tomorrow
+        self.save_settings()
 
     def install_update(self) -> None:
         """Run the downloaded installer silently and quit: it updates Pomo and starts it again."""
@@ -1535,14 +1570,22 @@ class PomoApp(QObject):
         if not s.update_version or s.update_notified == s.update_version or not updater.is_newer(
                 s.update_version, APP_VERSION):
             return
-        if not s.popup_card or not self.view.isVisible() or self.toast.showing or self._approval_on_screen():
-            return  # try again at the next check
+        if self._update_waits() or self.toast.showing or self._approval_on_screen():
+            return  # housekeeping tries again
+        title = f"Pomo {s.update_version} is available"
+        if not s.popup_card or not self.view.isVisible():
+            if self.notifier.toast(title, "A new version of Pomo is out. Click here to download it.",
+                                   on_click=self._open_update_page):
+                s.update_notified = s.update_version
+                self.save_settings()
+            return
         s.update_notified = s.update_version
         self.save_settings()
         notes = f"{s.update_notes}\n" if s.update_notes else ""
         self.toast.show_message(
-            f"Pomo {s.update_version} is out",
-            f"{notes}Get it from GitHub: run the new installer and your history and settings carry over.",
+            title,
+            f"A new version of Pomo is out.\n{notes}Get it from GitHub: run the new installer and your "
+            "history and settings carry over.",
             mode_color(self.theme, s, "long"),
             [("Download", self._open_update_page, True), ("Later", lambda: None, False)],
             self.view.anchor_rect_global(), timeout_ms=60000)

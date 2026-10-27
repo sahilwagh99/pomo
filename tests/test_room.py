@@ -176,3 +176,32 @@ class DrawingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CachingTests(unittest.TestCase):
+    """The room is drawn once and reused every frame; only a change in it draws it again."""
+
+    def test_layers_are_reused_until_something_changes(self):
+        widget = room.RoomWidget(THEMES["light"])
+        widget.resize(560, 250)
+        widget.now = datetime(2026, 10, 27, 21, 5)
+        have = room.earned_keys(30, 12, 0)
+        widget.set_data(room.layout(Settings(), have), have, {}, "blossom")
+        back, front = widget._layers()
+        self.assertIsNotNone(front)  # evening light at 9 PM
+        self.assertIs(widget._layers()[0], back)  # same frame, same picture
+        widget.set_data({**room.layout(Settings(), have), "plant": "succulent"}, have, {}, "blossom")
+        self.assertIsNot(widget._layers()[0], back)  # a new plant: drawn again
+        back = widget._layers()[0]
+        widget.now = datetime(2026, 10, 27, 21, 6)
+        self.assertIsNot(widget._layers()[0], back)  # a new minute on the clock
+        widget.now = datetime(2026, 10, 27, 13, 0)
+        self.assertIsNone(widget._layers()[1])  # daytime: no evening light
+
+    def test_only_pomo_is_repainted_each_frame(self):
+        widget = room.RoomWidget(THEMES["light"])
+        widget.resize(700, 260)
+        widget.set_data(room.layout(Settings(), []), [], {}, "blossom")
+        r = widget._pomo_rect()
+        self.assertTrue(widget.rect().intersects(r))
+        self.assertLess(r.width() * r.height(), widget.width() * widget.height() / 4)

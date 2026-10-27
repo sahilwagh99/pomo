@@ -136,6 +136,7 @@ class Dashboard(QWidget):
         self.ctrl = ctrl
         self.theme = ctrl.theme
         self._dot_icons: dict[str, QIcon] = {}
+        self._table_rows: tuple = ()  # what the session log shows, to skip rebuilding it when nothing changed
         self.setWindowTitle("Pomo · Dashboard")
         self.setWindowIcon(ctrl.icon)
         self.resize(1200, 900)
@@ -648,6 +649,14 @@ class Dashboard(QWidget):
     def _refresh_table(self, records) -> None:
         t = self.theme
         rows = list(reversed(records))[:300]
+        shown = tuple((r.started_at, r.mode, r.actual_sec, r.completed, r.task, fmt_day(r.day)) for r in rows)
+        if shown == self._table_rows:
+            return  # nothing new (the dashboard refreshes every minute)
+        self._table_rows = shown
+        header = self.table.horizontalHeader()
+        for col in (0, 1, 2, 4, 5):  # sized to their contents once, after filling, not after every cell
+            header.setSectionResizeMode(col, QHeaderView.Interactive)
+        self.table.setUpdatesEnabled(False)
         self.table.setRowCount(len(rows))
         for i, r in enumerate(rows):
             type_item = QTableWidgetItem(self._dot(r.mode), MODE_LABELS.get(r.mode, r.mode))
@@ -665,4 +674,7 @@ class Dashboard(QWidget):
             ]
             for col, item in enumerate(values):
                 self.table.setItem(i, col, item)
+        for col in (0, 1, 2, 4, 5):
+            header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         self.table.resizeRowsToContents()
+        self.table.setUpdatesEnabled(True)
