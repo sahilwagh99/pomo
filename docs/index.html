@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pomo: a cozy Pomodoro timer for Windows</title>
+<meta name="description" content="A cozy Pomodoro timer for Windows, starring Pomo the matcha mochi. Focus sessions, gentle breaks, daily quests, a room that fills up as you focus, and an eye on your coding agents. Free.">
+<meta property="og:title" content="Pomo: a cozy Pomodoro timer for Windows">
+<meta property="og:description" content="Focus with Pomo the matcha mochi. Free for Windows 10 and 11.">
+<meta property="og:image" content="https://sahilwagh99.github.io/pomo/room.png">
+<meta property="og:url" content="https://sahilwagh99.github.io/pomo/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page: #f8f3ea;
+    --surface: #fffdf8;
+    --raised: #f3ede2;
+    --ink: #3f2a26;
+    --ink-2: #6e5a54;
+    --muted: #8d7b73;
+    --line: rgba(63, 42, 38, 0.12);
+    --matcha: #95c283;
+    --matcha-deep: #4f7f43;
+    --sakura: #f0a3b1;
+    --lavender: #a7b3e3;
+    --butter: #f5d77e;
+    --peach: #f7c59f;
+    --desk: #dfe5ec;
+    --shadow: 0 10px 30px rgba(63, 42, 38, 0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #251e1c;
+      --surface: #2f2623;
+      --raised: #3a2f2b;
+      --ink: #f6ede3;
+      --ink-2: #d2c3b6;
+      --muted: #a39188;
+      --line: rgba(246, 237, 227, 0.12);
+      --matcha: #a6cf92;
+      --matcha-deep: #a9cf8f;
+      --desk: #3a3440;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 17px/1.6 "Nunito", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  img { max-width: 100%; height: auto; display: block; }
+  a { color: inherit; }
+  .wrap { width: min(1120px, 100% - 32px); margin-inline: auto; }
+
+  /* nav */
+  nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--page) 88%, transparent);
+        backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  nav .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 20px; text-decoration: none; }
+  .brand img { width: 30px; height: 30px; }
+  nav .links { display: flex; gap: 22px; margin-left: auto; font-weight: 600; font-size: 15px; }
+  nav .links a { text-decoration: none; color: var(--ink-2); }
+  nav .links a:hover { color: var(--ink); }
+
+  /* buttons */
+  .btn { display: inline-flex; align-items: center; gap: 10px; padding: 14px 24px; border-radius: 999px;
+         font-weight: 800; font-size: 17px; text-decoration: none; transition: transform .15s ease, box-shadow .15s ease; }
+  .btn:hover { transform: translateY(-2px); }
+  .btn-primary { background: var(--matcha); color: #3f2a26; box-shadow: 0 6px 0 #6f9d60, var(--shadow); }
+  .btn-primary:hover { box-shadow: 0 8px 0 #6f9d60, var(--shadow); }
+  .btn-secondary { background: var(--surface); color: var(--ink); border: 1.5px solid var(--line); }
+  .btn svg { width: 20px; height: 20px; }
+
+  /* hero */
+  .hero { padding: 72px 0 56px; }
+  .hero .wrap { display: grid; grid-template-columns: 1.05fr 1fr; gap: 56px; align-items: center; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+          background: color-mix(in srgb, var(--sakura) 30%, var(--surface)); color: var(--ink); font-weight: 700;
+          font-size: 14px; text-decoration: none; border: 1px solid color-mix(in srgb, var(--sakura) 60%, transparent); }
+  .chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--sakura); }
+  h1 { font-size: clamp(38px, 5.4vw, 62px); line-height: 1.05; letter-spacing: -0.02em; margin: 18px 0 18px; font-weight: 800; }
+  h1 .soft { color: var(--matcha-deep); }
+  .lead { font-size: 20px; color: var(--ink-2); margin: 0 0 30px; max-width: 34em; }
+  .actions { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  .fine { margin-top: 18px; color: var(--muted); font-size: 14px; }
+  .fine a { color: var(--ink-2); }
+  .stage { background: var(--desk); border-radius: 28px; padding: 28px; box-shadow: var(--shadow); position: relative; }
+  .stage img { margin-inline: auto; border-radius: 14px; }
+  .stage .blob { position: absolute; width: 90px; height: 90px; border-radius: 50%; filter: blur(2px); opacity: .55; z-index: -1; }
+
+  /* sections */
+  section { padding: 64px 0; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 13px; font-weight: 800; color: var(--matcha-deep); }
+  h2 { font-size: clamp(30px, 3.6vw, 42px); line-height: 1.15; margin: 8px 0 14px; letter-spacing: -0.01em; }
+  h3 { font-size: 20px; margin: 0 0 6px; }
+  .center { text-align: center; }
+  .center .lead { margin-inline: auto; }
+  .moods { margin-top: 28px; background: var(--surface); border-radius: 28px; padding: 28px; box-shadow: var(--shadow); }
+
+  /* features */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 36px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 24px; }
+  .card p { margin: 0; color: var(--ink-2); font-size: 16px; }
+  .dot { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 14px; }
+  .dot svg { width: 22px; height: 22px; stroke: #3f2a26; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* spotlights */
+  .spot { display: grid; grid-template-columns: 1fr 1.2fr; gap: 48px; align-items: center; }
+  .spot.flip > :first-child { order: 2; }
+  .spot ul { padding: 0; margin: 18px 0 0; list-style: none; }
+  .spot li { padding-left: 28px; position: relative; margin: 10px 0; color: var(--ink-2); }
+  .spot li::before { content: ""; position: absolute; left: 4px; top: .55em; width: 12px; height: 12px; border-radius: 50%;
+                     background: var(--matcha); box-shadow: 0 0 0 3px color-mix(in srgb, var(--matcha) 30%, transparent); }
+  .spot li b { color: var(--ink); }
+  .shot { background: var(--surface); border-radius: 24px; padding: 18px; box-shadow: var(--shadow); }
+  .shot img { border-radius: 12px; margin-inline: auto; }
+  .wide { margin-top: 32px; }
+  .earn { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 24px; }
+  .earn div { background: var(--raised); border-radius: 18px; padding: 16px 18px; font-size: 15px; color: var(--ink-2); }
+  .earn b { display: block; color: var(--ink); font-size: 16px; margin-bottom: 4px; }
+  .fade { max-height: 560px; overflow: hidden; position: relative; }
+  .fade::after { content: ""; position: absolute; inset: auto 0 0 0; height: 140px;
+                 background: linear-gradient(transparent, var(--surface)); }
+  .agents-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+  .tag { padding: 6px 14px; border-radius: 999px; background: var(--raised); font-weight: 700; font-size: 14px; }
+
+  /* privacy */
+  .band { background: var(--surface); border-block: 1px solid var(--line); }
+  .trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 28px; }
+  .trio p { color: var(--ink-2); margin: 0; }
+
+  /* cta and footer */
+  .cta { text-align: center; padding: 84px 0; }
+  .cta img { width: 96px; margin: 0 auto 18px; }
+  .cta .actions { justify-content: center; }
+  footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; }
+  footer a { color: var(--ink-2); text-decoration: none; margin-right: 18px; }
+  footer a:hover { color: var(--ink); }
+
+  @media (max-width: 900px) {
+    .hero .wrap, .spot { grid-template-columns: 1fr; gap: 32px; }
+    .spot.flip > :first-child { order: 0; }
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .trio, .earn { grid-template-columns: 1fr; }
+    nav .links a.optional { display: none; }
+  }
+  @media (max-width: 560px) {
+    .grid { grid-template-columns: 1fr; }
+    .hero { padding-top: 40px; }
+    .stage, .moods { padding: 14px; border-radius: 20px; }
+    nav .links { gap: 14px; }
+    section { padding: 48px 0; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="icon.png" alt="" width="30" height="30">Pomo</a>
+    <div class="links">
+      <a class="optional" href="#features">Features</a>
+      <a class="optional" href="#room">Pomo's room</a>
+      <a class="optional" href="#agents">Coding agents</a>
+      <a href="https://github.com/sahilwagh99/pomo/wiki">Guide</a>
+      <a href="https://github.com/sahilwagh99/pomo">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <a class="chip" href="#room">New in 1.6: Pomo's room</a>
+      <h1>A cozy Pomodoro timer <span class="soft">for Windows</span></h1>
+      <p class="lead">Starring Pomo the matcha mochi, who sits on your timer, cheers you on, takes breaks with you and keeps an eye on your coding agents.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="https://github.com/sahilwagh99/pomo/releases/latest/download/Pomo-Setup.exe">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+          Download for Windows
+        </a>
+        <a class="btn btn-secondary" href="https://github.com/sahilwagh99/pomo/releases/latest/download/Pomo-portable.zip">Portable zip</a>
+      </div>
+      <p class="fine"><span class="version">Latest version</span> &middot; Windows 10 or 11 (64-bit) &middot; free &middot; no admin rights &middot; no account</p>
+    </div>
+    <div class="stage">
+      <span class="blob" style="background: var(--sakura); top: -24px; right: 30px;"></span>
+      <span class="blob" style="background: var(--butter); bottom: -20px; left: 24px;"></span>
+      <img src="hero.png" alt="Pomo's island at the top of the screen, with the first-launch card: Keep the island or Switch to orb" width="503" height="389">
+    </div>
+  </div>
+</header>
+
+<section class="center" id="meet">
+  <div class="wrap">
+    <div class="eyebrow">Meet Pomo</div>
+    <h2>A little buddy who notices</h2>
+    <p class="lead">Pomo's eyes follow your cursor. Pomo looks determined while you focus, relaxes on breaks, jumps for joy when you finish, dozes off when you wander away, and gets grumpy if you poke too much.</p>
+    <div class="moods"><img src="pomo.png" alt="Pomo's moods: idle, focus, break, paused, ready, sleepy, happy, love, munch, ouch, grumpy, dizzy" width="1080" height="428" loading="lazy"></div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <div class="center">
+      <div class="eyebrow">What's inside</div>
+      <h2>Everything a focus session needs</h2>
+      <p class="lead">And a few things it didn't know it needed.</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <div class="dot" style="background: var(--matcha)"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="6" rx="3"/><circle cx="12" cy="16" r="4"/></svg></div>
+        <h3>Island or orb</h3>
+        <p>A slim island at the top of your screen, or a round orb you drag anywhere. One click switches.</p>
+      </div>
+      <div class="card">
+        <div class="dot" style="background: var(--sakura)"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z"/></svg></div>
+        <h3>Helps you focus</h3>
+        <p>Learns your best session length, side-eyes YouTube, parks stray thoughts, and pauses when you step away.</p>
+      </div>
+      <div class="card">
+        <div class="dot" style="background: var(--lavender)"><svg viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0116 0v2"/><rect x="3" y="14" width="4" height="6" rx="2"/><rect x="17" y="14" width="4" height="6" rx="2"/></svg></div>
+        <h3>Focus sounds</h3>
+        <p>Real rain and café recordings, brown noise and a lo-fi loop, playing seamlessly. Pomo puts on headphones too.</p>
+      </div>
+      <div class="card">
+        <div class="dot" style="background: var(--butter)"><svg viewBox="0 0 24 24"><circle cx="12" cy="10" r="6"/><path d="M9 15l-1 6 4-2 4 2-1-6"/></svg></div>
+        <h3>Quests and badges</h3>
+        <p>Three small goals a day, like two pomodoros before 10 AM, with a badge for each and outfits to unlock.</p>
+      </div>
+      <div class="card">
+        <div class="dot" style="background: var(--peach)"><svg viewBox="0 0 24 24"><path d="M4 11l8-6 8 6v9H4z"/><path d="M10 20v-5h4v5"/></svg></div>
+        <h3>Pomo's room</h3>
+        <p>A room on your dashboard that fills up with furniture as you focus. Swap things around with a click.</p>
+      </div>
+      <div class="card">
+        <div class="dot" style="background: var(--matcha)"><svg viewBox="0 0 24 24"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13.5 6l-3 12"/></svg></div>
+        <h3>Coding agents</h3>
+        <p>Claude Code, Codex CLI and Gemini CLI: see when one works or needs you, approve requests and reply from Pomo.</p>
+      </div>
+      <div class="card">
+        <div class="dot" style="background: var(--sakura)"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4z"/></svg></div>
+        <h3>Ask Pomo</h3>
+        <p>Plan your work into pomodoros or look back at your week, with Claude, ChatGPT, Gemini or Grok and your own key.</p>
+      </div>
+      <div class="card">
+        <div class="dot" style="background: var(--lavender)"><svg viewBox="0 0 24 24"><path d="M5 19V9M10 19V5M15 19v-7M20 19v-4"/></svg></div>
+        <h3>A real dashboard</h3>
+        <p>Focus time, streaks, a consistency heatmap, your best hours, top tasks, and a session log with CSV export.</p>
+      </div>
+      <div class="card">
+        <div class="dot" style="background: var(--butter)"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg></div>
+        <h3>Talk to Pomo</h3>
+        <p>Hold a shortcut and ask out loud, from any app. Pomo can read its answers back in a soft voice.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="room">
+  <div class="wrap">
+    <div class="spot">
+      <div>
+        <div class="eyebrow">New in 1.6</div>
+        <h2>Pomo's room grows with you</h2>
+        <p class="lead">It starts with a cushion and a rug under a window. Every focus hour, quest and Perfect day brings something new: a desk, plants, string lights, a trophy shelf for your badges, even a sleepy cat.</p>
+        <ul>
+          <li><b>Moves straight in.</b> The card at the end of your session tells you what's new.</li>
+          <li><b>Make it yours.</b> Click any spot to swap what's there for something else you've earned.</li>
+          <li><b>Keeps time with you.</b> Sunrise, blue sky, sunset and stars in the window, lamps that glow at night, and a clock that shows the real time.</li>
+        </ul>
+      </div>
+      <div class="shot"><img src="room_day.png" alt="Pomo's room in the afternoon" width="737" height="427" loading="lazy"></div>
+    </div>
+    <div class="earn">
+      <div><b>Focus hours</b>Succulent, little desk, wall clock, string lights, bookshelf, monstera, curtains, bean bag, floor lamp, study desk, bonsai, cloud sofa</div>
+      <div><b>Daily quests</b>Sakura print, heart rug, trophy shelf, fish bowl</div>
+      <div><b>Perfect days</b>Starry curtains and a sleepy cat</div>
+    </div>
+    <div class="shot wide"><img src="room.png" alt="Pomo's room in the early evening with the string lights on, and the Room items card with what's next to earn" width="1220" height="427" loading="lazy"></div>
+  </div>
+</section>
+
+<section id="helpers">
+  <div class="wrap">
+    <div class="spot flip">
+      <div>
+        <div class="eyebrow">Focus helpers</div>
+        <h2>Picks up where you left off</h2>
+        <p class="lead">When a break ends, Pomo shows your task, the window you were in, what your agents did while you were away and the thoughts you parked. One click brings that window back.</p>
+        <ul>
+          <li><b>Sessions named for you</b> after the project and git branch open in your editor.</li>
+          <li><b>Park a thought</b> from any app with Ctrl+Alt+Shift+N, and get back to work.</li>
+          <li><b>Breathe with Pomo</b> on a break: box breathing, rest your eyes, stretch.</li>
+          <li><b>A little cheer</b> at halfway and near the end, then quiet again.</li>
+        </ul>
+      </div>
+      <div class="shot"><img src="recap.png" alt="Where was I? with the task, the window, agent news, a parked thought and a review waiting" width="728" height="357" loading="lazy"></div>
+    </div>
+  </div>
+</section>
+
+<section id="agents">
+  <div class="wrap">
+    <div class="spot">
+      <div>
+        <div class="eyebrow">For developers</div>
+        <h2>Stay in focus while your agents work</h2>
+        <p class="lead">Pomo watches your coding agents so you don't have to. A thought bubble while they work, a "!" when one needs you, and their exact questions and messages, ready to answer from Pomo.</p>
+        <ul>
+          <li><b>Approve or deny</b> requests from a card, with the exact command or file.</li>
+          <li><b>Reply when a turn ends</b> without going back to the terminal.</li>
+          <li><b>Review their changes</b> as your next focus session.</li>
+          <li><b>Break while they work</b>, and get their news on your break instead of mid-focus.</li>
+        </ul>
+        <div class="agents-row"><span class="tag">Claude Code</span><span class="tag">Codex CLI</span><span class="tag">Gemini CLI</span></div>
+      </div>
+      <div class="shot"><img src="agent_reply.png" alt="Claude's question with two options, and Claude's message at the end of a turn with a reply box" width="928" height="433" loading="lazy"></div>
+    </div>
+  </div>
+</section>
+
+<section id="ask">
+  <div class="wrap">
+    <div class="spot flip">
+      <div>
+        <div class="eyebrow">Ask Pomo</div>
+        <h2>Plans your day, then sets it up</h2>
+        <p class="lead">"45 minutes on the thesis, then 10 off, three rounds." Pomo lines up the plan and starts the timer. Ask for a review of your day or your week, or a pep talk.</p>
+        <ul>
+          <li><b>Any AI you like:</b> Anthropic, OpenAI, Google Gemini, xAI or OpenRouter.</li>
+          <li><b>Your own key,</b> encrypted on your PC. No subscription.</li>
+          <li><b>Talk instead of typing,</b> on your PC or with OpenAI or Gemini.</li>
+        </ul>
+      </div>
+      <div class="shot"><img src="chat.png" alt="Ask Pomo: the bring-your-own-key panel, and a chat planning a task into pomodoros" width="1028" height="724" loading="lazy"></div>
+    </div>
+  </div>
+</section>
+
+<section id="dashboard">
+  <div class="wrap">
+    <div class="center">
+      <div class="eyebrow">Dashboard</div>
+      <h2>See how your focus adds up</h2>
+      <p class="lead">Focus time and streaks, a consistency heatmap, your best hours and weekdays, what Pomo has learned about you, and your quests, badges and room.</p>
+    </div>
+    <div class="shot wide fade"><img src="dashboard.png" alt="The Pomo dashboard" width="1220" height="3146" loading="lazy"></div>
+  </div>
+</section>
+
+<section id="play">
+  <div class="wrap">
+    <div class="spot">
+      <div>
+        <div class="eyebrow">Breaks</div>
+        <h2>Something to play with</h2>
+        <p class="lead">Pet Pomo, feed the treats you earn by focusing, and play Petal Catch, Mochi Stack or Memory Match on your break.</p>
+        <p class="lead">Eight pastel themes and twenty-one outfits, and Pomo dresses for what you're doing.</p>
+      </div>
+      <div class="shot"><img src="games.png" alt="The games picker, Mochi Stack and Memory Match" width="1404" height="612" loading="lazy"></div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="privacy">
+  <div class="wrap">
+    <div class="center">
+      <div class="eyebrow">Privacy</div>
+      <h2>Your focus is your business</h2>
+    </div>
+    <div class="trio">
+      <div><h3>Stays on your PC</h3><p>Your history, ratings, tasks and parked thoughts live in a folder on your PC. No account, no server, no tracking.</p></div>
+      <div><h3>Your key, your provider</h3><p>Ask Pomo only sends something when you ask, and only to the AI provider you picked. Keys are encrypted for your Windows account.</p></div>
+      <div><h3>Open source</h3><p>Every line is on GitHub. Updates are checked against GitHub's checksum before Pomo installs them.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="wrap">
+    <img src="icon.png" alt="Pomo" width="96" height="96">
+    <h2>Ready when you are</h2>
+    <p class="lead">Free for Windows 10 and 11. Pomo updates itself with one click.</p>
+    <div class="actions">
+      <a class="btn btn-primary" href="https://github.com/sahilwagh99/pomo/releases/latest/download/Pomo-Setup.exe">Download for Windows</a>
+      <a class="btn btn-secondary" href="https://github.com/sahilwagh99/pomo/wiki">Read the guide</a>
+    </div>
+    <p class="fine">Windows may say "Windows protected your PC" because the installer isn't code-signed. Click <b>More info</b>, then <b>Run anyway</b>.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a href="https://github.com/sahilwagh99/pomo/releases">Releases</a>
+      <a href="https://github.com/sahilwagh99/pomo/wiki">Guide</a>
+      <a href="https://github.com/sahilwagh99/pomo/issues">Report a problem</a>
+      <a href="https://github.com/sahilwagh99/pomo">Source</a>
+    </div>
+    <div class="version">Pomo for Windows</div>
+  </div>
+</footer>
+
+<script>
+  (async () => {
+    try {
+      const res = await fetch("https://api.github.com/repos/sahilwagh99/pomo/releases/latest");
+      if (!res.ok) return;
+      const tag = (await res.json()).tag_name || "";
+      const version = tag.replace(/^v/, "");
+      if (!version) return;
+      document.querySelectorAll(".version").forEach((el, i) => {
+        el.textContent = i === 0 ? `Version ${version}` : `Pomo ${version} for Windows`;
+      });
+    } catch (e) { /* offline or rate limited: the generic text stays */ }
+  })();
+</script>
+</body>
+</html>
