@@ -51,6 +51,7 @@ Pomo used to be called FocusOrb. Run `Pomo-Setup.exe` and it removes FocusOrb fo
 - **Breathe with Pomo.** A short guided break: box breathing, rest your eyes, stretch.
 - **Daily quests and badges.** Three small goals a day, like "2 pomodoros before 10 AM", with a badge for each and new outfits now and then.
 - **Focus garden.** A sakura tree that grows with every pomodoro and unlocks new outfits.
+- **Pomo's room.** A cozy room on the dashboard that fills up with furniture you earn from focus hours, quests and Perfect days. Swap things around with a click.
 - **Global shortcuts.** Start, pause, skip, park a thought, play music or talk to Pomo from any app.
 - **Eight pastel themes and twenty-one outfits.** Pick your colors and dress Pomo up, or let Pomo dress for what you're doing; four outfits are earned in the focus garden and three with daily quests.
 - **Answer your coding agent from Pomo.** See its exact message, answer Claude's questions, approve requests, and reply when it finishes a turn.
@@ -253,6 +254,22 @@ Pomo tells you when you finish one, on your break card if you're mid-session. To
 
 <div align="center"><img src="docs/quests.png" alt="Today's quests: Hat trick and Parking pro done, Cozy vibes at 0 of 1; and the badge shelf with earned badges in color" width="100%"></div>
 
+## Pomo's room
+
+Pomo has a room on the dashboard. It starts with a cushion and a rug under a window, and fills up as you go: focus hours, daily quests and Perfect days each earn something new.
+
+| Earned with | Items (and what it takes) |
+|---|---|
+| Focus hours | Succulent (1), Little desk (3), Wall clock (5), String lights (10), Bookshelf (15), Monstera (25), Sakura curtains (35), Bean bag (50), Floor lamp (70), Study desk (100), Sakura bonsai (150), Cloud sofa (200) |
+| Daily quests | Sakura print (3), Heart rug (10), Trophy shelf (20), Fish bowl (40) |
+| Perfect days | Starry curtains (3), Sleepy cat (7) |
+
+A new item moves straight in, and the card at the end of your session says so (*See room* takes you there). Click any spot in the room to swap what's there for something else you've earned, or leave it empty, and click Pomo to poke him. *Room items* shows what's next to earn and everything so far.
+
+The room keeps time with you. The window goes from sunrise to blue sky to sunset to stars, the string lights and lamps glow in the evening, and Pomo dozes off late at night. The wall clock shows the real time, and the trophy shelf shows your top badges. Open the room from the dashboard or with *Pomo's room* in the right-click menu.
+
+<div align="center"><img src="docs/room.png" alt="Pomo's room in the early evening: string lights, a wall clock, a study desk with a lamp, a window with starry curtains, Pomo on a cloud sofa, a floor lamp, a trophy shelf and a sakura bonsai; and Room items with the fish bowl and sleepy cat up next" width="100%"></div>
+
 ## Themes and outfits
 
 Pick a theme in *Settings > Appearance* or from the right-click menu: **Matcha** (the default), **Sakura**, **Lavender**, **Peach** and **Mint** are light; **Cocoa**, **Blueberry** and **Plum** are dark.
@@ -421,6 +438,7 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 - **Focus garden:** your sakura tree and the next outfit to earn.
 - **Insights:** your best focus length, how your sessions felt, your focus score, and where your focus time went.
 - **Quests and badges:** today's three quests with their progress, and every badge you've earned.
+- **Pomo's room:** the room you're furnishing, what's next to earn, and every item so far.
 - **Coding agents:** today's sessions, prompts, tool calls, files edited, commands and approvals, how long agents worked and how much of it overlapped with your focus and breaks, what is running right now, and the changes waiting for your review.
 - **Session log:** a table of every session, with CSV export.
 - **Range filter:** 7 days, 30 days, 90 days or all time.
@@ -522,6 +540,7 @@ pomodoro/planner.py         the task plan and Ask Pomo's tools
 pomodoro/thoughts.py        the thought parking lot
 pomodoro/breathe.py         Breathe with Pomo
 pomodoro/garden.py          the focus garden and outfit unlocks
+pomodoro/room.py            Pomo's room: the items, what earns them, where they go and how they're drawn
 pomodoro/hotkeys.py         global shortcuts (Win32 RegisterHotKey)
 pomodoro/music_card.py      the mini player card, and cover drawing shared with the island
 pomodoro/dashboard.py       dashboard window

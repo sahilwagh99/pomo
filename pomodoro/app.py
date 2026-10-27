@@ -13,7 +13,7 @@ from PySide6.QtGui import QColor, QIcon, QImage
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QSystemTrayIcon
 
 from . import APP_NAME, APP_VERSION, agent_hooks, audio, claude_hooks, garden, insights, keystore, media, planner
-from . import providers, quests, reviews, soundscapes, updater
+from . import providers, quests, reviews, room, soundscapes, updater
 from .agents import EDIT_TOOLS, AgentHub, Approval
 from .config import FOCUS_SOUNDS, HOTKEYS, OUTFITS, Settings
 from .hotkeys import GlobalHotkeys
@@ -289,6 +289,32 @@ class PomoApp(QObject):
         self.save_settings()
         self.view.pomo.outfit = key
         self.view.pomo.hop(1.8)  # a little twirl to show it off
+
+    # ------------------------------------------------------------ Pomo's room
+    def room_progress(self) -> tuple[float, int, int, list[str]]:
+        """Focus hours, quests finished, Perfect days, and the room items they've earned."""
+        s = self.settings
+        hours = self.storage.lifetime_focus_sec() / 3600
+        perfect = int(s.badges.get(quests.PERFECT_DAY, 0))
+        return hours, s.quests_total, perfect, room.earned_keys(hours, s.quests_total, perfect)
+
+    def place_in_room(self, slot: str, key: str) -> None:
+        self.settings.room[slot] = key
+        self.save_settings()
+
+    def open_room(self) -> None:
+        self.open_dashboard()
+        self.dashboard.show_room()
+
+    def _room_news(self) -> str:
+        """'New for Pomo's room: Monstera!' for items earned since the last news (they move straight in)."""
+        s = self.settings
+        fresh = room.newly_earned(self.room_progress()[3], s.room_seen)
+        if not fresh:
+            return ""
+        room.move_in(s, fresh)
+        self.save_settings()
+        return room.news_text(fresh)
 
     def current_outfit(self) -> str:
         """What Pomo wears right now: dressed for what you're doing, or your pick when nothing's on."""
@@ -800,6 +826,7 @@ class PomoApp(QObject):
                 _action(outfits, label, lambda k=key: self.set_outfit(k), checked=key == self.settings.pomo_outfit)
             else:
                 _action(outfits, f"{label}  ({garden.unlock_hint(key)})", lambda: None, enabled=False)
+        _action(menu, "Pomo's room…", self.open_room)
         menu.addSeparator()
 
         _action(menu, "Ask Pomo…", self.open_chat)
@@ -1040,6 +1067,11 @@ class PomoApp(QObject):
             body += f"\n{quest_text}"
             if quest_outfit and not any(x[0] == "Wear it" for x in extras):
                 extras.insert(0, ("Wear it", lambda k=quest_outfit: self.set_outfit(k)))
+        room_text = self._room_news()
+        if room_text:
+            body += f"\n{room_text}"
+            if len(extras) < 3 and not any(x[0] == "Wear it" for x in extras):  # the card has room for three
+                extras.insert(0, ("See room", self.open_room))
         if finished is Mode.FOCUS and s.break_card and upcoming.is_break:
             extras.append(("Breathe", self.open_breathe))
             waiting = len(self.storage.thoughts())
@@ -1054,7 +1086,7 @@ class PomoApp(QObject):
         self.notifier.toast(title, body)
         view = self.view
         if finished is Mode.FOCUS:
-            view.celebrate(big=count == goal or any(e[0].startswith("Wear") for e in extras))
+            view.celebrate(big=count == goal or bool(room_text) or any(e[0].startswith("Wear") for e in extras))
             if s.treats < 9:  # a dango for Pomo, fed from the badge beside him
                 s.treats += 1
             self.save_settings()
@@ -1275,16 +1307,19 @@ class PomoApp(QObject):
             body += "\nAll three of today's quests done!"
         if unlocked:
             body += f"\nNew outfit unlocked: {', '.join(OUTFITS[k] for k in unlocked)}!"
+        room_text = self._room_news()
+        if room_text:
+            body += f"\n{room_text}"
         if not s.popup_card:
             self.notifier.toast(title, body)
             return
         actions = [("Yay!", lambda: None, True)]
         if unlocked:
             actions = [("Wear it", lambda k=unlocked[-1]: self.set_outfit(k), True), ("Later", lambda: None, False)]
-        self.view.celebrate(big=perfect or bool(unlocked))
+        self.view.celebrate(big=perfect or bool(unlocked) or bool(room_text))
+        extras = [("Badges", self.open_dashboard)] + ([("See room", self.open_room)] if room_text else [])
         self.toast.show_message(title, body, mode_color(self.theme, s, "long"), actions,
-                                self.view.anchor_rect_global(), timeout_ms=15000,
-                                extras=[("Badges", self.open_dashboard)])
+                                self.view.anchor_rect_global(), timeout_ms=15000, extras=extras)
 
     # ------------------------------------------------------- agent review queue
     def _on_review_ready(self, review: dict) -> None:

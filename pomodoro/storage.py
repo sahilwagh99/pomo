@@ -177,6 +177,10 @@ class Storage(QObject):
     def lifetime_pomodoros(self) -> int:
         return self._db.execute("SELECT COUNT(*) FROM sessions WHERE mode = 'focus' AND completed = 1").fetchone()[0]
 
+    def lifetime_focus_sec(self) -> float:
+        """All the time ever spent in focus, sessions stopped early included."""
+        return self._db.execute("SELECT COALESCE(SUM(actual_sec), 0) FROM sessions WHERE mode = 'focus'").fetchone()[0]
+
     # ------------------------------------------------------------ thoughts
     def add_thought(self, text: str) -> Thought:
         now = datetime.now().replace(microsecond=0)

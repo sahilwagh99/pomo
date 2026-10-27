@@ -25,9 +25,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import garden, insights, quests, reviews
+from . import garden, insights, quests, reviews, room
 from .charts import Bar, CalendarHeatmap, ColumnChart, HBarChart, Meter
 from .quests import BadgeShelf, QuestList
+from .room import RoomGoals, RoomShelf, RoomWidget
 from .engine import State
 from .garden import GardenWidget
 from .stats import (
@@ -142,7 +143,7 @@ class Dashboard(QWidget):
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
-        scroll = QScrollArea()
+        scroll = self.scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         outer.addWidget(scroll)
@@ -205,6 +206,7 @@ class Dashboard(QWidget):
 
         root.addLayout(self._build_insights_row())
         root.addLayout(self._build_quests_row())
+        root.addLayout(self._build_room_row())
         root.addWidget(self._build_agents_card())
 
         log_card = Card("Session log", "Most recent first. Export the full history as CSV from the top right.")
@@ -334,6 +336,7 @@ class Dashboard(QWidget):
         )
         self._refresh_insights(records, start, today, summary, focus_color)
         self._refresh_quests(records, today)
+        self._refresh_room()
         self._refresh_table([r for r in records if start <= r.day <= today])
         self._refresh_agents()
 
@@ -439,6 +442,50 @@ class Dashboard(QWidget):
         earned = sum(1 for v in s.badges.values() if v)
         self.badge_note.setText(f"{plural(s.quests_total, 'quest')} finished  ·  {earned} of "
                                 f"{len(quests.QUESTS) + 1} badges\n{quests.next_outfit_text(s.quests_total)}")
+
+    # ------------------------------------------------------------- Pomo's room
+    def _build_room_row(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(16)
+        self.room_card = Card("Pomo's room", "It fills up as you focus and finish quests. "
+                                             "Click anything in the room to swap it, or poke Pomo.")
+        self.room = RoomWidget(self.theme)
+        self.room.picked.connect(self._place)
+        self.room_card.body.addWidget(self.room)
+        self.room_note = _label("", "secondary", wrap=True)
+        self.room_card.body.addSpacing(6)
+        self.room_card.body.addWidget(self.room_note)
+        items_card = Card("Room items", "What's next to earn, and everything so far. "
+                                        "Click an item you've earned to put it in the room.")
+        self.room_goals = RoomGoals(self.theme)
+        items_card.body.addWidget(self.room_goals)
+        items_card.body.addSpacing(10)
+        self.room_shelf = RoomShelf(self.theme)
+        self.room_shelf.picked.connect(self._place)
+        items_card.body.addWidget(self.room_shelf)
+        items_card.body.addStretch(1)
+        row.addWidget(self.room_card, 3)
+        row.addWidget(items_card, 2)
+        return row
+
+    def _refresh_room(self) -> None:
+        s = self.ctrl.settings
+        hours, quests_done, perfect, have = self.ctrl.room_progress()
+        placed = room.layout(s, have)
+        self.room.set_data(placed, have, s.badges, s.pomo_outfit)
+        self.room_goals.set_rows(room.upcoming(hours, quests_done, perfect))
+        self.room_shelf.set_items(have, placed)
+        self.room_note.setText(f"{len(have)} of {len(room.ITEMS)} items  ·  {hours:.1f} focus hours  ·  "
+                               f"{plural(quests_done, 'quest')}  ·  {plural(perfect, 'Perfect day')}")
+
+    def _place(self, slot: str, key: str) -> None:
+        self.ctrl.place_in_room(slot, key)
+        self._refresh_room()
+        self.room.cheer()
+
+    def show_room(self) -> None:
+        """Scroll down to the room (once the window is laid out)."""
+        QTimer.singleShot(50, lambda: self.scroll.verticalScrollBar().setValue(self.room_card.y() - 16))
 
     # ------------------------------------------------------------ coding agents
     def _build_agents_card(self) -> Card:

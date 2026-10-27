@@ -198,6 +198,10 @@ class Settings:
     badges: dict = field(default_factory=dict)              # badge -> times earned
     quests_total: int = 0                                   # quests ever finished (they unlock outfits)
 
+    # Pomo's room (see room.py)
+    room: dict = field(default_factory=dict)                # spot -> the item you put there ("" = left empty)
+    room_seen: list[str] = field(default_factory=list)      # items whose arrival was announced
+
     # Mini games
     stack_best: int = 0      # Mochi Stack: the tallest tower
     memory_best: int = 0     # Memory Match: fewest moves (0 = not played yet)
@@ -305,6 +309,8 @@ class Settings:
         self.badges = {k: v for k, v in self.badges.items()
                        if isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool) and v > 0}
         self.quests_total = max(0, int(self.quests_total))
+        self.room = {k: v for k, v in self.room.items() if isinstance(k, str) and isinstance(v, str)}
+        self.room_seen = [k for k in self.room_seen if isinstance(k, str)]
         self.stack_best = max(0, int(self.stack_best))
         self.memory_best = max(0, int(self.memory_best))
         if self.ai_provider not in PROVIDERS:
