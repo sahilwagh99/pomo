@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pomo guide</title>
+<meta name="description" content="Everything Pomo does: install and updates, the island and the orb, focus helpers, sounds and music, quests and Pomo's room, coding agents, Ask Pomo, the dashboard and settings.">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+  .layout { width: min(1120px, 100% - 32px); margin: 0 auto; display: grid; grid-template-columns: 210px minmax(0, 1fr);
+            gap: 64px; padding: 44px 0 80px; }
+  aside.toc { position: sticky; top: 88px; align-self: start; max-height: calc(100vh - 110px); overflow-y: auto; }
+  .toc h4 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+  .toc a { display: block; text-decoration: none; color: var(--ink-2); font-weight: 600; font-size: 15px;
+           padding: 5px 0 5px 14px; border-left: 2px solid var(--line); }
+  .toc a:hover { color: var(--ink); }
+  .toc a.on { color: var(--ink); font-weight: 800; border-left-color: var(--matcha-deep); }
+  details.toc-mobile { display: none; background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+                       padding: 12px 16px; margin-bottom: 28px; }
+  details.toc-mobile summary { cursor: pointer; font-weight: 800; }
+  details.toc-mobile a { display: block; padding: 6px 0; text-decoration: none; color: var(--ink-2); font-weight: 600; }
+
+  article { max-width: 780px; min-width: 0; }
+  article > header h1 { font-size: clamp(34px, 4.4vw, 48px); line-height: 1.1; margin: 6px 0 12px; letter-spacing: -0.02em; }
+  article > header p { font-size: 19px; color: var(--ink-2); }
+  article section { padding: 44px 0 30px; border-top: 1px solid var(--line); }
+  article > header + section { border-top: 0; padding-top: 18px; }
+  h2 { font-size: clamp(27px, 3vw, 34px); line-height: 1.2; margin: 4px 0 14px; letter-spacing: -0.01em; }
+  h3 { font-size: 21px; margin: 34px 0 8px; line-height: 1.3; }
+  article p, article li { color: var(--ink-2); }
+  article p b, article li b { color: var(--ink); }
+  article a:not(.btn) { color: var(--matcha-deep); font-weight: 700; }
+  ol.steps { padding-left: 22px; color: var(--ink-2); }
+  ol.steps li { margin: 7px 0; }
+  figure { margin: 22px 0 30px; }
+  figure.small { max-width: 380px; }
+  figure.medium { max-width: 600px; }
+  .inside { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 32px; padding: 0; margin: 18px 0; list-style: none; }
+  .inside li { font-size: 15.5px; line-height: 1.55; }
+  .inside b { display: block; color: var(--ink); font-size: 16px; }
+  .note { background: color-mix(in srgb, var(--butter) 20%, var(--surface)); border-radius: 16px; padding: 14px 18px;
+          color: var(--ink-2); font-size: 16px; margin: 18px 0; }
+  details.files { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 18px; margin: 16px 0; }
+  details.files summary { cursor: pointer; font-weight: 800; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 28px; }
+    aside.toc { display: none; }
+    details.toc-mobile { display: block; }
+    .inside { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="index.html"><img src="icon.png" alt="" width="30" height="30">Pomo</a>
+    <div class="links">
+      <a class="optional" href="index.html">Home</a>
+      <a class="here" href="guide.html">Guide</a>
+      <a class="optional" href="https://github.com/sahilwagh99/pomo">GitHub</a>
+      <a class="get" href="https://github.com/sahilwagh99/pomo/releases/latest/download/Pomo-Setup.exe">Download</a>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="toc" aria-label="On this page">
+    <h4>On this page</h4>
+    <nav id="toc"></nav>
+  </aside>
+
+  <article>
+    <header>
+      <div class="eyebrow">Guide</div>
+      <h1>Everything Pomo does</h1>
+      <p>From installing to the last setting. New to Pomo? Start with <a href="#install">Install</a> and <a href="#timer">the timer</a>.</p>
+    </header>
+    <details class="toc-mobile"><summary>On this page</summary><nav id="toc-mobile"></nav></details>
+
+    <section id="install" data-title="Install">
+      <h2>Install</h2>
+      <ol class="steps">
+        <li>Download <b><a href="https://github.com/sahilwagh99/pomo/releases/latest/download/Pomo-Setup.exe">Pomo-Setup.exe</a></b>. There's no need to download the source code.</li>
+        <li>Run it. The installer is not code-signed, so Windows SmartScreen may say <i>"Windows protected your PC"</i>. Click <b>More info</b>, then <b>Run anyway</b>.</li>
+        <li>Choose whether you want a desktop shortcut and whether Pomo should run on startup, then click <b>Finish</b>.</li>
+      </ol>
+      <p>Pomo opens as a little island at the top of your screen and says hi. Prefer a round timer you can drag anywhere? Click <b>Switch to orb</b> on the welcome card, or the style button on the timer whenever you like.</p>
+      <ul class="dots">
+        <li><b>Update:</b> Pomo updates itself. It checks GitHub every hour. When a new version is out, it downloads it in the background, checks it against GitHub's checksum, and pops up <i>Pomo 1.6.1 is available</i> with <b>Update now</b>: one click and Pomo restarts on the new version, history and settings kept. During a focus session the card waits for your break, and when you're away it waits for you to come back. Unanswered, it comes back a couple of hours later; <i>Later</i> waits until tomorrow. With the timer hidden, you get a Windows notification instead: click it to update. On 1.4 or earlier, run the newest installer once; from 1.5 on, updates come to you. The portable zip shows a download link instead.</li>
+        <li><b>Uninstall:</b> <i>Settings &gt; Apps &gt; Installed apps &gt; Pomo</i>. You will be asked whether to keep your history.</li>
+        <li><b>No installer:</b> download the <a href="https://github.com/sahilwagh99/pomo/releases/latest/download/Pomo-portable.zip">portable zip</a>, extract it anywhere and run <code>Pomo.exe</code>.</li>
+        <li><b>Coming from FocusOrb?</b> Pomo used to be called FocusOrb. Run <code>Pomo-Setup.exe</code> and it removes FocusOrb for you. On its first launch, Pomo brings over your history, settings, saved API key and Claude Code connection. The old <code>%APPDATA%\FocusOrb</code> folder is left in place as a backup.</li>
+      </ul>
+    </section>
+
+    <section id="inside" data-title="What's inside">
+      <h2>What's inside</h2>
+      <ul class="inside">
+        <li><b>Pomo, your focus buddy</b>A soft matcha mochi who lives on your timer, follows your cursor and reacts to everything.</li>
+        <li><b>Two timer styles</b>A slim island at the top of the screen (the default), or a round orb you can drag anywhere.</li>
+        <li><b>Buttons right on the timer</b>Ask Pomo, the dashboard, the timer style and settings, no right-click needed.</li>
+        <li><b>Editable time</b>Double-click the time and type <code>30</code>, <code>45:00</code> or <code>1:30:00</code>, or scroll over it.</li>
+        <li><b>Pomodoro turns</b>Dots show your place in the cycle, and <i>3/8 today</i> tracks your daily goal.</li>
+        <li><b>Alerts when a session ends</b>A notification, a sound, a pop-up card with a one-tap <i>How was that?</i>, and a soft glow.</li>
+        <li><b>Pomo helps you focus</b>Learns your best session length, side-eyes YouTube, parks stray thoughts, and pauses when you step away.</li>
+        <li><b>"Where was I?" after breaks</b>Your task, your window, your agents' news and your parked thoughts. One click takes you back.</li>
+        <li><b>Sessions named for you</b>The project and git branch open in your editor become the session's task.</li>
+        <li><b>Focus sounds</b>Real rain and café recordings, brown noise and a soft lo-fi loop, on a seamless loop.</li>
+        <li><b>Talk to Pomo</b>Hold a shortcut and ask out loud, and let a soft voice read the replies.</li>
+        <li><b>Pomo on the taskbar</b>The countdown fills the taskbar button, with reset, play/pause and skip on hover.</li>
+        <li><b>Agent-paced pomodoros</b>Take your break while your agent works, and get its news on your break.</li>
+        <li><b>Ask Pomo can act</b>"45 minutes on the thesis, then 10 off, three rounds" sets up the plan and starts the timer.</li>
+        <li><b>Breathe with Pomo</b>A short guided break: box breathing, rest your eyes, stretch.</li>
+        <li><b>Daily quests and badges</b>Three small goals a day, a badge for each, and new outfits now and then.</li>
+        <li><b>Focus garden</b>A sakura tree that grows with every pomodoro and unlocks new outfits.</li>
+        <li><b>Pomo's room</b>A cozy room on the dashboard that fills up with furniture you earn.</li>
+        <li><b>Global shortcuts</b>Start, pause, skip, park a thought, play music or talk to Pomo from any app.</li>
+        <li><b>Eight themes, twenty-one outfits</b>Pick your colors and dress Pomo up, or let Pomo dress for what you're doing.</li>
+        <li><b>Answer your coding agent</b>See its exact message, answer Claude's questions, approve requests, and reply.</li>
+        <li><b>Things to play with</b>Pet Pomo, feed treats, and play Petal Catch, Mochi Stack or Memory Match.</li>
+        <li><b>Music controls</b>See what's playing on Spotify, YouTube or any player, and control it from Pomo.</li>
+        <li><b>Dashboard</b>KPIs, charts, quests and badges, your room, agent activity, a session log and CSV export.</li>
+        <li><b>Keeps an eye on your agents</b>Claude Code, Codex CLI and Gemini CLI: working, done, or needs you.</li>
+        <li><b>Ask Pomo, with the AI you like</b>Claude, ChatGPT, Gemini, Grok or OpenRouter, with your own key.</li>
+      </ul>
+      <p>Pomo runs on startup if you want it to: one switch in <i>Settings &gt; General</i>.</p>
+      <figure class="shot desk small"><img src="popup.png" alt="The card when a focus session ends: what's next, agent news, a new outfit, How was that? with three Pomo faces, and Breathe and Thoughts" width="328" height="288" loading="lazy"></figure>
+    </section>
+
+    <section id="timer" data-title="The timer">
+      <h2>Two timer styles</h2>
+      <h3>The island (the default)</h3>
+      <p>It hangs from the top edge of your screen.</p>
+      <ul class="dots">
+        <li><b>While a session runs,</b> it's a small pill with a mini Pomo and the countdown.</li>
+        <li><b>Hover it</b> and it opens up with the controls, the buttons, a progress bar and what your agents are doing.</li>
+        <li><b>When nothing is running,</b> it stays put. Turn on <i>Tuck the island away when idle</i> in <i>Settings &gt; Appearance</i> to shrink it to a thin sliver; hover the top edge of the screen to bring it back.</li>
+      </ul>
+      <figure class="shot desk medium"><img src="island.png" alt="The island: compact while a session runs, and open on hover" width="503" height="256" loading="lazy"></figure>
+      <h3>The orb</h3>
+      <p>It floats in the bottom-right corner, just above the taskbar. Drag it anywhere. Hover it for the buttons: dashboard, Ask Pomo, timer style and settings along the top, and play, reset and skip below the time.</p>
+      <figure class="shot desk"><img src="orb.png" alt="The orb while focusing, on hover with its buttons, and when a session ends" width="822" height="366" loading="lazy"></figure>
+      <h3>On the taskbar</h3>
+      <p>Pomo also has a button on the Windows taskbar. While a session runs, the countdown fills it (green while it runs, yellow while paused), and its label counts down too. Hover it for a live picture of the timer with <b>reset</b>, <b>play/pause</b> and <b>skip</b> underneath. When a coding agent needs you, a small "!" appears on the button. Click it to bring the timer up.</p>
+      <p>Prefer Pomo in the tray only? Turn off <i>Show Pomo on the taskbar</i> in <i>Settings &gt; General</i>. <i>Close window</i> on the button hides it until Pomo next starts.</p>
+      <figure class="shot desk small"><img src="taskbar.png" alt="The taskbar preview with reset, pause and skip" width="276" height="222" loading="lazy"></figure>
+    </section>
+
+    <section id="meet" data-title="Meet Pomo">
+      <h2>Meet Pomo</h2>
+      <p>Pomo is a soft matcha mochi with a sakura blossom who sits on your timer and keeps you company.</p>
+      <ul class="dots">
+        <li>Pomo's eyes follow your cursor, and Pomo blinks and breathes.</li>
+        <li>Pomo looks determined while you focus, relaxes with happy closed eyes on breaks, and sometimes does a little dance.</li>
+        <li>Pomo bounces when the next session is ready and jumps for joy when you finish one. Reach your daily goal and there's confetti.</li>
+        <li>Leave the timer idle for a few minutes and Pomo dozes off.</li>
+        <li>Poke Pomo: once is fine, a few times gets you a grumpy face, and keep going for a dizzy one.</li>
+        <li>While your coding agents work, a thought bubble appears over Pomo's head. When one needs you, it turns into a "!".</li>
+      </ul>
+      <figure class="shot"><img src="pomo.png" alt="Pomo's moods" width="1080" height="428" loading="lazy"></figure>
+      <p>Don't want a buddy? Turn off <i>Show Pomo</i> in <i>Settings &gt; Appearance</i>.</p>
+      <h3>Play with Pomo</h3>
+      <ul class="dots">
+        <li><b>Pet:</b> rub your cursor back and forth over Pomo for hearts.</li>
+        <li><b>Twirl:</b> double-click Pomo.</li>
+        <li><b>Treats:</b> every finished focus session earns a dango (you can save up to 9). Click the dango next to Pomo to feed one.</li>
+        <li><b>Games:</b> click the petal next to Pomo (it shows on hover and during breaks), or <i>Play a game</i> in the right-click menu. Each keeps your best score, and during focus Pomo suggests saving it for your break.
+          <ul class="dots">
+            <li><b>Petal Catch:</b> a 30-second round. Move Pomo with your mouse or the arrow keys to catch falling sakura petals. Golden petals are worth 3.</li>
+            <li><b>Mochi Stack:</b> click (or press Space) to drop the gliding mochi onto the tower. Land it close and the tower grows; a dead-center drop is worth 2. Each one glides a little faster.</li>
+            <li><b>Memory Match:</b> sixteen cards, eight of Pomo's outfits in pairs. Clear the board in as few moves as you can.</li>
+          </ul>
+        </li>
+      </ul>
+      <figure class="shot"><img src="games.png" alt="The games picker, Mochi Stack and Memory Match" width="1404" height="612" loading="lazy"></figure>
+      <figure class="shot medium"><img src="game.png" alt="Petal Catch: the start screen, and a round in progress" width="948" height="576" loading="lazy"></figure>
+    </section>
+
+    <section id="music" data-title="Music and sounds">
+      <h2>Listen along</h2>
+      <p>Playing music on Spotify, YouTube in your browser, or any app in Windows' media controls? Pomo shows what's playing and lets you control it without leaving your focus.</p>
+      <ul class="dots">
+        <li><b>On the island,</b> a now-playing row appears under the timer, with the cover, the song, and previous, play/pause and next.</li>
+        <li><b>On the orb,</b> a little music badge sits on the rim, with dancing bars while a song plays. Click it for a mini player.</li>
+        <li><b>From the right-click menu,</b> <i>Music</i> has the same controls.</li>
+        <li><b>Pomo listens too:</b> headphones (under any hat), a sway, and little notes floating up. A new song gets a happy bop.</li>
+        <li><b>Songs left:</b> during a focus session the music shows roughly how many songs are left until your break.</li>
+        <li><b>Music follows the timer</b> (off unless you turn it on in <i>Settings &gt; General</i>): it plays while you focus and pauses on breaks.</li>
+      </ul>
+      <figure class="shot desk medium"><img src="music_island.png" alt="The island with a now-playing row while Pomo wears headphones" width="503" height="206" loading="lazy"></figure>
+      <p>Pomo reads what's playing through Windows' own media controls, and nothing leaves your PC.</p>
+      <h3 id="sounds">Focus sounds</h3>
+      <p>No music app needed. Pick one with the headphones button beside Pomo on the island (or on the orb's rim), in <i>Focus sounds</i> in the right-click menu, or in <i>Settings &gt; General</i>:</p>
+      <ul class="dots">
+        <li><b>Rain:</b> a recording of steady, relaxing rain, in stereo.</li>
+        <li><b>Café murmur:</b> a recording of a café: soft chatter and the clink of cups.</li>
+        <li><b>Brown noise:</b> deep and even, to cover a noisy room.</li>
+        <li><b>Lo-fi loop:</b> a soft eight-bar loop, with a lazy beat and a little vinyl crackle.</li>
+      </ul>
+      <p>A sound plays on a loop until you pick <i>Off</i>, with no gap or click where it starts over. Prefer silence on breaks? Turn on <i>Only while I focus</i>. Nothing is downloaded, and the sounds don't touch your system volume.</p>
+      <figure class="shot desk"><img src="sounds.png" alt="Pomo in headphones while rain plays, and the focus sounds menu" width="750" height="276" loading="lazy"></figure>
+    </section>
+
+    <section id="focus" data-title="Focus helpers">
+      <h2>Pomo helps you focus</h2>
+      <h3>Learns what works for you</h3>
+      <p>When a focus session ends, the card asks <i>How was that?</i> with three Pomo faces: tough, okay and great. After a few answers, Pomo compares your session lengths and times of day. When another length clearly suits you better, it suggests switching (at most once a week). A session you stop early counts as a tough one.</p>
+      <figure class="shot desk"><img src="learn.png" alt="How was that? and a tip to try 40-minute sessions" width="746" height="358" loading="lazy"></figure>
+      <h3>A gentle distraction check-in</h3>
+      <p>Off unless you turn on <i>Notice distracting apps and sites</i> in <i>Settings &gt; Focus</i>. Then, during a focus session, Pomo notices when something on your list (YouTube, Reddit, Netflix and so on) has been in front for 20 seconds. You get a long side-eye and a quiet <i>Psst... YouTube?</i> card. Nothing is blocked, and <i>It's for work</i> takes that one off your list. Pomo only looks at which app is in front, plus the site name in a browser's title, never at what's in the window.</p>
+      <h3>Away from the PC</h3>
+      <p>If the keyboard and mouse have been still for 5 minutes during a focus session, Pomo pauses it and gives that time back. When you return, choose <i>Resume</i>, or <i>It was focus time</i> if you were reading or thinking.</p>
+      <figure class="shot desk"><img src="presence.png" alt="The Psst... YouTube? card, and the Welcome back card" width="746" height="245" loading="lazy"></figure>
+      <h3>A little cheer</h3>
+      <p>At halfway, with 5 minutes left and in the last minute, Pomo gives a small hop and a few warm words (<i>Halfway through Thesis!</i>) in a bubble beside the timer. It fades after a few seconds, makes no sound, and clicks go straight through it. Turn it off with <i>During focus</i> in <i>Settings &gt; Focus</i>.</p>
+      <h3>Where was I?</h3>
+      <p>When a break ends, the card tells you where you left off: <b>your task</b>, <b>the window you were working in</b> (say, <i>VS Code · pomo</i>), <b>what your coding agents did while you were away</b>, <b>your parked thoughts</b>, and a review your agent left you. <b>Back to VS Code</b> starts your session and brings that window back to the front in one click.</p>
+      <h3>Sessions named after your project</h3>
+      <p>Start a focus session without a task and Pomo looks at the editor you were just in: the project open there and its git branch. It asks <i>Working on pomo?</i>, and one click names the session <i>pomo</i> (or <i>pomo · fix-login</i> away from the main branch). It works with VS Code and editors built on it (Cursor, Windsurf, VSCodium...), JetBrains IDEs, Visual Studio, Sublime Text and terminals. Window titles stay in memory: Pomo never writes them down.</p>
+      <figure class="shot desk"><img src="recap.png" alt="Where was I? and Working on pomo?" width="728" height="357" loading="lazy"></figure>
+      <h3>Park a thought</h3>
+      <p>Something pops into your head mid-focus? Press <kbd>Ctrl+Alt+Shift+N</kbd> from any app, type it and press Enter, and you're back to work. Parked thoughts wait on the break card and in <i>Parked thoughts</i> in the right-click menu, where you can tick them off or have Ask Pomo turn them into a plan.</p>
+      <h3>Breathe with Pomo</h3>
+      <p>When a break starts, the card offers <i>Breathe</i>: about a minute and a half of four rounds of box breathing while Pomo inflates and deflates, 20 seconds to rest your eyes on something far away, and a stretch.</p>
+      <figure class="shot"><img src="breathe.png" alt="Breathe with Pomo" width="1204" height="476" loading="lazy"></figure>
+      <h3>Quiet focus</h3>
+      <p>During a focus session, Pomo holds its own alerts that can wait, like an agent finishing, and shows them together when your break starts. Permission requests still come through right away. Windows doesn't let apps switch on its own Do not disturb, so this only keeps Pomo quiet.</p>
+      <h3 id="shortcuts">Global shortcuts</h3>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Shortcut</th><th>Does</th></tr>
+          <tr><td><kbd>Ctrl+Alt+Shift+P</kbd></td><td>Start or pause the timer</td></tr>
+          <tr><td><kbd>Ctrl+Alt+Shift+K</kbd></td><td>Skip to the next session</td></tr>
+          <tr><td><kbd>Ctrl+Alt+Shift+N</kbd></td><td>Park a thought</td></tr>
+          <tr><td><kbd>Ctrl+Alt+Shift+M</kbd></td><td>Play or pause music</td></tr>
+          <tr><td><kbd>Ctrl+Alt+Shift+H</kbd></td><td>Show or hide the timer</td></tr>
+          <tr><td><kbd>Ctrl+Alt+Shift+Space</kbd> (hold)</td><td>Talk to Pomo: speak while you hold it, let go to ask</td></tr>
+        </table>
+      </div>
+      <p>They work from any app. Change or turn them off in <i>Settings &gt; Shortcuts</i>.</p>
+    </section>
+
+    <section id="rewards" data-title="Garden, quests, room">
+      <h2>Garden, quests and Pomo's room</h2>
+      <h3>Focus garden</h3>
+      <p>Every finished pomodoro grows a sakura tree on your dashboard, from a sprout to a grand sakura over your first 250 pomodoros, with one blossom for each pomodoro in the range you're viewing. Milestones unlock outfits: cat ears at 10 pomodoros, a flower crown at 25, a graduation cap at 50 and a wizard hat at 100.</p>
+      <figure class="shot small"><img src="garden.png" alt="The focus garden: a sakura tree in bloom" width="500" height="290" loading="lazy"></figure>
+      <h3 id="quests">Daily quests and badges</h3>
+      <p>Each morning Pomo picks three small quests, from the ones that fit how you use it (no agent quests if you don't use coding agents, no early-bird quest after 9). For example:</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Quest</th><th>Goal</th></tr>
+          <tr><td>Early bird</td><td>Finish 2 pomodoros before 10 AM</td></tr>
+          <tr><td>Laser focus</td><td>Finish a whole session with no pauses or distractions</td></tr>
+          <tr><td>Hat trick</td><td>Finish 3 pomodoros in a row, none stopped early</td></tr>
+          <tr><td>Deep dive</td><td>Finish a focus session of 45 minutes or more</td></tr>
+          <tr><td>Parking pro</td><td>Park 2 stray thoughts instead of chasing them</td></tr>
+          <tr><td>Playtime</td><td>Play a mini game on a break</td></tr>
+          <tr><td>Code reviewer</td><td>Finish a focus session reviewing your agent's changes</td></tr>
+          <tr><td>Perfect timing</td><td>Take a break while a coding agent works</td></tr>
+        </table>
+      </div>
+      <p>There are thirteen in all. Each one earns its badge (badges count up when you earn them again), and finishing all three in a day earns <i>Perfect day</i>. Quests also unlock outfits: a star clip at 5 quests, bunny ears at 15 and a strawberry hat at 30. Turn them off in <i>Settings &gt; Focus</i>.</p>
+      <figure class="shot"><img src="quests.png" alt="Today's quests and the badge shelf" width="1220" height="319" loading="lazy"></figure>
+      <h3 id="room">Pomo's room</h3>
+      <p>Pomo has a room on the dashboard. It starts with a cushion and a rug under a window, and fills up as you go.</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Earned with</th><th>Items (and what it takes)</th></tr>
+          <tr><td>Focus hours</td><td>Succulent (1), Little desk (3), Wall clock (5), String lights (10), Bookshelf (15), Monstera (25), Sakura curtains (35), Bean bag (50), Floor lamp (70), Study desk (100), Sakura bonsai (150), Cloud sofa (200)</td></tr>
+          <tr><td>Daily quests</td><td>Sakura print (3), Heart rug (10), Trophy shelf (20), Fish bowl (40)</td></tr>
+          <tr><td>Perfect days</td><td>Starry curtains (3), Sleepy cat (7)</td></tr>
+        </table>
+      </div>
+      <p>A new item moves straight in, and the card at the end of your session says so (<i>See room</i> takes you there). Click any spot in the room to swap what's there for something else you've earned, or leave it empty, and click Pomo to poke him. The window goes from sunrise to stars, the lights and lamps glow in the evening, Pomo dozes off late at night, the wall clock shows the real time, and the trophy shelf shows your top badges.</p>
+      <figure class="shot"><img src="room.png" alt="Pomo's room in the early evening, and Room items" width="1220" height="427" loading="lazy"></figure>
+    </section>
+
+    <section id="looks" data-title="Themes and outfits">
+      <h2>Themes and outfits</h2>
+      <p>Pick a theme in <i>Settings &gt; Appearance</i> or from the right-click menu: <b>Matcha</b> (the default), <b>Sakura</b>, <b>Lavender</b>, <b>Peach</b> and <b>Mint</b> are light; <b>Cocoa</b>, <b>Blueberry</b> and <b>Plum</b> are dark.</p>
+      <figure class="shot medium"><img src="themes.png" alt="The orb in all eight themes" width="1024" height="692" loading="lazy"></figure>
+      <p>Pomo has twenty-one outfits. Four are earned in the focus garden and three with daily quests. Choose one under <i>Pomo's outfit</i> in <i>Settings &gt; Appearance</i> or in the right-click menu.</p>
+      <figure class="shot"><img src="wardrobe.png" alt="All twenty-one outfits" width="1144" height="570" loading="lazy"></figure>
+      <p><b>Pomo dresses for what you're doing:</b> a sweatband while you focus, a sun hat on breaks, a hard hat while your agents work, headphones when music plays, a beret in Ask Pomo, glasses on the dashboard, a party hat in Petal Catch and a nightcap when the timer's been idle. Your own pick shows the rest of the time. Turn it off in <i>Settings &gt; Appearance</i>.</p>
+    </section>
+
+    <section id="agents" data-title="Coding agents">
+      <h2>Keep an eye on your coding agents</h2>
+      <p>Pomo can watch your <a href="https://code.claude.com">Claude Code</a>, <a href="https://github.com/openai/codex">Codex CLI</a> and <a href="https://github.com/google-gemini/gemini-cli">Gemini CLI</a> sessions, so you can stay in your focus session and still know when an agent needs you.</p>
+      <p><b>Connect it once:</b> open <i>Settings &gt; Agents</i> and click <b>Connect Claude Code</b>. Pomo adds its hooks to <code>%USERPROFILE%\.claude\settings.json</code>. Your other settings are kept, and a backup is saved next to the file the first time.</p>
+      <figure class="shot desk medium"><img src="agents.png" alt="Pomo with a thought bubble while an agent works, and an approval card" width="662" height="366" loading="lazy"></figure>
+      <ul class="dots">
+        <li><b>Live status.</b> Pomo's thought bubble while an agent works, and each session's project and activity on the island and in the right-click menu.</li>
+        <li><b>Approvals from Pomo.</b> A card shows the project and the exact command or file, with <b>Allow</b>, <b>Deny</b> and <b>In terminal</b>. If you don't answer within 60 seconds, the agent asks in the terminal as usual. Nothing is ever approved without your click.</li>
+        <li><b>Heads-up when it's done.</b> A notification when an agent finishes a long task or waits for your input.</li>
+        <li><b>Today's activity</b> on the dashboard: sessions, prompts, tool calls, files edited, commands and approvals.</li>
+      </ul>
+      <h3>Codex CLI and Gemini CLI</h3>
+      <ul class="dots">
+        <li><b>Codex CLI:</b> Pomo adds its hooks to <code>%USERPROFILE%\.codex\hooks.json</code>. Run <code>/hooks</code> in Codex once and trust Pomo's. You get live status, approvals (Allow, Deny, Deny with a note), changes to review, and replies when a turn ends.</li>
+        <li><b>Gemini CLI:</b> Pomo adds its hooks to <code>%USERPROFILE%\.gemini\settings.json</code> (needs a Gemini CLI with hooks). You get live status, changes to review, a heads-up when it waits for permission, and replies when a turn ends.</li>
+      </ul>
+      <h3>Answer Claude from Pomo</h3>
+      <p>When you're away from your terminal, Claude Code's messages come to Pomo word for word: its multiple-choice questions with every option, its final message when a turn ends (type a reply and Claude picks it up as your next instruction), and permission prompts with <i>Deny with a note</i>. At your terminal, nothing waits.</p>
+      <figure class="shot desk"><img src="agent_reply.png" alt="Claude's question with two options, and Claude's message at the end of a turn" width="928" height="433" loading="lazy"></figure>
+      <h3>Review your agents' changes</h3>
+      <p>When an agent finishes a turn that changed files, the finish notice offers them as focus work: <i>It changed 4 files (+138 / -26 lines). Review them in your next focus session?</i> Reviews you leave for later wait in <i>Reviews waiting</i>, on the dashboard and on the "Where was I?" card, and leave the list once you've focused on them.</p>
+      <figure class="shot desk small"><img src="review.png" alt="api: Claude finished. Review next, Later" width="328" height="192" loading="lazy"></figure>
+      <h3>Agent-paced pomodoros</h3>
+      <ul class="dots">
+        <li><b>Break while it works.</b> When Claude has been on a long task and you're well into a focus session, Pomo offers your break now.</li>
+        <li><b>Focus while you wait.</b> When Claude starts a long task and your timer is idle, Pomo suggests a focus session of your own.</li>
+        <li><b>News on your break.</b> Finished and waiting notices are held during focus and shown on your break card.</li>
+        <li><b>Back to focus.</b> When Claude finishes during your break, the notice offers your next focus session.</li>
+      </ul>
+      <p class="note">Watching never slows your agent down, and if Pomo isn't running, your agent behaves exactly as before. Agent events stay on your PC, over a local named pipe that only your Windows account can open. <b>Disconnect</b> removes only Pomo's own entries.</p>
+    </section>
+
+    <section id="ask" data-title="Ask Pomo">
+      <h2>Ask Pomo</h2>
+      <p>Click the chat button on the timer to chat with Pomo. It knows your timer, focus stats, current task and what your agents did today. The chips give you a head start: <i>Plan my task</i>, <i>My week</i>, <i>My day</i>, <i>Agents today</i> and <i>Pep talk</i>.</p>
+      <figure class="shot"><img src="chat.png" alt="Ask Pomo: the key panel, and a chat planning a task" width="1028" height="724" loading="lazy"></figure>
+      <p><b>Ask Pomo can do it for you.</b> It can start a focus session or a break, set your task, line up a plan of tasks, and change your session lengths. From 6 PM it also offers a short review of your day, and only asks the AI if you say yes.</p>
+      <h3>Pick your AI, bring your own key</h3>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Provider</th><th>Models to start with</th><th>Key from</th></tr>
+          <tr><td>Anthropic (Claude), the default</td><td>Claude Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1, Opus 5</td><td><a href="https://console.anthropic.com/settings/keys">console.anthropic.com</a></td></tr>
+          <tr><td>OpenAI (ChatGPT)</td><td>GPT-5.4, GPT-5.4 mini, GPT-5.4 nano</td><td><a href="https://platform.openai.com/api-keys">platform.openai.com</a></td></tr>
+          <tr><td>Google Gemini</td><td>Gemini 3.5 Flash, Gemini 3.1 Pro (preview), Gemini Flash (latest)</td><td><a href="https://aistudio.google.com/apikey">aistudio.google.com</a></td></tr>
+          <tr><td>xAI (Grok)</td><td>Grok 4.6, Grok 4.3</td><td><a href="https://console.x.ai">console.x.ai</a></td></tr>
+          <tr><td>OpenRouter</td><td>Auto, plus hundreds of models behind one key</td><td><a href="https://openrouter.ai/keys">openrouter.ai</a></td></tr>
+        </table>
+      </div>
+      <p>There's no subscription: you pay the provider directly. Pomo checks your key with a free call, stores it encrypted for your Windows account, and only ever sends it to that provider. <b>Load models</b> in <i>Settings &gt; AI</i> shows every model your key can use. Nothing is sent until you ask something; then Pomo sends your question plus a short summary of your timer, focus stats, tasks, plan and agent activity.</p>
+      <h3 id="talk">Talk to Pomo</h3>
+      <p>Hold <kbd>Ctrl+Alt+Shift+Space</kbd> from any app, say your question, and let go, or hold the mic button in Ask Pomo. Turn on the speaker and Pomo reads its answers in a soft Windows voice.</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Who hears you</th><th>How</th><th>Your voice goes to</th></tr>
+          <tr><td>This PC</td><td>Windows' own speech recognition, offline</td><td>Nowhere: it stays on your PC</td></tr>
+          <tr><td>OpenAI</td><td>OpenAI's transcription, with your OpenAI key</td><td>OpenAI</td></tr>
+          <tr><td>Gemini</td><td>A Gemini model, with your Gemini key</td><td>Google</td></tr>
+          <tr><td>Automatic (the default)</td><td>OpenAI or Gemini when Ask Pomo uses it, this PC otherwise</td><td>As above</td></tr>
+        </table>
+      </div>
+      <figure class="shot"><img src="talk.png" alt="The Listening card, and Ask Pomo reading its plan aloud" width="860" height="688" loading="lazy"></figure>
+    </section>
+
+    <section id="controls" data-title="Controls">
+      <h2>Using the timer</h2>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Action</th><th>How</th></tr>
+          <tr><td>Start / pause</td><td>Hover, then click the round play button, or press <kbd>Space</kbd></td></tr>
+          <tr><td>Reset / skip</td><td>The buttons next to play, or <kbd>R</kbd> / <kbd>S</kbd></td></tr>
+          <tr><td>Edit the time</td><td>Double-click the time and type a value. Idle, whole minutes become the new default; running, it changes the time left.</td></tr>
+          <tr><td>Nudge the time</td><td>Scroll over the timer: 1 min per notch (Shift or Ctrl: 5 min), or <kbd>Up</kbd> / <kbd>Down</kbd></td></tr>
+          <tr><td>Buttons</td><td>Dashboard, Ask Pomo, timer style and settings along the top of the timer (hover to see them)</td></tr>
+          <tr><td>Move it</td><td>Drag the orb anywhere. The island stays at the top center.</td></tr>
+          <tr><td>Play</td><td>Poke, pet or double-click Pomo; click the dango to feed a treat or the petal for the games</td></tr>
+          <tr><td>Music and sounds</td><td>The now-playing row or music badge; the headphones button beside Pomo for focus sounds</td></tr>
+          <tr><td>Taskbar</td><td>Hover Pomo's taskbar button for reset, play/pause and skip</td></tr>
+          <tr><td>Everything else</td><td>Right-click: switch mode, add time, set task, your plan, parked thoughts, daily goal, timer style, theme, outfit, Pomo's room, Ask Pomo, games, Breathe, focus sounds, quests, music, reviews, coding agents, run on startup, hide, quit</td></tr>
+          <tr><td>Tray icon</td><td>Click to bring the timer back; double-click for the dashboard</td></tr>
+        </table>
+      </div>
+    </section>
+
+    <section id="dashboard" data-title="Dashboard">
+      <h2>Dashboard</h2>
+      <p>Open it with the chart button on the timer, from the right-click menu or by double-clicking the tray icon.</p>
+      <ul class="dots">
+        <li><b>Today and KPIs:</b> focus time, pomodoros against your goal, change from the previous period, completion rate, streaks, peak hour, best day and break time.</li>
+        <li><b>Charts:</b> daily focus with a goal line, a consistency heatmap, top tasks, time of day and weekday rhythm.</li>
+        <li><b>Garden and insights:</b> your sakura tree, your best focus length, how sessions felt, your focus score and where your focus time went.</li>
+        <li><b>Quests, badges and Pomo's room:</b> today's quests, every badge, the room you're furnishing and what's next to earn.</li>
+        <li><b>Coding agents:</b> today's activity, how agent work overlapped with your focus and breaks, and changes waiting for review.</li>
+        <li><b>Session log</b> with CSV export, and a range of 7 days, 30 days, 90 days or all time.</li>
+      </ul>
+      <figure class="shot medium"><img src="dashboard.png" alt="The Pomo dashboard" width="1220" height="3146" loading="lazy" style="max-height: 900px; object-fit: cover; object-position: top"></figure>
+    </section>
+
+    <section id="settings" data-title="Settings and data">
+      <h2>Settings</h2>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Tab</th><th>What you can change</th></tr>
+          <tr><td>Timer</td><td>Focus, short and long break lengths; long break interval; daily goal; auto-start</td></tr>
+          <tr><td>Focus</td><td>Session ratings, cheering, away detection, the distraction check-in, quiet focus, the break card, "Where was I?", naming sessions after your project, daily quests</td></tr>
+          <tr><td>Alerts</td><td>Notifications, pop-up card, sound, volume, repeats, idle reminder</td></tr>
+          <tr><td>Appearance</td><td>Theme, timer style, show Pomo, outfit, dressing for what you're doing, tucking the island away, orb size, opacity, always on top, colors</td></tr>
+          <tr><td>Agents</td><td>Connect Claude Code, Codex CLI and Gemini CLI; reviews; approvals and wait times; finish notifications; answering questions; replies; break suggestions</td></tr>
+          <tr><td>AI</td><td>Provider, model and keys for Ask Pomo; the day review; who hears you when you talk; reading replies aloud and the voice</td></tr>
+          <tr><td>Shortcuts</td><td>Global shortcuts on or off, and each key combination</td></tr>
+          <tr><td>General</td><td>Run on startup, updates, the taskbar button, focus sounds, music controls, the data folder, CSV export, clear history</td></tr>
+        </table>
+      </div>
+      <h3 id="privacy">Your data</h3>
+      <p>Everything lives in <code>%APPDATA%\Pomo</code>: your settings (with quests, badges and your room), your history (sessions, ratings, agent activity, parked thoughts), the prepared focus sounds, a downloaded update until it's installed, and your API keys, encrypted. Window titles are never written to disk, and voice recordings only pass through a temporary file that's deleted right away. To check for updates, Pomo asks GitHub's public API every hour; nothing about you is sent with it.</p>
+    </section>
+
+    <section id="developers" data-title="For developers">
+      <h2>For developers</h2>
+      <h3>Run from source</h3>
+      <pre><code>.\run.bat</code></pre>
+      <p>The first run creates a <code>.venv</code> and installs the dependencies (PySide6 and the Anthropic SDK). <code>.\run.bat --demo</code> fills the dashboard with sample history in a separate data folder. Run the tests with <code>python -m unittest discover -s tests -t .</code>, and <code>python main.py --media-check</code> shows what Pomo sees playing.</p>
+      <h3>Build the installer</h3>
+      <p>Install <a href="https://jrsoftware.org/isinfo.php">Inno Setup 6</a> (<code>winget install JRSoftware.InnoSetup</code>), then run <code>.\build.bat</code>. It runs the tests, then writes <code>dist\Pomo-Setup.exe</code> and <code>dist\Pomo-portable.zip</code>.</p>
+      <h3>Publish a release</h3>
+      <ol class="steps">
+        <li>Bump <code>APP_VERSION</code> in <code>pomodoro/__init__.py</code> and commit.</li>
+        <li>Tag and push the tag: <code>git tag v1.7.0</code>, then <code>git push origin v1.7.0</code>.</li>
+        <li>GitHub Actions builds the installer, the portable zip and <code>Pomo-Setup.exe.sha256</code>. Installed copies find the release within an hour, verify it and offer the one-click update.</li>
+      </ol>
+      <details class="files">
+        <summary>Project layout</summary>
+<pre><code>main.py                     entry point, single-instance guard, hook mode, FocusOrb data migration
+pomodoro/engine.py          timer state machine (monotonic clock, cycles, logging)
+pomodoro/island.py          the top-of-screen island (the default timer style)
+pomodoro/orb.py             the floating round timer
+pomodoro/pomo.py            Pomo: drawing, moods, outfits and animation (all in code)
+pomodoro/game.py            the games window and Petal Catch
+pomodoro/stack.py           Mochi Stack
+pomodoro/memory.py          Memory Match
+pomodoro/toast.py           pop-up cards (session alerts, welcome, agent approvals)
+pomodoro/agents.py          live coding-agent sessions and approvals, over a local named pipe
+pomodoro/hook.py            the hook client the agents run
+pomodoro/claude_hooks.py    connects / disconnects Pomo in Claude Code's settings.json
+pomodoro/agent_hooks.py     connects / disconnects Pomo in Codex CLI and Gemini CLI
+pomodoro/reviews.py         the agent review queue
+pomodoro/workspace.py       the window you worked in, and your editor's project and branch
+pomodoro/quests.py          daily quests, badges and their drawings
+pomodoro/cheer.py           a few warm words from Pomo during focus
+pomodoro/soundscapes.py     focus sounds: seamless loops, brown noise and lo-fi
+pomodoro/sounds/            the rain and café recordings (MP3)
+pomodoro/audio.py           sound in and out through Windows' waveOut and waveIn, MP3 decoding
+pomodoro/voice.py           Talk to Pomo: push-to-talk, speech to text, replies read aloud
+pomodoro/taskbar.py         the taskbar button: progress, thumbnail buttons, live preview
+pomodoro/updater.py         updates from GitHub Releases: check, download, verify, install
+pomodoro/ai.py              Ask Pomo: context, streaming replies and key checks
+pomodoro/providers.py       the AI providers and their models
+pomodoro/agent_card.py      Claude Code's questions, prompts and messages, answered in Pomo
+pomodoro/chat.py            the Ask Pomo window, with the bring-your-own-key panel
+pomodoro/keystore.py        API key storage, encrypted with Windows DPAPI
+pomodoro/media.py           now playing: Windows' media sessions (WinRT)
+pomodoro/pacing.py          agent-paced pomodoros
+pomodoro/presence.py        away detection and the distraction check-in
+pomodoro/insights.py        best focus length, focus score, agent overlap, songs left
+pomodoro/planner.py         the task plan and Ask Pomo's tools
+pomodoro/thoughts.py        the thought parking lot
+pomodoro/breathe.py         Breathe with Pomo
+pomodoro/garden.py          the focus garden and outfit unlocks
+pomodoro/room.py            Pomo's room: the items, what earns them, and their drawings
+pomodoro/hotkeys.py         global shortcuts (Win32 RegisterHotKey)
+pomodoro/music_card.py      the mini player card
+pomodoro/dashboard.py       dashboard window
+pomodoro/charts.py          hand-painted charts
+pomodoro/settings_dialog.py settings window
+pomodoro/app.py             controller: tray, menus, notifications, wiring
+pomodoro/config.py          settings, outfits and the FocusOrb to Pomo data move
+pomodoro/storage.py         SQLite history (pomodoros and agent events)
+pomodoro/stats.py           KPI calculations
+pomodoro/sounds.py          alert sounds synthesized at runtime
+pomodoro/theme.py           the eight pastel themes, stylesheet
+pomodoro/icons.py           button glyphs and the Pomo app icon
+pomodoro/winutil.py         Windows helpers
+installer/Pomo.iss          Inno Setup installer script
+tools/prepare_build.py      the .exe icon, installer artwork and version info
+tests/                      unit tests</code></pre>
+      </details>
+      <p>More detail lives in the <a href="https://github.com/sahilwagh99/pomo/wiki">wiki</a> and the <a href="https://github.com/sahilwagh99/pomo#readme">README</a>.</p>
+    </section>
+  </article>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a href="index.html">Home</a>
+      <a href="https://github.com/sahilwagh99/pomo/releases">Releases</a>
+      <a href="https://github.com/sahilwagh99/pomo/wiki">Wiki</a>
+      <a href="https://github.com/sahilwagh99/pomo/issues">Report a problem</a>
+    </div>
+    <div class="version">Pomo for Windows</div>
+  </div>
+</footer>
+
+<script src="version.js"></script>
+<script>
+  // The contents list, built from the sections, with the one you're reading highlighted.
+  const sections = [...document.querySelectorAll("article section[data-title]")];
+  for (const id of ["toc", "toc-mobile"]) {
+    const nav = document.getElementById(id);
+    for (const s of sections) {
+      const a = document.createElement("a");
+      a.href = "#" + s.id;
+      a.textContent = s.dataset.title;
+      nav.appendChild(a);
+    }
+  }
+  const links = [...document.querySelectorAll("#toc a")];
+  const seen = new Set();
+  const spy = new IntersectionObserver(entries => {
+    for (const e of entries) e.isIntersecting ? seen.add(e.target.id) : seen.delete(e.target.id);
+    const current = sections.find(s => seen.has(s.id));
+    if (current) links.forEach(a => a.classList.toggle("on", a.hash === "#" + current.id));
+  }, { rootMargin: "-80px 0px -60% 0px" });
+  sections.forEach(s => spy.observe(s));
+  document.querySelectorAll("details.toc-mobile a").forEach(a => a.addEventListener("click", () => a.closest("details").open = false));
+</script>
+</body>
+</html>
