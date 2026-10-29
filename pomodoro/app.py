@@ -8,12 +8,13 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QImage
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QSystemTrayIcon
 
 from . import APP_NAME, APP_VERSION, agent_hooks, audio, claude_hooks, garden, insights, keystore, media, planner
 from . import applock, learnloop, providers, quests, reviews, room, soundscapes, studylog, studypath, ultra, updater
+from . import skills, wallpaper
 from .agents import EDIT_TOOLS, AgentHub, Approval
 from .config import FOCUS_SOUNDS, HOTKEYS, OUTFITS, Settings
 from .hotkeys import GlobalHotkeys
@@ -154,6 +155,13 @@ class PomoApp(QObject):
         self.urge_card = None
         self._curious_job = None
         self._ladder_news: str | None = None  # "up" or "down", for the next card
+        # your path as a game, and the focus wallpaper
+        self.path_map_window = None
+        self._xp_news: tuple[int, bool] | None = None  # XP the last focus session earned, and if it levelled up
+        self.wallpaper = wallpaper.FocusWallpaper(data_dir / "wallpaper.json", self.cache_dir)
+        if self.settings.xp < 0:  # XP is new: count what you've already done
+            self.settings.xp = skills.starting_xp(self.storage.lifetime_focus_sec(), self.settings.study_path)
+            self.settings.save(self.settings_path)
         # updates from GitHub
         self.update_mode = updater.install_mode()
         self._update_worker = None
@@ -234,6 +242,7 @@ class PomoApp(QObject):
         QTimer.singleShot(2000, self._check_quests)  # today's history may already have met a quest
         QTimer.singleShot(2500, self._after_update)  # just updated? say so
         QTimer.singleShot(4000, self._maybe_morning_card)  # today's step
+        self.wallpaper.restore()  # Pomo stopped mid-session last time: your own wallpaper back
         if self.settings.ultra_on:  # still Ultra from before: powered up, apps blocked
             self._sync_ultra_look()
             self.applock.refresh()
@@ -337,6 +346,8 @@ class PomoApp(QObject):
     def _refresh_study(self) -> None:
         if self.path_window is not None and self.path_window.isVisible():
             self.path_window.refresh()
+        if self.path_map_window is not None and self.path_map_window.isVisible():
+            self.path_map_window.refresh()
         if self.dashboard is not None and self.dashboard.isVisible():
             self.dashboard.refresh_study()
 
@@ -352,9 +363,11 @@ class PomoApp(QObject):
             self._path_task = step["title"]  # so the next step takes over as the task
         self.path_changed()
         if not done:
+            self.add_xp(-skills.STEP_XP, celebrate=False)  # ticking it back off takes its XP back too
             return
+        leveled = self.add_xp(skills.STEP_XP, celebrate=False)
         self.quest_event("path_step", announce=False)
-        self.view.celebrate(big=milestone_done)
+        self.view.celebrate(big=milestone_done or leveled)
         nxt = studypath.next_step(path)
         s = self.settings
         if s.popup_card and self.view.isVisible() and not self._approval_on_screen() and not self.toast.showing:
@@ -363,12 +376,15 @@ class PomoApp(QObject):
             else:
                 title = "Step done!"
             body = f"Next on your path: {nxt[2]['title']}." if nxt else "That was the last step on your path. Wow!"
+            body += f"\n+{skills.STEP_XP} XP: a new skill unlocked on your skill tree."
+            if leveled:
+                body += f"\n{self._level_up_text()}"
             news = self._quest_news(self._take_quest_news())[0]
             if news:
                 body += f"\n{news}"
             actions = ([(f"Start with {s.starter_min} minutes", lambda: self.start_step(nxt[0], nxt[1], True), True),
                         ("Later", lambda: None, False)] if nxt else [("Yay!", lambda: None, True)])
-            extras = [("My path", self.open_path)]
+            extras = [("Skill tree", self.open_skill_tree)]
             if s.learn_loop:
                 extras.insert(0, ("Teach Pomo", lambda t=step["title"]: self.open_teach(t)))
             self.toast.show_message(title, body, mode_color(self.theme, s, "long"), actions,
@@ -510,6 +526,56 @@ class PomoApp(QObject):
             from .path_window import PathWindow
             self.path_window = PathWindow(self)
         self._show_window(self.path_window)
+
+    def open_skill_tree(self) -> None:
+        self._open_path_map(0)
+
+    def open_big_picture(self) -> None:
+        self._open_path_map(1)
+
+    def _open_path_map(self, tab: int) -> None:
+        if self.path_map_window is None:
+            from .skill_windows import PathMapWindow
+            self.path_map_window = PathMapWindow(self)
+        self.path_map_window.show_tab(tab)
+        self._show_window(self.path_map_window)
+
+    def add_xp(self, amount: int, celebrate: bool = True) -> bool:
+        """Earn XP (focus, a step, teaching Pomo, a review card). True if it reached a new level."""
+        s = self.settings
+        if s.xp < 0:
+            s.xp = 0
+        leveled = skills.add(s, amount, date.today().isoformat())
+        self.save_settings()
+        if leveled and celebrate:
+            self.view.celebrate(big=True)
+        if self.path_map_window is not None and self.path_map_window.isVisible():
+            self.path_map_window.refresh()
+        return leveled
+
+    def _level_up_text(self) -> str:
+        level = skills.level_for(self.settings.xp)[0]
+        return f"Level up! You're level {level}: {skills.rank(level)}."
+
+    def _sync_wallpaper(self) -> None:
+        """The focus wallpaper: today's step on your desktop while you focus, yours back the rest of the time."""
+        s, e = self.settings, self.engine
+        if not (s.focus_wallpaper and e.mode is Mode.FOCUS and e.state in (State.RUNNING, State.PAUSED)):
+            self.wallpaper.restore()
+            return
+        step, where = e.task or "One focused session", ""
+        found = studypath.find_step(s.study_path, e.task) if s.study_path and e.task else None
+        if found is not None:
+            where = f"{s.study_path['milestones'][found[0]]['title']}  ·  {s.study_path['goal']}"
+        key = f"{self.theme.key}|{step}|{where}"
+        if key == self.wallpaper.showing:
+            return
+        size = QSize(1920, 1080)
+        screen = self.qapp.primaryScreen()
+        if screen is not None:  # in real pixels, so the words stay crisp
+            ratio = screen.devicePixelRatio()
+            size = QSize(round(screen.size().width() * ratio), round(screen.size().height() * ratio))
+        self.wallpaper.show(wallpaper.render(self.theme, step, where, size), key)
 
     def open_study_log(self) -> None:
         if self.study_log is None:
@@ -1025,6 +1091,7 @@ class PomoApp(QObject):
         self._sync_hotkeys()
         self._sync_presence()
         self._sync_focus_sound()
+        self._sync_wallpaper()
         self._taskbar_dismissed = False
         self._sync_taskbar()
         if self.taskbar is not None:
@@ -1146,6 +1213,7 @@ class PomoApp(QObject):
         self._auto_task = ""
         self.save_settings()
         self.view.update()
+        self._sync_wallpaper()
 
     def plan_changed(self) -> None:
         """The plan was set or changed: its first task becomes the current one."""
@@ -1251,6 +1319,8 @@ class PomoApp(QObject):
         else:
             _action(study, f"Start with just {self.settings.starter_min} minutes", self.start_small)
         _action(study, "My path…", self.open_path)
+        _action(study, "Skill tree…", self.open_skill_tree)
+        _action(study, "Big picture…", self.open_big_picture)
         _action(study, "Study log…", self.open_study_log)
         study.addSeparator()
         _action(study, "Teach Pomo…", lambda: self.open_teach())
@@ -1363,6 +1433,9 @@ class PomoApp(QObject):
             if distracted:
                 record = replace(record, distracted_sec=min(distracted, record.actual_sec))
         self.storage.add(record)
+        if record.mode == "focus" and record.actual_sec >= 60:  # a point of XP a minute
+            minutes = int(record.actual_sec // 60)
+            self._xp_news = (minutes, self.add_xp(minutes, celebrate=False))
         if record.mode == "focus":  # the focus ladder: three clean sessions up, two stopped early down
             move = learnloop.ladder_after(self.settings, round(record.planned_sec / 60), record.completed)
             if move:
@@ -1404,6 +1477,7 @@ class PomoApp(QObject):
                 QTimer.singleShot(700, self._maybe_curious)
         if not focusing and self.whisper is not None:
             self.whisper.fade_out()
+        self._sync_wallpaper()
         if e.mode is Mode.FOCUS and e.state is State.PAUSED and prev_state is State.RUNNING:
             self._focus_paused = True
         if (e.mode.is_break and e.state is State.RUNNING and not (prev_mode.is_break and prev_state is State.RUNNING)
@@ -1523,6 +1597,10 @@ class PomoApp(QObject):
             body += f"\nFocus ladder: level up! Your focus sessions are now {s.ladder_min} minutes."
         elif ladder == "down":
             body += f"\nFocus ladder: back to {s.ladder_min} minutes for now. You'll climb again."
+        xp_news, self._xp_news = (self._xp_news if finished is Mode.FOCUS else None), None
+        if xp_news is not None:
+            gained, leveled = xp_news
+            body += f"\n{self._level_up_text()} (+{gained} XP)" if leveled else f"\n+{gained} XP  ·  {skills.xp_line(s)}"
         step_news, self._step_news = (self._step_news if finished is Mode.FOCUS else None), None
         if step_news is not None:
             mi, si, st = step_news
@@ -1546,7 +1624,8 @@ class PomoApp(QObject):
         self.notifier.toast(title, body)
         view = self.view
         if finished is Mode.FOCUS:
-            view.celebrate(big=count == goal or bool(room_text) or any(e[0].startswith("Wear") for e in extras))
+            view.celebrate(big=count == goal or bool(room_text) or any(e[0].startswith("Wear") for e in extras)
+                           or bool(xp_news and xp_news[1]))
             if s.treats < 9:  # a dango for Pomo, fed from the badge beside him
                 s.treats += 1
             self.save_settings()
@@ -2498,6 +2577,7 @@ class PomoApp(QObject):
         if self.chat is not None:
             self.chat.shutdown()
         self.engine.shutdown()
+        self.wallpaper.shutdown()  # your own wallpaper back before Pomo goes
         self.settings.cycle_index = self.engine.cycle_index
         self.settings.cycle_date = date.today().isoformat()
         self._save_timer.stop()

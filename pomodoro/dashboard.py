@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import garden, insights, learnloop, quests, reviews, room, studylog, studypath
+from . import garden, insights, learnloop, quests, reviews, room, skills, studylog, studypath
 from .charts import Bar, CalendarHeatmap, ColumnChart, HBarChart, Meter
 from .quests import BadgeShelf, QuestList
 from .room import RoomGoals, RoomShelf, RoomWidget
@@ -492,8 +492,12 @@ class Dashboard(QWidget):
         log_card.body.addWidget(self.log_latest)
         log_card.body.addSpacing(8)
         log_buttons = QHBoxLayout()
+        tree = QPushButton("Skill tree")
+        tree.setCursor(Qt.PointingHandCursor)
+        tree.clicked.connect(self.ctrl.open_skill_tree)
         log_buttons.addWidget(write)
         log_buttons.addWidget(self.review_btn)
+        log_buttons.addWidget(tree)
         log_buttons.addStretch(1)
         log_card.body.addLayout(log_buttons)
         log_card.body.addSpacing(8)
@@ -554,8 +558,9 @@ class Dashboard(QWidget):
         s, storage = self.ctrl.settings, self.ctrl.storage
         due, total = len(storage.cards(due_by=date.today())), len(storage.cards())
         self.review_btn.setText(f"Review cards ({due})" if due else "Review cards")
-        lines = [f"{plural(due, 'review card')} due  ·  {total} in all" if total else
-                 "No review cards yet: teach Pomo a step to make some."]
+        lines = [skills.xp_line(s)] if s.xp >= 0 else []
+        lines.append(f"{plural(due, 'review card')} due  ·  {total} in all" if total else
+                     "No review cards yet: teach Pomo a step to make some.")
         ladder = learnloop.ladder_text(s)
         if ladder:
             lines.append(ladder)

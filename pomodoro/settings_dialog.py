@@ -239,6 +239,7 @@ class SettingsDialog(QDialog):
         form.addRow("Study log", self.log_prompt)
         self.learn_loop = QCheckBox("A curious question before a step, Teach Pomo after it, review cards")
         self.study_with_pomo = QCheckBox("Study with Pomo: he reads his own book while you focus")
+        self.focus_wallpaper = QCheckBox("Focus wallpaper: today's step on my desktop while I focus")
         self.ladder_on = QCheckBox("Focus ladder: sessions grow as you finish them")
         self.ladder_min = _spin(5, 120, " min")
         self.ladder_goal = _spin(10, 120, " min")
@@ -253,6 +254,9 @@ class SettingsDialog(QDialog):
         self.ladder_on.toggled.connect(ladder_row.setEnabled)
         form.addRow("Learning", self.learn_loop)
         form.addRow("", self.study_with_pomo)
+        form.addRow("Wallpaper", self.focus_wallpaper)
+        form.addRow("", _hint("Your own wallpaper comes back when the session ends. A slideshow\n"
+                              "or Windows Spotlight is left alone."))
         form.addRow("Focus ladder", self.ladder_on)
         form.addRow("", ladder_row)
         form.addRow("", _hint("Three clean sessions in a row add 5 minutes; two stopped early\n"
@@ -889,6 +893,7 @@ class SettingsDialog(QDialog):
         self.log_prompt.setChecked(s.log_prompt)
         self.learn_loop.setChecked(s.learn_loop)
         self.study_with_pomo.setChecked(s.study_with_pomo)
+        self.focus_wallpaper.setChecked(s.focus_wallpaper)
         self.ladder_on.setChecked(s.ladder_on)
         self.ladder_min.setValue(s.ladder_min)
         self.ladder_goal.setValue(s.ladder_goal)
@@ -983,6 +988,7 @@ class SettingsDialog(QDialog):
         s.log_prompt = self.log_prompt.isChecked()
         s.learn_loop = self.learn_loop.isChecked()
         s.study_with_pomo = self.study_with_pomo.isChecked()
+        s.focus_wallpaper = self.focus_wallpaper.isChecked()
         if self.ladder_min.value() != s.ladder_min or not s.ladder_on:
             s.ladder_streak = s.ladder_misses = 0  # a new rung: count afresh
         s.ladder_on = self.ladder_on.isChecked()

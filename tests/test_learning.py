@@ -121,7 +121,8 @@ class WindowTests(unittest.TestCase):
             storage.add_card("SQL", "What does a JOIN do?", "Combines tables", date.today())
             changed = []
             ctrl = SimpleNamespace(storage=storage, theme=theme_for("light"), icon=None,
-                                   engine=SimpleNamespace(task="SQL"), cards_changed=lambda: changed.append(1))
+                                   engine=SimpleNamespace(task="SQL"), cards_changed=lambda: changed.append(1),
+                                   add_xp=lambda n: changed.append(f"+{n} XP"))
             from PySide6.QtGui import QIcon
             ctrl.icon = QIcon()
             recall = RecallWindow(ctrl)
@@ -132,7 +133,7 @@ class WindowTests(unittest.TestCase):
             recall._grade(True)
             self.assertIn("All done", recall.question.text())
             self.assertEqual(storage.cards()[0].box, 1)
-            self.assertEqual(changed, [1])
+            self.assertEqual(changed, ["+3 XP", 1])  # a card you get right earns a little XP
             urge = UrgeCard(ctrl)
             urge.start()
             self.assertFalse(urge.back.isEnabled())  # ride it out first

@@ -52,6 +52,7 @@ Pomo used to be called FocusOrb. Run `Pomo-Setup.exe` and it removes FocusOrb fo
 - **A study coach.** Not sure what to study next? Ask Pomo builds you a path of small steps toward one goal, and Pomo always knows today's step. Start with *just 10 minutes* when it's hard to begin, and write a few sentences in English each evening, with gentle notes on your English if you like.
 - **Learn it for real.** A curious question before each step, Teach Pomo after it, and review cards that come back over days, so studying turns into understanding (and, slowly, interest).
 - **Focus training.** A focus ladder that grows your sessions as you succeed, 90 seconds to ride out an urge, and Pomo reading his own book beside you while you study.
+- **Your path as a game.** Focus earns XP and levels, and your path becomes a skill tree where each finished step unlocks with a burst. The big picture maps how your steps connect, and a focus wallpaper puts today's step on your desktop while you work.
 - **App lock.** Games and other apps you lock are put away while you focus, with a card to get you back to work.
 - **Ultra focus.** For the days you need to go all in: Pomo powers up (spiky golden hair, fire in his eyes, a crackling golden aura) and the apps you drag in stay blocked, breaks included, until you power down.
 - **Daily quests and badges.** Three small goals a day, like "2 pomodoros before 10 AM", with a badge for each and new outfits now and then.
@@ -279,6 +280,19 @@ Turn the learning loop off in *Settings > Focus*. With it on, starting a session
 
 <div align="center"><img src="docs/focus_training.png" alt="Pomo reading his book on the island during focus; Ride the urge with Pomo breathing and the urge's wave; and a session card saying the focus ladder levelled up to 15 minutes" width="100%"></div>
 
+### Your path as a game
+
+Games show progress all the time; studying almost never does. So Pomo does.
+
+- **XP and levels.** Focus earns 1 XP a minute, a finished step 50, teaching Pomo 20 and a review card you get right 3. Levels take a little longer each time, with ranks from Sprout to Apprentice, Explorer, Scholar, Expert, Sage and Legend. The session card shows what you earned and how far the next level is, and levelling up gets confetti. Your first XP counts the focus you've already done.
+- **Skill tree** (*Study > Skill tree*, the **Skill tree** button in My path and on the dashboard, or on the card when you finish a step). Your path climbs from the bottom to your goal at the top: done steps glow green with a check, today's step pulses with Pomo standing beside it, and the rest wait with a lock. Each step you finish unlocks with a burst of petals the next time you look. Click a step to start it, or to teach Pomo one you've finished.
+- **Big picture** (*Study > Big picture*, or the tab next to the skill tree). Your milestones as islands along a road, with Pomo sitting on today's step. With an AI key, Pomo draws how your steps connect: a short summary of the path, what each step lets you do, and arrows between steps that help each other ("pandas groupby is the same idea as GROUP BY"). Click a step to see what it builds on and what it leads to. It's drawn once and kept; **Redraw** after you change your path. Drawing it sends your goal and your milestones' and steps' names to your AI provider.
+- **Focus wallpaper** (*Settings > Focus*, off unless you turn it on). When a focus session starts, your desktop wallpaper becomes a calm picture with today's step on it, and Pomo reading. When the session ends, a break starts or Pomo quits, each monitor gets its own wallpaper back. Pomo notes your wallpaper before changing anything, so if Pomo or your PC stops mid-session, it comes back the next time Pomo starts; if you pick a new wallpaper while focusing, that one stays. A slideshow or Windows Spotlight is left alone.
+
+<div align="center"><img src="docs/skill_tree.png" alt="The skill tree at level 23, with Read a CSV unlocking in a burst of petals and Pomo beside today's step; and the big picture, with milestones as islands, arrows between connected steps and what Group and summarise leads to" width="100%"></div>
+
+<div align="center"><img src="docs/focus_wallpaper.png" alt="The focus wallpaper in light and dark: Pomo reading, Focusing on Clean messy data, and the milestone and goal underneath" width="100%"></div>
+
 ### App lock
 
 Easily pulled away by games? Turn on *App lock* in *Settings > Focus* and drag the apps to lock onto the list, from your desktop, the Start menu or a folder (or browse for them). During a focus session, when a locked app comes to the front, Pomo puts it away and shows a card: **Back to work** brings your work window back, or **Close** it. You can unlock it until your break, but only after a 10-second wait, so it's a decision rather than a reflex. Choose *Close them instead of putting them away* to be strict. The break card tells you how many times the lock kept them away.
@@ -494,7 +508,7 @@ Replies are read by a Windows voice on your PC (pick one in *Settings > AI*). Po
 | From any app | The [global shortcuts](#global-shortcuts): start or pause, skip, park a thought, music, show or hide, talk to Pomo |
 | Taskbar | Hover Pomo's taskbar button for reset, play/pause and skip; click it to bring the timer up |
 | Ultra focus | The lightning button beside Pomo on the island, or on the orb's rim (it glows gold while it's on) |
-| Everything else | Right-click: switch mode, add time, set task, your plan, park a thought, parked thoughts, daily goal, timer style, theme, outfit, Pomo's room, Study (today's step, just 10 minutes, my path, study log, Teach Pomo, review cards, ride the urge), Ultra focus, Ask Pomo, Talk to Pomo, games, Breathe with Pomo, focus sounds, today's quests, music, reviews waiting, coding agents, run on startup, hide, quit |
+| Everything else | Right-click: switch mode, add time, set task, your plan, park a thought, parked thoughts, daily goal, timer style, theme, outfit, Pomo's room, Study (today's step, just 10 minutes, my path, skill tree, big picture, study log, Teach Pomo, review cards, ride the urge), Ultra focus, Ask Pomo, Talk to Pomo, games, Breathe with Pomo, focus sounds, today's quests, music, reviews waiting, coding agents, run on startup, hide, quit |
 | Tray icon | Click to bring the timer back; double-click for the dashboard |
 
 ## Dashboard
@@ -508,7 +522,7 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 - **Charts:** daily focus with a goal line, a consistency heatmap, top tasks, time of day and weekday rhythm.
 - **Focus garden:** your sakura tree and the next outfit to earn.
 - **Insights:** your best focus length, how your sessions felt, your focus score, and where your focus time went.
-- **My path and Study log:** your goal and today's step, with a button to start it, and your log's streak.
+- **My path and Study log:** your goal and today's step, with a button to start it, your log's streak, your level and XP, review cards due, the focus ladder's next rung and urges ridden out today, with buttons for the review cards and the skill tree.
 - **Quests and badges:** today's three quests with their progress, and every badge you've earned.
 - **Pomo's room:** the room you're furnishing, what's next to earn, and every item so far.
 - **Coding agents:** today's sessions, prompts, tool calls, files edited, commands and approvals, how long agents worked and how much of it overlapped with your focus and breaks, what is running right now, and the changes waiting for your review.
@@ -520,7 +534,7 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 | Tab | What you can change |
 |---|---|
 | Timer | Focus, short and long break lengths; long break interval; daily goal; auto-start for breaks and for focus |
-| Focus | Session ratings and length tips, Pomo cheering you on, away detection, the distraction check-in and its list, quiet focus, the break card, "Where was I?" when a break ends, naming sessions after your project (ask, automatically or off), daily quests, the morning card, the starter session's length, the evening study log, app lock and its apps, the learning loop, Study with Pomo, the focus ladder |
+| Focus | Session ratings and length tips, Pomo cheering you on, away detection, the distraction check-in and its list, quiet focus, the break card, "Where was I?" when a break ends, naming sessions after your project (ask, automatically or off), daily quests, the morning card, the starter session's length, the evening study log, app lock and its apps, the learning loop, Study with Pomo, the focus wallpaper, the focus ladder |
 | Alerts | Notifications, pop-up card, sound, volume, repeats, idle reminder |
 | Appearance | Theme, timer style (island or orb), show Pomo, Pomo's outfit, Pomo dressing for what you're doing, tuck the island away when idle, orb size, opacity, fade while focusing, always on top, show task, colors for each mode |
 | Agents | Connect or disconnect Claude Code, Codex CLI and Gemini CLI, suggesting reviews of agent changes, answer permission requests in Pomo, how long to wait for your answer, finish notifications, answering Claude's questions, replying when a turn ends (and how long the agent waits), break suggestions for long agent tasks |
@@ -528,7 +542,7 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 | Shortcuts | Global shortcuts on or off, and each key combination (including the talk shortcut) |
 | General | Run Pomo on startup, updates (on or off, check now, update now), Pomo on the taskbar, focus sounds (which one, volume, only while focusing), music controls, Pomo listening along, music following the timer, move the orb back to its corner, open the data folder, export CSV, clear history |
 
-Your data lives in `%APPDATA%\Pomo`: `settings.json` (with your quests, badges, your path and reviews waiting), `history.db` (pomodoros with their ratings, agent activity, parked thoughts, your study log, review cards, urges ridden out and, if the check-in is on, minutes per app), `cache\` (the focus sounds once they're made), `updates\` (a downloaded update until it's installed) and, if you saved one, `ai_key.bin` (your API key, encrypted). Window titles (for "Where was I?" and project names) are never written to disk. When you talk to Pomo, the recording and the replies it reads aloud only pass through a temporary file in `cache\`, deleted as soon as Windows is done with it. To check for updates, Pomo asks GitHub's public API for the latest release every hour; nothing about you is sent with it.
+Your data lives in `%APPDATA%\Pomo`: `settings.json` (with your quests, badges, your path, its big picture, your XP and reviews waiting), `history.db` (pomodoros with their ratings, agent activity, parked thoughts, your study log, review cards, urges ridden out and, if the check-in is on, minutes per app), `cache\` (the focus sounds once they're made), `updates\` (a downloaded update until it's installed), `wallpaper.json` (only while the focus wallpaper is up: the wallpaper to put back) and, if you saved one, `ai_key.bin` (your API key, encrypted). Window titles (for "Where was I?" and project names) are never written to disk. When you talk to Pomo, the recording and the replies it reads aloud only pass through a temporary file in `cache\`, deleted as soon as Windows is done with it. To check for updates, Pomo asks GitHub's public API for the latest release every hour; nothing about you is sent with it.
 
 ## For developers
 
@@ -617,6 +631,9 @@ pomodoro/path_window.py     the My path window
 pomodoro/studylog.py        the study log in English, and its gentle English tutor
 pomodoro/learnloop.py       the learning loop and focus ladder: review-card timing, prompts, the ladder's rules
 pomodoro/learn_windows.py   Curious first, Teach Pomo, review cards and Ride the urge
+pomodoro/skills.py          XP and levels, and the big picture's prompt and map
+pomodoro/skill_windows.py   the skill tree and big picture window
+pomodoro/wallpaper.py       the focus wallpaper: the picture, and swapping yours back safely
 pomodoro/applock.py         app lock: locked apps put away during focus (and during Ultra focus), and the lock card
 pomodoro/ultra.py           Ultra focus drawings: the aura, the spiky golden hair, fire in the eyes, the transformation
 pomodoro/ultra_mode.py      Ultra focus windows: picking apps to block, the transformation on screen, powering down
