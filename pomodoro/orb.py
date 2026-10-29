@@ -674,7 +674,7 @@ class OrbWidget(QWidget):
 
     def _paint_label(self, p: QPainter, c: QPointF, k: float, accent: QColor) -> None:
         t = self.ctrl.theme
-        label = "PAUSED" if self.engine.state is State.PAUSED else self.engine.mode.label.upper()
+        label = "PAUSED" if self.engine.state is State.PAUSED else self.ctrl.mode_label().upper()
         f = self._font(10.5 * k, QFont.DemiBold, 1.3 * k)
         fm = QFontMetricsF(f)
         tw = fm.horizontalAdvance(label) - 1.3 * k
@@ -682,7 +682,7 @@ class OrbWidget(QWidget):
         x0 = c.x() - (2 * dot_r + gap + tw) / 2
         y = c.y() - 38 * k
         p.setPen(Qt.NoPen)
-        p.setBrush(accent)
+        p.setBrush(self.ctrl.mode_dot() or accent)
         p.drawEllipse(QPointF(x0 + dot_r, y), dot_r, dot_r)
         p.setFont(f)
         p.setPen(QColor(t.ink_2))

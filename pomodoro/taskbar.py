@@ -259,11 +259,11 @@ class TaskbarButton(QWidget):
         e = self.ctrl.engine
         clock = fmt_clock(e.remaining)
         alert = self.ctrl.agent_signal() == "alert"
-        state = (e.state, e.mode, clock, alert)
+        state = (e.state, e.mode, clock, alert, self.ctrl.mode_label())
         if state == self._last and not force:
             return
         previous, self._last = self._last, state
-        label = "Paused" if e.state is State.PAUSED else e.mode.label
+        label = "Paused" if e.state is State.PAUSED else self.ctrl.mode_label()
         self.setWindowTitle(f"{clock} · {label}" if e.state in (State.RUNNING, State.PAUSED) else APP_NAME)
         tl = self._list
         if tl is None or tl.ptr is None:
@@ -338,8 +338,9 @@ class TaskbarButton(QWidget):
         font.setWeight(QFont.Normal)
         p.setFont(font)
         p.setPen(QColor(t.ink_2))
-        label = {State.RUNNING: e.mode.label, State.PAUSED: "Paused", State.IDLE: f"{e.mode.label} · ready",
-                 State.FINISHED: f"Up next: {e.mode.label}"}[e.state]
+        name = self.ctrl.mode_label()
+        label = {State.RUNNING: name, State.PAUSED: "Paused", State.IDLE: f"{name} · ready",
+                 State.FINISHED: f"Up next: {name}"}[e.state]
         p.drawText(QRectF(x, h * 0.64, w - x, h * 0.3), Qt.AlignLeft | Qt.AlignTop, label)
         p.end()
         return image

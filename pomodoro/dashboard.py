@@ -673,11 +673,12 @@ class Dashboard(QWidget):
     def _refresh_today_note(self) -> None:
         e = self.ctrl.engine
         clock = fmt_clock(e.remaining)
+        name = self.ctrl.mode_label()
         note = {
-            State.RUNNING: f"Now: {e.mode.label}, {clock} left",
-            State.PAUSED: f"Paused: {e.mode.label}, {clock} left",
-            State.IDLE: f"Ready: {e.mode.label} ({clock})",
-            State.FINISHED: f"Up next: {e.mode.label} ({clock})",
+            State.RUNNING: f"Now: {name}, {clock} left",
+            State.PAUSED: f"Paused: {name}, {clock} left",
+            State.IDLE: f"Ready: {name} ({clock})",
+            State.FINISHED: f"Up next: {name} ({clock})",
         }[e.state]
         if e.task:
             note += f"\nTask: {e.task}"

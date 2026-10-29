@@ -562,6 +562,16 @@ class PomoApp(QObject):
             self.lock_card.hide()
         self._sync_ultra_look(animate=True)
 
+    def mode_label(self, mode: Mode | None = None) -> str:
+        """'Focus', or 'Ultra focus' while Ultra focus is on: what the timer calls the session."""
+        mode = mode or self.engine.mode
+        return "Ultra focus" if mode is Mode.FOCUS and self.settings.ultra_on else mode.label
+
+    def mode_dot(self, mode: Mode | None = None) -> QColor | None:
+        """The dot beside the mode's name turns gold in Ultra focus (None: the usual color)."""
+        mode = mode or self.engine.mode
+        return QColor(ultra.GOLD_DEEP) if mode is Mode.FOCUS and self.settings.ultra_on else None
+
     def _sync_ultra_look(self, animate: bool = False) -> None:
         """Pomo on the island and the orb: powered up while Ultra focus is on."""
         on = self.settings.ultra_on
@@ -573,6 +583,8 @@ class PomoApp(QObject):
             elif not on and pomo.ultra:
                 pomo.power_down()
             view.update()
+        self._update_tray()  # "Ultra focus" or "Focus" in the tooltip and on the taskbar
+        self._refresh_taskbar()
 
     # ------------------------------------------------------------ Pomo's room
     def room_progress(self) -> tuple[float, int, int, list[str]]:
@@ -1306,7 +1318,7 @@ class PomoApp(QObject):
         frac = e.fraction_left if e.state in (State.RUNNING, State.PAUSED) else 1.0
         self.tray.setIcon(QIcon(render_tray_icon(64, accent, frac, QColor(self.theme.orb_face), track)))
         state = {State.RUNNING: "", State.PAUSED: " (paused)", State.IDLE: " (ready)", State.FINISHED: " (up next)"}[e.state]
-        tip = (f"{APP_NAME}\n{e.mode.label}{state} · {fmt_clock(e.remaining)}\n"
+        tip = (f"{APP_NAME}\n{self.mode_label()}{state} · {fmt_clock(e.remaining)}\n"
                f"{self.today_count}/{self.settings.daily_goal} pomodoros today")
         headline = self.agents.headline()
         if headline:

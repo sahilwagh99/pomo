@@ -486,11 +486,11 @@ class IslandWidget(QWidget):
         r = self._expanded_rect()
         x0 = r.left() + 122
 
-        label = "PAUSED" if e.state is State.PAUSED else e.mode.label.upper()
+        label = "PAUSED" if e.state is State.PAUSED else self.ctrl.mode_label().upper()
         if e.state is State.FINISHED:
             label = f"UP NEXT · {label}"
         p.setPen(Qt.NoPen)
-        p.setBrush(accent)
+        p.setBrush(self.ctrl.mode_dot() or accent)
         p.drawEllipse(QPointF(x0 + 3, r.top() + 30), 3.2, 3.2)
         p.setFont(self._font(10.5, QFont.DemiBold, 1.2))
         p.setPen(QColor(t.ink_2))
