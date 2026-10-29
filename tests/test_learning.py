@@ -142,7 +142,12 @@ class WindowTests(unittest.TestCase):
             urge.finished.connect(done.append)
             urge._end(True)
             self.assertEqual((done, storage.urges(since=date.today())), ([True], (1, 1)))
-            recall.close()
+            from PySide6.QtCore import QCoreApplication, QEvent
+
+            for window in (recall, urge):  # gone now, not when Python shuts down (Qt can crash then)
+                window.close()
+                window.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
             storage.close()
 
 
