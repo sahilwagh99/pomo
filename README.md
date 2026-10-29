@@ -254,13 +254,13 @@ Two daily quests go with it: *On the path* (finish a step) and *In my words* (wr
 
 ### App lock
 
-Easily pulled away by games? Turn on *App lock* in *Settings > Focus* and add the apps to lock: pick one that's running, or browse for its `.exe`. During a focus session, when a locked app comes to the front, Pomo puts it away and shows a card: **Back to work** brings your work window back, or **Close** it. You can unlock it until your break, but only after a 10-second wait, so it's a decision rather than a reflex. Choose *Close them instead of putting them away* to be strict. The break card tells you how many times the lock kept them away.
+Easily pulled away by games? Turn on *App lock* in *Settings > Focus* and drag the apps to lock onto the list, from your desktop, the Start menu or a folder (or browse for them). During a focus session, when a locked app comes to the front, Pomo puts it away and shows a card: **Back to work** brings your work window back, or **Close** it. You can unlock it until your break, but only after a 10-second wait, so it's a decision rather than a reflex. Choose *Close them instead of putting them away* to be strict. The break card tells you how many times the lock kept them away.
 
 Only an administrator can stop a program from starting at all, and Pomo never asks for admin rights, so the lock works on the app in front, during focus sessions only.
 
 ### Ultra focus
 
-For the days you need to go all in. Click the lightning button beside Pomo (on the island, or on the orb's rim), or *Ultra focus* in the right-click menu. Pomo asks which apps to block: what's running now, plus the ones you picked last time. Then he powers up in the middle of your screen: a trembling charge, a flash, tall golden spiky hair, fire in his eyes and a crackling golden aura, with **ULTRA FOCUS** across the bottom (and a power-up sound, if your alert sounds are on). A focus session starts at the burst, unless you untick it.
+For the days you need to go all in. Click the lightning button beside Pomo (on the island, or on the orb's rim), or *Ultra focus* in the right-click menu. Pomo asks which apps to block: drag them in from your desktop, the Start menu or a folder (shortcuts work, including Steam and Epic game shortcuts), and the ones you picked last time are already there. Then he powers up in the middle of your screen: a trembling charge, a flash, a tall flame of layered golden spikes with bangs over his forehead, fire in his eyes, a glowing golden aura and white lightning crackling around him, with **ULTRA FOCUS** across the bottom (and a power-up sound, if your alert sounds are on). A focus session starts at the burst, unless you untick it.
 
 While Ultra focus is on, Pomo keeps the look on your timer and the apps you picked stay blocked the whole time, breaks included. There's no quick unlock: to get them back, power down, which takes a 10-second wait so it's a decision rather than a reflex. Ultra focus stays on if Pomo restarts.
 

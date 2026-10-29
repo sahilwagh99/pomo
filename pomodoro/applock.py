@@ -14,15 +14,21 @@ import time
 
 from PySide6.QtCore import QObject, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QCursor, QGuiApplication, QPainter, QPen
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget
 
-from .presence import APP_LABELS, foreground_window, window_info
+from .presence import APP_LABELS, foreground_window
 
 LOCK_POLL_MS = 700
 REBLOCK_S = 1.2        # the same window again this soon counts as the same try
 UNLOCK_WAIT_S = 10     # "Unlock until my break" waits this long first
 NEVER_LOCK = {"pomo", "explorer", "taskmgr", "searchhost", "searchapp", "startmenuexperiencehost",
               "shellexperiencehost", "lockapp", "applicationframehost", "systemsettings", "textinputhost"}
+
+
+BROWSE_FILTER = "Programs and shortcuts (*.exe *.lnk *.url)"
+NAMES: dict[str, str] = {}  # exe -> the name you know it by (from the shortcut you dragged in); see Settings.app_names
+HELPER_WORDS = ("unins", "crash", "redist", "vc_", "dxsetup", "setup", "install", "updater", "report", "helper",
+                "cefprocess", "webhelper", "launcherprereq", "easyanticheat", "battleye")
 
 
 def exe_key(name: str) -> str:
@@ -32,7 +38,118 @@ def exe_key(name: str) -> str:
 
 
 def label(exe: str) -> str:
-    return APP_LABELS.get(exe.lower(), exe[:1].upper() + exe[1:] if exe else "That app")
+    key = exe.lower()
+    return NAMES.get(key) or APP_LABELS.get(key, exe[:1].upper() + exe[1:] if exe else "That app")
+
+
+# ------------------------------------------------------------------ what a dropped file starts
+def resolve_app(path: str) -> list[tuple[str, str]]:
+    """The programs a file you dragged in (or picked) stands for: [(exe name, the name to show)].
+
+    An .exe is itself. A desktop or Start menu shortcut (.lnk) points at its program. A Steam or Epic
+    game's shortcut (.url) points at the game's own programs, found from the launcher's install records.
+    Empty when it can't tell.
+    """
+    name, ext = os.path.splitext(os.path.basename(path))
+    ext = ext.lower()
+    found: list[str] = []
+    if ext == ".exe":
+        found = [exe_key(path)]
+    elif ext == ".lnk":
+        from PySide6.QtCore import QFileInfo
+
+        target = QFileInfo(path).symLinkTarget()
+        if target.lower().endswith(".exe"):
+            found = [exe_key(target)]
+    elif ext == ".url":
+        url = _shortcut_url(path)
+        if url.startswith("steam://rungameid/"):
+            found = steam_game_exes(url.rsplit("/", 1)[-1].split("?")[0])
+        elif url.startswith("com.epicgames.launcher://apps/"):
+            found = epic_game_exes(url)
+    return [(exe, name) for exe in found if lockable(exe)]
+
+
+def _shortcut_url(path: str) -> str:
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                if line.strip().lower().startswith("url="):
+                    return line.strip()[4:]
+    except OSError:
+        pass
+    return ""
+
+
+def _game_exes(folder: str, limit: int = 4) -> list[str]:
+    """The programs in a game's folder that look like the game (not its installer or crash reporter)."""
+    out: list[str] = []
+    base_depth = folder.rstrip("\\/").count(os.sep)
+    for root, dirs, files in os.walk(folder):
+        if root.count(os.sep) - base_depth >= 3:
+            dirs[:] = []
+        for f in files:
+            low = f.lower()
+            if low.endswith(".exe") and not any(word in low for word in HELPER_WORDS):
+                out.append(exe_key(f))
+        if len(out) >= limit:
+            break
+    return list(dict.fromkeys(out))[:limit]
+
+
+def steam_game_exes(app_id: str) -> list[str]:
+    """A Steam game's programs, from its appmanifest in any of your Steam libraries."""
+    if sys.platform != "win32" or not app_id.isdigit():
+        return []
+    import re
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as key:
+            steam = winreg.QueryValueEx(key, "SteamPath")[0]
+    except OSError:
+        return []
+    libraries = [steam]
+    try:
+        with open(os.path.join(steam, "steamapps", "libraryfolders.vdf"), encoding="utf-8", errors="ignore") as fh:
+            libraries += [p.replace("\\\\", "\\") for p in re.findall(r'"path"\s+"([^"]+)"', fh.read())]
+    except OSError:
+        pass
+    for library in dict.fromkeys(libraries):
+        manifest = os.path.join(library, "steamapps", f"appmanifest_{app_id}.acf")
+        try:
+            with open(manifest, encoding="utf-8", errors="ignore") as fh:
+                match = re.search(r'"installdir"\s+"([^"]+)"', fh.read())
+        except OSError:
+            continue
+        if match:
+            return _game_exes(os.path.join(library, "steamapps", "common", match.group(1)))
+    return []
+
+
+def epic_game_exes(url: str) -> list[str]:
+    """An Epic Games game's program, from the launcher's install manifests."""
+    import json
+    from urllib.parse import unquote
+
+    app = unquote(url.split("apps/", 1)[-1].split("?")[0]).split(":")[-1]
+    folder = os.path.expandvars(r"%PROGRAMDATA%\Epic\EpicGamesLauncher\Data\Manifests")
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return []
+    for name in names:
+        if not name.endswith(".item"):
+            continue
+        try:
+            with open(os.path.join(folder, name), encoding="utf-8") as fh:
+                item = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if app and app in (item.get("AppName"), item.get("CatalogItemId"), item.get("MainGameAppName")):
+            exe = item.get("LaunchExecutable", "")
+            return [exe_key(exe)] if exe.lower().endswith(".exe") else []
+    return []
 
 
 def lockable(exe: str) -> bool:
@@ -54,27 +171,85 @@ def close(hwnd: int) -> None:
         ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
 
 
-def running_apps() -> list[tuple[str, str]]:
-    """(exe, a window title) for the apps with a window open now, to pick from."""
-    if sys.platform != "win32":
-        return []
-    import ctypes
-    from ctypes import wintypes
+class DropList(QListWidget):
+    """A list of apps you fill by dragging them in from the desktop, the Start menu or a folder.
 
-    user32 = ctypes.windll.user32
-    found: dict[str, str] = {}
-    own = os.getpid()
+    Each app is a checkable row (exe name in its data). dropped_unknown carries the names of files it
+    couldn't work out a program for, so the window can say so.
+    """
 
-    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    def each(hwnd, _lparam):
-        if user32.IsWindowVisible(hwnd) and user32.GetWindowTextLengthW(hwnd) > 0 and not user32.GetWindow(hwnd, 4):
-            exe, title, pid = window_info(hwnd)  # (GW_OWNER 4: skip owned popups)
-            if pid != own and lockable(exe) and exe_key(exe) not in found:
-                found[exe_key(exe)] = title
-        return True
+    dropped_unknown = Signal(list)
+    added = Signal(list)  # [(exe, name)] newly in the list
 
-    user32.EnumWindows(each, 0)
-    return sorted(found.items(), key=lambda pair: label(pair[0]).lower())
+    def __init__(self, hint: str, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.hint = hint
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QListWidget.DropOnly)
+
+    def add_app(self, exe: str, name: str = "", checked: bool = True) -> None:
+        key = exe_key(exe)
+        if not lockable(key):
+            return
+        if name:
+            NAMES[key] = name
+        for i in range(self.count()):
+            if self.item(i).data(Qt.UserRole) == key:
+                self.item(i).setCheckState(Qt.Checked if checked else Qt.Unchecked)
+                return
+        item = QListWidgetItem(f"{label(key)}  ({key}.exe)")
+        item.setData(Qt.UserRole, key)
+        item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+        item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+        self.addItem(item)
+
+    def add_paths(self, paths: list[str]) -> None:
+        unknown, added = [], []
+        for path in paths:
+            apps = resolve_app(path)
+            if not apps:
+                unknown.append(os.path.splitext(os.path.basename(path))[0])
+            for exe, name in apps:
+                self.add_app(exe, name)
+                added.append((exe, name))
+        if added:
+            self.added.emit(added)
+        if unknown:
+            self.dropped_unknown.emit(unknown)
+
+    def apps(self, checked_only: bool = True) -> list[str]:
+        return [self.item(i).data(Qt.UserRole) for i in range(self.count())
+                if not checked_only or self.item(i).checkState() == Qt.Checked]
+
+    def remove_selected(self) -> None:
+        for item in self.selectedItems():
+            self.takeItem(self.row(item))
+
+    def dragEnterEvent(self, event) -> None:
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:
+        paths = [url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()]
+        if paths:
+            event.acceptProposedAction()
+            self.add_paths(paths)
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if self.count() == 0:  # an empty list says what to do
+            p = QPainter(self.viewport())
+            p.setPen(self.palette().placeholderText().color())
+            p.drawText(self.viewport().rect().adjusted(16, 0, -16, 0), Qt.AlignCenter | Qt.TextWordWrap, self.hint)
+            p.end()
 
 
 class AppLock(QObject):

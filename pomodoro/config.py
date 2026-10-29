@@ -211,6 +211,7 @@ class Settings:
     ultra_on: bool = False          # Ultra focus: Pomo powers up, and ultra_apps stay locked until you power down
     ultra_apps: list[str] = field(default_factory=list)
     ultra_start_focus: bool = True  # going Ultra starts a focus session
+    app_names: dict = field(default_factory=dict)  # exe -> the name on the shortcut you dragged in
 
     # Pomo's room (see room.py)
     room: dict = field(default_factory=dict)                # spot -> the item you put there ("" = left empty)
@@ -327,6 +328,9 @@ class Settings:
         self.starter_min = _clip(self.starter_min, 3, 20)
         self.locked_apps = _exe_names(self.locked_apps)
         self.ultra_apps = _exe_names(self.ultra_apps)
+        keep = set(self.locked_apps) | set(self.ultra_apps)
+        self.app_names = {k: v.strip()[:60] for k, v in self.app_names.items()
+                          if isinstance(k, str) and isinstance(v, str) and v.strip() and k in keep}
         self.room = {k: v for k, v in self.room.items() if isinstance(k, str) and isinstance(v, str)}
         self.room_seen = [k for k in self.room_seen if isinstance(k, str)]
         self.stack_best = max(0, int(self.stack_best))

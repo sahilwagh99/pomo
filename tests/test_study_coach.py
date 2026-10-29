@@ -300,7 +300,7 @@ class UltraTests(unittest.TestCase):
 
     def test_settings_and_the_sound(self):
         s = Settings()
-        s.ultra_apps = ["D:\Games\Valorant.exe", "explorer", "VALORANT"]
+        s.ultra_apps = [r"D:\Games\Valorant.exe", "explorer", "VALORANT"]
         s.clamp()
         self.assertEqual(s.ultra_apps, ["valorant"])
         from pomodoro.sounds import render_wav
@@ -308,3 +308,65 @@ class UltraTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             length = render_wav("PowerUp", 60, Path(folder) / "power.wav")
         self.assertGreater(length, 2.0)
+
+
+class DragInTests(unittest.TestCase):
+    """Apps are dragged in from the desktop: programs, shortcuts, and Steam and Epic game shortcuts."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.folder = Path(self.dir.name)
+
+    def tearDown(self):
+        applock.NAMES.clear()
+        self.dir.cleanup()
+
+    def test_a_program_and_a_file_that_isnt_one(self):
+        exe = self.folder / "Valorant.exe"
+        exe.write_bytes(b"MZ")
+        doc = self.folder / "Notes.docx"
+        doc.write_bytes(b"x")
+        self.assertEqual(applock.resolve_app(str(exe)), [("valorant", "Valorant")])
+        self.assertEqual(applock.resolve_app(str(doc)), [])
+        self.assertEqual(applock.resolve_app(str(self.folder / "Pomo.exe")), [])  # never Pomo itself
+
+    def test_a_game_folder_skips_installers_and_crash_reporters(self):
+        game = self.folder / "Hollow Knight"
+        (game / "bin").mkdir(parents=True)
+        for name in ("hollow_knight.exe", "unins000.exe", "UnityCrashHandler64.exe", "bin/vc_redist.x64.exe"):
+            (game / name).write_bytes(b"MZ")
+        self.assertEqual(applock._game_exes(str(game)), ["hollow_knight"])
+
+    def test_an_epic_game_shortcut(self):
+        import os
+        from unittest import mock
+
+        manifests = self.folder / "Epic" / "EpicGamesLauncher" / "Data" / "Manifests"
+        manifests.mkdir(parents=True)
+        (manifests / "abc.item").write_text(json.dumps({"AppName": "Fortnite", "LaunchExecutable":
+                                                        "FortniteGame/Binaries/Win64/FortniteLauncher.exe"}))
+        url = self.folder / "Fortnite.url"
+        url.write_text("[InternetShortcut]\nURL=com.epicgames.launcher://apps/fn%3A4fe75%3AFortnite?action=launch\n")
+        with mock.patch.dict(os.environ, {"PROGRAMDATA": str(self.folder)}):
+            self.assertEqual(applock.resolve_app(str(url)), [("fortnitelauncher", "Fortnite")])
+
+    def test_the_drop_list(self):
+        exe = self.folder / "Discord.exe"
+        exe.write_bytes(b"MZ")
+        drops = applock.DropList("Drag apps here")
+        unknown, added = [], []
+        drops.dropped_unknown.connect(unknown.extend)
+        drops.added.connect(added.extend)
+        drops.add_paths([str(exe), str(self.folder / "readme.txt")])
+        self.assertEqual(drops.apps(), ["discord"])
+        self.assertEqual(unknown, ["readme"])
+        self.assertEqual(applock.label("discord"), "Discord")
+        drops.add_paths([str(exe)])  # twice: still one row
+        self.assertEqual(drops.count(), 1)
+
+    def test_names_are_kept_for_blocked_apps_only(self):
+        s = Settings()
+        s.ultra_apps = ["riotclientservices"]
+        s.app_names = {"riotclientservices": "VALORANT", "chrome": "Google Chrome", "x": 5}
+        s.clamp()
+        self.assertEqual(s.app_names, {"riotclientservices": "VALORANT"})

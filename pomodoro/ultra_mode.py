@@ -17,15 +17,13 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from . import ultra
-from .applock import exe_key, label, lockable, running_apps
+from .applock import BROWSE_FILTER, DropList, label
 from .pomo import Pomo
 from .theme import FONT_FAMILY
 from .winutil import set_dark_title_bar
@@ -49,6 +47,13 @@ def portrait(size: int) -> QWidget:
     widget.setFixedSize(int(size * 1.7), int(size * 2.15))
     widget.pomo.power_up(instant=True)
     return widget
+
+
+def _hint(text: str) -> QLabel:
+    label_ = QLabel(text)
+    label_.setWordWrap(True)
+    label_.setProperty("role", "muted")
+    return label_
 
 
 class UltraPicker(QDialog):
@@ -80,27 +85,33 @@ class UltraPicker(QDialog):
         lay.addLayout(top)
         lay.addSpacing(6)
 
-        self.list = QListWidget()
+        self.list = DropList("Drag games and apps here\nfrom your desktop, the Start menu or a folder")
         self.list.setMinimumHeight(190)
+        self.list.dropped_unknown.connect(self._unknown)
+        self.list.added.connect(lambda _apps: self.note.hide())
         lay.addWidget(self.list)
         chosen = list(s.ultra_apps)
         for exe in chosen:
-            self._add(exe, checked=True)
+            self.list.add_app(exe, checked=True)
         for exe in s.locked_apps:
-            self._add(exe, checked=not chosen)  # your app lock list, ticked the first time
-        for exe, _title in running_apps():
-            self._add(exe, checked=False)
-        if self.list.count() == 0:
-            empty = QListWidgetItem("Open the apps you want blocked, or browse for them below.")
-            empty.setFlags(Qt.NoItemFlags)
-            self.list.addItem(empty)
+            self.list.add_app(exe, checked=not chosen)  # your app lock list, ticked the first time
+        self.note = QLabel()
+        self.note.setWordWrap(True)
+        self.note.setProperty("role", "muted")
+        self.note.hide()
+        lay.addWidget(self.note)
         row = QHBoxLayout()
-        browse = QPushButton("Browse for an .exe…")
+        browse = QPushButton("Browse…")
         browse.setObjectName("ghost")
         browse.clicked.connect(self._browse)
+        remove = QPushButton("Remove")
+        remove.setObjectName("ghost")
+        remove.clicked.connect(self.list.remove_selected)
         row.addWidget(browse)
+        row.addWidget(remove)
         row.addStretch(1)
         lay.addLayout(row)
+        lay.addWidget(_hint("Shortcuts work, including Steam and Epic games. Untick an app to leave it out this time."))
         self.start_focus = QCheckBox("Start a focus session now")
         self.start_focus.setChecked(s.ultra_start_focus)
         lay.addWidget(self.start_focus)
@@ -124,33 +135,19 @@ class UltraPicker(QDialog):
         super().showEvent(event)
         set_dark_title_bar(self, self.ctrl.theme.dark)
 
-    def _add(self, exe: str, checked: bool) -> None:
-        key = exe_key(exe)
-        if not lockable(key):
-            return
-        for i in range(self.list.count()):
-            if self.list.item(i).data(Qt.UserRole) == key:
-                if checked:
-                    self.list.item(i).setCheckState(Qt.Checked)
-                return
-        item = QListWidgetItem(f"{label(key)}  ({key}.exe)")
-        item.setData(Qt.UserRole, key)
-        item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-        item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
-        self.list.addItem(item)
-
     def _browse(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Block an app", "", "Programs (*.exe)")
-        if path:
-            self._add(path, checked=True)
+        paths, _ = QFileDialog.getOpenFileNames(self, "Block apps", "", BROWSE_FILTER)
+        self.list.add_paths(paths)
+
+    def _unknown(self, names: list[str]) -> None:
+        self.note.setText(f"Pomo couldn't tell which program {', '.join(names)} starts. Try dragging the app's "
+                          ".exe from its folder instead.")
+        self.note.show()
+        self.layout().activate()
+        self.adjustSize()  # room for the note, below the list
 
     def chosen(self) -> list[str]:
-        out = []
-        for i in range(self.list.count()):
-            item = self.list.item(i)
-            if item.data(Qt.UserRole) and item.checkState() == Qt.Checked:
-                out.append(item.data(Qt.UserRole))
-        return out
+        return self.list.apps()
 
 
 class PowerDown(QDialog):

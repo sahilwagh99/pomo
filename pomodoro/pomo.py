@@ -480,6 +480,8 @@ class Pomo:
             p.translate(-c)
         if look.charge:  # trembling with power
             p.translate(math.sin(self.t * 85.0) * s * 0.018 * look.charge, 0)
+        if look.aura:
+            ultra.paint_rim(p, self._body_path(c.x(), c.y(), rx, ry), s, min(1.0, look.aura) * self.aura_strength)
         self._paint_body(p, c, rx, ry, s)
         self._paint_face(p, c, rx, ry, s)
         if look.hair:

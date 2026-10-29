@@ -17,9 +17,6 @@ from PySide6.QtWidgets import (
     QKeySequenceEdit,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
-    QMenu,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -241,18 +238,20 @@ class SettingsDialog(QDialog):
                               "asks if you want to keep going for a full one."))
         form.addRow("Study log", self.log_prompt)
 
+        from .applock import DropList
+
         self.app_lock = QCheckBox("Lock apps during focus (games, for example)")
-        self.locked_list = QListWidget()
-        self.locked_list.setFixedHeight(84)
+        self.locked_list = DropList("Drag games and apps here from your desktop")
+        self.locked_list.setFixedHeight(96)
+        self.locked_list.dropped_unknown.connect(
+            lambda names: QMessageBox.information(self, "App lock", f"Pomo couldn't tell which program "
+                                                  f"{', '.join(names)} starts. Try the app's .exe instead."))
         lock_buttons = QHBoxLayout()
-        add_running = QPushButton("Add a running app…")
-        add_running.clicked.connect(self._add_running_app)
-        browse = QPushButton("Browse for an .exe…")
+        browse = QPushButton("Browse…")
         browse.clicked.connect(self._browse_app)
         remove = QPushButton("Remove")
-        remove.clicked.connect(lambda: [self.locked_list.takeItem(self.locked_list.row(i))
-                                        for i in self.locked_list.selectedItems()])
-        for b in (add_running, browse, remove):
+        remove.clicked.connect(self.locked_list.remove_selected)
+        for b in (browse, remove):
             b.setCursor(Qt.PointingHandCursor)
             lock_buttons.addWidget(b)
         lock_buttons.addStretch(1)
@@ -273,34 +272,11 @@ class SettingsDialog(QDialog):
                               "your break takes a 10-second wait. Outside focus, nothing is locked."))
         return page
 
-    def _add_running_app(self) -> None:
-        from .applock import label, running_apps
-
-        menu = QMenu(self)
-        apps = running_apps()
-        for exe, title in apps:
-            act = menu.addAction(f"{label(exe)}  ({exe}.exe)", lambda e=exe: self._add_locked(e))
-            act.setToolTip(title)
-        if not apps:
-            menu.addAction("No other apps are open", lambda: None).setEnabled(False)
-        menu.exec(self.cursor().pos())
-
     def _browse_app(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Lock an app", "", "Programs (*.exe)")
-        if path:
-            self._add_locked(path)
+        from .applock import BROWSE_FILTER
 
-    def _add_locked(self, name: str) -> None:
-        from .applock import exe_key, label, lockable
-
-        key = exe_key(name)
-        if not lockable(key):
-            return
-        existing = {self.locked_list.item(i).data(Qt.UserRole) for i in range(self.locked_list.count())}
-        if key not in existing:
-            item = QListWidgetItem(f"{label(key)}  ({key}.exe)")
-            item.setData(Qt.UserRole, key)
-            self.locked_list.addItem(item)
+        paths, _ = QFileDialog.getOpenFileNames(self, "Lock apps", "", BROWSE_FILTER)
+        self.locked_list.add_paths(paths)
 
     def _keys_tab(self) -> QWidget:
         page, form = _form()
@@ -894,7 +870,7 @@ class SettingsDialog(QDialog):
         self.app_lock.setChecked(s.app_lock)
         self.locked_list.clear()
         for exe in s.locked_apps:
-            self._add_locked(exe)
+            self.locked_list.add_app(exe)
         self.lock_strict.setChecked(s.lock_strict)
         self.locked_list.parentWidget().setEnabled(s.app_lock)
         self.lock_strict.setEnabled(s.app_lock)
@@ -980,7 +956,9 @@ class SettingsDialog(QDialog):
         s.starter_min = self.starter_min.value()
         s.log_prompt = self.log_prompt.isChecked()
         s.app_lock = self.app_lock.isChecked()
-        s.locked_apps = [self.locked_list.item(i).data(Qt.UserRole) for i in range(self.locked_list.count())]
+        s.locked_apps = self.locked_list.apps()
+        from .applock import NAMES
+        s.app_names = {**s.app_names, **{k: v for k, v in NAMES.items() if k in s.locked_apps}}
         s.lock_strict = self.lock_strict.isChecked()
         s.agent_reviews = self.agent_reviews.isChecked()
         s.taskbar_button = self.taskbar.isChecked()

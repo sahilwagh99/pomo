@@ -109,6 +109,7 @@ class PomoApp(QObject):
         self.away = AwayWatcher(parent=self)
         self.guard = FocusGuard(self.storage, self.settings, parent=self)
         self.applock = AppLock(self.settings, parent=self)
+        applock.NAMES.update(self.settings.app_names)  # the names on the shortcuts you dragged in
         self.lock_card = None
         self.hotkeys = GlobalHotkeys(qapp, self)
         self.hotkey_failures: dict[str, str] = {}
@@ -530,6 +531,7 @@ class PomoApp(QObject):
             return
         s.ultra_apps = picker.chosen()
         s.ultra_start_focus = picker.start_focus.isChecked()
+        s.app_names = {**s.app_names, **{k: v for k, v in applock.NAMES.items() if k in s.ultra_apps}}
         s.ultra_on = True
         s.clamp()
         self.save_settings()
@@ -565,7 +567,7 @@ class PomoApp(QObject):
         on = self.settings.ultra_on
         for view in (self.island, self.orb):
             pomo = view.pomo
-            pomo.aura_strength, pomo.hair_scale = 0.8, 0.8
+            pomo.aura_strength, pomo.hair_scale = 0.8, 0.7
             if on and not pomo.ultra:
                 pomo.power_up(instant=not animate)
             elif not on and pomo.ultra:
