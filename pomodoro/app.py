@@ -13,12 +13,13 @@ from PySide6.QtGui import QColor, QIcon, QImage
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QSystemTrayIcon
 
 from . import APP_NAME, APP_VERSION, agent_hooks, audio, claude_hooks, garden, insights, keystore, media, planner
-from . import providers, quests, reviews, room, soundscapes, updater
+from . import applock, providers, quests, reviews, room, soundscapes, studylog, studypath, updater
 from .agents import EDIT_TOOLS, AgentHub, Approval
 from .config import FOCUS_SOUNDS, HOTKEYS, OUTFITS, Settings
 from .hotkeys import GlobalHotkeys
 from .hotkeys import parse as parse_hotkey
 from .pacing import AgentPacer, finished_detail
+from .applock import AppLock
 from .presence import AwayWatcher, FocusGuard, idle_seconds
 from .pomo import SLEEPY_AFTER
 from .engine import Mode, State, TimerEngine
@@ -26,7 +27,7 @@ from .icons import app_icon, render_tray_icon
 from .island import IslandWidget
 from .notifier import Notifier
 from .orb import OrbWidget
-from .stats import fmt_clock, fmt_day, plural
+from .stats import fmt_clock, fmt_day, plural, streaks
 from .storage import Storage
 from .theme import THEMES, build_palette, build_qss, ensure_qss_assets, mode_color, theme_for
 from .toast import ToastCard
@@ -102,9 +103,13 @@ class PomoApp(QObject):
         self.agent_card = None
         self.park_card = None
         self.thoughts_window = None
+        self.path_window = None
+        self.study_log = None
         self.pacer = AgentPacer(self, parent=self)
         self.away = AwayWatcher(parent=self)
         self.guard = FocusGuard(self.storage, self.settings, parent=self)
+        self.applock = AppLock(self.settings, parent=self)
+        self.lock_card = None
         self.hotkeys = GlobalHotkeys(qapp, self)
         self.hotkey_failures: dict[str, str] = {}
         self.lifetime = self.storage.lifetime_pomodoros()
@@ -136,6 +141,11 @@ class PomoApp(QObject):
         self.taskbar = None
         self._taskbar_dismissed = False
         self._fresh_review: dict | None = None
+        # study coach
+        self._path_task = ""             # the task Pomo took from your path (so the next step can replace it)
+        self._starter_pending = False    # a "just 10 minutes" session is starting
+        self._starter = False            # the focus session running is one
+        self._step_news = None           # (milestone, step, the step) a finished session counted toward
         # updates from GitHub
         self.update_mode = updater.install_mode()
         self._update_worker = None
@@ -199,6 +209,7 @@ class PomoApp(QObject):
         self.away.went_away.connect(self._on_went_away)
         self.away.came_back.connect(self._on_came_back)
         self.guard.nudge.connect(self._on_nudge)
+        self.applock.blocked.connect(self._on_app_blocked)
         self.hotkeys.triggered.connect(self._on_hotkey)
         qapp.screenRemoved.connect(lambda *_: QTimer.singleShot(400, self.view.ensure_on_screen))
         qapp.primaryScreenChanged.connect(lambda *_: QTimer.singleShot(400, self.view.ensure_on_screen))
@@ -214,6 +225,7 @@ class PomoApp(QObject):
         QTimer.singleShot(1200, self._sync_taskbar)  # after the timer window, so it doesn't steal the first look
         QTimer.singleShot(2000, self._check_quests)  # today's history may already have met a quest
         QTimer.singleShot(2500, self._after_update)  # just updated? say so
+        QTimer.singleShot(4000, self._maybe_morning_card)  # today's step
         QTimer.singleShot(updater.FIRST_CHECK_MS, self.check_for_updates)
         self._update_timer.start()
         if not self.settings.welcomed:
@@ -292,6 +304,207 @@ class PomoApp(QObject):
         self.save_settings()
         self.view.pomo.outfit = key
         self.view.pomo.hop(1.8)  # a little twirl to show it off
+
+    # ------------------------------------------------------------ study coach
+    def path_changed(self, path: dict | None = None) -> None:
+        """The path was made, edited or ticked: save it, and today's step becomes the task when nothing else is."""
+        s, e = self.settings, self.engine
+        if path is not None:
+            s.study_path = path
+        s.study_path = studypath.clean(s.study_path)
+        self.save_settings()
+        nxt = studypath.next_step(s.study_path)
+        idle = e.state not in (State.RUNNING, State.PAUSED)
+        if nxt is not None and idle and not s.task_queue and (not e.task or e.task == self._path_task):
+            self._use_step(nxt[2]["title"])
+        self._refresh_study()
+
+    def _use_step(self, title: str) -> None:
+        self.set_task(title)
+        self._path_task = title
+
+    def _refresh_study(self) -> None:
+        if self.path_window is not None and self.path_window.isVisible():
+            self.path_window.refresh()
+        if self.dashboard is not None and self.dashboard.isVisible():
+            self.dashboard.refresh_study()
+
+    def complete_step(self, mi: int, si: int, done: bool = True) -> None:
+        """Tick a step off your path (or back on)."""
+        path = self.settings.study_path
+        try:
+            step = path["milestones"][mi]["steps"][si]
+        except (KeyError, IndexError):
+            return
+        milestone_done = studypath.set_done(path, mi, si, done, date.today())
+        if self.engine.task == step["title"]:
+            self._path_task = step["title"]  # so the next step takes over as the task
+        self.path_changed()
+        if not done:
+            return
+        self.quest_event("path_step", announce=False)
+        self.view.celebrate(big=milestone_done)
+        nxt = studypath.next_step(path)
+        s = self.settings
+        if s.popup_card and self.view.isVisible() and not self._approval_on_screen() and not self.toast.showing:
+            if milestone_done:
+                title = f"Milestone done: {path['milestones'][mi]['title']}!"
+            else:
+                title = "Step done!"
+            body = f"Next on your path: {nxt[2]['title']}." if nxt else "That was the last step on your path. Wow!"
+            news = self._quest_news(self._take_quest_news())[0]
+            if news:
+                body += f"\n{news}"
+            actions = ([(f"Start with {s.starter_min} minutes", lambda: self.start_step(nxt[0], nxt[1], True), True),
+                        ("Later", lambda: None, False)] if nxt else [("Yay!", lambda: None, True)])
+            self.toast.show_message(title, body, mode_color(self.theme, s, "long"), actions,
+                                    self.view.anchor_rect_global(), timeout_ms=20000,
+                                    extras=[("My path", self.open_path)])
+        else:
+            QTimer.singleShot(700, self._flush_quest_news)
+
+    def start_step(self, mi: int, si: int, small: bool = False) -> None:
+        """Work on a step now: it becomes the task, and a session starts (a short starter one if small)."""
+        try:
+            title = self.settings.study_path["milestones"][mi]["steps"][si]["title"]
+        except (KeyError, IndexError):
+            return
+        self._use_step(title)
+        if small:
+            self.start_small()
+        else:
+            self._start_focus_now()
+
+    def start_small(self) -> None:
+        """"Just 10 minutes": a short focus session, because starting is the hard part."""
+        e = self.engine
+        if e.mode is Mode.FOCUS and e.state is State.RUNNING:
+            return
+        if e.mode is not Mode.FOCUS or e.state is State.PAUSED:
+            e.switch_mode(Mode.FOCUS)
+        e.set_duration(self.settings.starter_min * 60)
+        self._starter_pending = True
+        e.start()
+
+    def _keep_going(self) -> None:
+        """After a starter session: straight into a full one, same task."""
+        e = self.engine
+        if e.mode is not Mode.FOCUS or e.state in (State.RUNNING, State.PAUSED):
+            e.switch_mode(Mode.FOCUS)
+        e.start()
+
+    def _maybe_morning_card(self) -> None:
+        """The first card of the day: today's step and a small way to start (or, now and then, an offer of a path)."""
+        s, e = self.settings, self.engine
+        now = datetime.now()
+        today = now.date()
+        if not s.morning_card or s.morning_date == today.isoformat() or now.hour < 5:
+            return
+        if e.state is State.RUNNING or self.toast.showing or self._approval_on_screen():
+            return
+        if not (s.popup_card and self.view.isVisible()) or idle_seconds() > updater.AWAY_S:
+            return
+        path = s.study_path
+        first_time = not s.morning_date
+        s.morning_date = today.isoformat()
+        self.save_settings()
+        accent = mode_color(self.theme, s, "focus")
+        anchor = self.view.anchor_rect_global()
+        current, _best = streaks(self.storage.sessions(since=today - timedelta(days=60)), today)
+        streak = f" {current} days of focus in a row: keep it going!" if current >= 2 else ""
+        from .ai import PATH_START_PROMPT
+
+        if path and studypath.review_due(path, today):
+            done, total = studypath.progress(path)
+            self.view.pomo.hello()
+            self.toast.show_message(
+                f"{path['weeks']} weeks on your path",
+                f"“{path['goal']}”: {done} of {plural(total, 'step')} done. Keep going for "
+                f"{studypath.EXTEND_WEEKS} more weeks, or look back with Ask Pomo and maybe change direction?",
+                accent, [("Keep going", self._keep_path, True), ("Look back", lambda: self._rethink_path(), False)],
+                anchor, timeout_ms=60000, extras=[("My path", self.open_path)])
+            return
+        nxt = studypath.next_step(path) if path else None
+        hello = "Good morning!" if now.hour < 12 else "Hello again!"
+        if nxt is not None:
+            mi, si, st = nxt
+            week, weeks = studypath.week_of(path, today)
+            self.view.pomo.hello()
+            self.toast.show_message(
+                f"{hello} Today's step:",
+                f"{studypath.step_label(st)}\nWeek {min(week, weeks)} of {weeks} on “{path['goal']}”.{streak}\n"
+                f"Phone in another room? Then start with just {s.starter_min} minutes.",
+                accent, [(f"Start {s.starter_min} minutes", lambda: self.start_step(mi, si, True), True),
+                         ("Later", lambda: None, False)],
+                anchor, timeout_ms=60000,
+                extras=[("Full session", lambda: self.start_step(mi, si, False)), ("My path", self.open_path)])
+        elif not path and (first_time or today.weekday() == 0):  # no path: offer one now and then, not daily
+            self.toast.show_message(
+                f"{hello} What will you work on?",
+                "Not sure where to start? Ask Pomo to make you a path: one goal, small steps, and you'll always "
+                f"know what's next.{streak}",
+                accent, [("Make my path", lambda: self.ask_pomo(PATH_START_PROMPT), True), ("Not now", lambda: None, False)],
+                anchor, timeout_ms=45000, extras=[(f"Just {s.starter_min} minutes", self.start_small)])
+
+    def _keep_path(self) -> None:
+        studypath.keep_going(self.settings.study_path, date.today())
+        self.path_changed()
+
+    def _rethink_path(self) -> None:
+        from .ai import PATH_RETHINK_PROMPT
+
+        studypath.snooze_review(self.settings.study_path, date.today())
+        self.path_changed()
+        self.ask_pomo(PATH_RETHINK_PROMPT)
+
+    def _maybe_log_prompt(self) -> None:
+        """In the evening, after a day with some focus: a few sentences in English about what you learned."""
+        s, e = self.settings, self.engine
+        now = datetime.now()
+        today = now.date()
+        if not s.log_prompt or s.log_prompt_date == today.isoformat() or now.hour < (s.review_hour or 19):
+            return
+        if self.today_count < 1 or e.state is State.RUNNING or self.toast.showing or self._approval_on_screen():
+            return
+        if not (s.popup_card and self.view.isVisible()) or idle_seconds() > updater.AWAY_S:
+            return
+        s.log_prompt_date = today.isoformat()
+        self.save_settings()
+        if today in self.storage.log_days():
+            return  # already written
+        days = self.storage.log_days()
+        n = studylog.streak(days, today)
+        streak = f" Keep your {n}-day streak going." if n else ""
+        self.toast.show_message(
+            "Study log",
+            f"Write two or three sentences in English about what you learned today. A little every day is how "
+            f"your English and your memory grow.{streak}",
+            mode_color(self.theme, s, "long"), [("Write it", self.open_study_log, True), ("Not today", lambda: None, False)],
+            self.view.anchor_rect_global(), timeout_ms=45000)
+
+    def add_study_log(self, text: str):
+        entry = self.storage.add_log(text)
+        self.quest_event("log")
+        self._refresh_study()
+        return entry
+
+    def open_path(self) -> None:
+        if self.path_window is None:
+            from .path_window import PathWindow
+            self.path_window = PathWindow(self)
+        self._show_window(self.path_window)
+
+    def open_study_log(self) -> None:
+        if self.study_log is None:
+            self.study_log = studylog.StudyLogWindow(self)
+        self._show_window(self.study_log)
+
+    @staticmethod
+    def _show_window(window) -> None:
+        window.show()
+        window.setWindowState(window.windowState() & ~Qt.WindowMinimized)
+        window.raise_()
+        window.activateWindow()
 
     # ------------------------------------------------------------ Pomo's room
     def room_progress(self) -> tuple[float, int, int, list[str]]:
@@ -840,6 +1053,16 @@ class PomoApp(QObject):
         _action(menu, "Ask Pomo…", self.open_chat)
         talk = self.settings.hotkey_talk if self.settings.hotkeys_on and self.settings.hotkey_talk else ""
         _action(menu, f"Talk to Pomo\t{talk}" if talk else "Talk to Pomo", lambda: self.start_talk(None))
+        study = styled_menu(menu.addMenu("Study"))
+        nxt = studypath.next_step(self.settings.study_path)
+        if nxt is not None:
+            _action(study, f"Today: {studypath.step_label(nxt[2])}", lambda: None, enabled=False)
+            _action(study, f"Start today's step with just {self.settings.starter_min} minutes",
+                    lambda: self.start_step(nxt[0], nxt[1], small=True))
+        else:
+            _action(study, f"Start with just {self.settings.starter_min} minutes", self.start_small)
+        _action(study, "My path…", self.open_path)
+        _action(study, "Study log…", self.open_study_log)
         _action(menu, "Play a game…", self.open_game)
         _action(menu, "Breathe with Pomo…", self.open_breathe)
         sound = self.settings.focus_sound
@@ -956,6 +1179,7 @@ class PomoApp(QObject):
             if review is not None:  # that review is done
                 reviews.remove(s, review)
                 quests.count(s, "review")
+            self._step_news = studypath.count_session(s.study_path, record.task) if s.study_path else None
             self.save_settings()
 
     def _on_engine_changed(self) -> None:
@@ -974,6 +1198,7 @@ class PomoApp(QObject):
             elif prev_mode is not Mode.FOCUS or prev_state in (State.IDLE, State.FINISHED):
                 self._focus_paused = False  # a fresh session, not a resumed one
                 self._cheered = set()
+                self._starter, self._starter_pending = self._starter_pending, False
                 QTimer.singleShot(0, self._offer_project_task)
         if not focusing and self.whisper is not None:
             self.whisper.fade_out()
@@ -1080,6 +1305,26 @@ class PomoApp(QObject):
             body += f"\n{room_text}"
             if len(extras) < 3 and not any(x[0] == "Wear it" for x in extras):  # the card has room for three
                 extras.insert(0, ("See room", self.open_room))
+        starter = finished is Mode.FOCUS and self._starter
+        if starter:  # "just 10 minutes" done: the hard part's over, so invite a full session
+            self._starter = False
+            title = "You started!"
+            first, _sep, rest = body.partition("\n")
+            body = (f"{s.starter_min} minutes done. Starting is the hardest part, and you did it. Keep going for a "
+                    f"full {s.focus_min}-minute pomodoro?" + (f"\n{rest}" if rest else ""))
+        if finished is Mode.FOCUS:
+            locked = applock.tries_text(self.applock.take_tries())
+            if locked:
+                body += f"\n{locked}"
+        step_news, self._step_news = (self._step_news if finished is Mode.FOCUS else None), None
+        if step_news is not None:
+            mi, si, st = step_news
+            n, spent = st["pomodoros"], st["spent"]
+            if spent >= n and not st["done"]:
+                body += f"\nPath: {plural(spent, 'pomodoro')} on “{st['title']}”. Is it done?"
+                extras.insert(0, ("Step done", lambda mi=mi, si=si: self.complete_step(mi, si)))
+            else:
+                body += f"\nPath: {min(spent, n)} of {n} pomodoros on this step."
         if finished is Mode.FOCUS and s.break_card and upcoming.is_break:
             extras.append(("Breathe", self.open_breathe))
             waiting = len(self.storage.thoughts())
@@ -1114,9 +1359,12 @@ class PomoApp(QObject):
                            ("Start here", e.start, False)]
             else:
                 actions = [(f"Start {upcoming.label.lower()}", e.start, True), ("Skip", e.skip, False)]
+            if starter:
+                actions = [("Keep going", self._keep_going, True),
+                           ("Enjoy the break", lambda: None, False) if auto_started else ("Take a break", e.start, False)]
             accent = mode_color(self.theme, s, upcoming.value)
             self.toast.show_message(title, body, accent, actions, view.anchor_rect_global(),
-                                    timeout_ms=30000 if rate or extras else 20000, rate=rate, extras=extras)
+                                    timeout_ms=30000 if rate or extras else 20000, rate=rate, extras=extras[:3])
 
     # ----------------------------------------------------------- where was I?
     @staticmethod
@@ -1212,7 +1460,13 @@ class PomoApp(QObject):
     def _offer_project_task(self) -> None:
         """A focus session started without a task: name it after the project in your editor (asking first)."""
         s, e = self.settings, self.engine
-        if s.auto_task == "off" or not (e.mode is Mode.FOCUS and e.state is State.RUNNING):
+        if not (e.mode is Mode.FOCUS and e.state is State.RUNNING):
+            return
+        nxt = studypath.next_step(s.study_path)
+        if nxt is not None and not e.task and not s.task_queue:
+            self._use_step(nxt[2]["title"])  # no task? today's step: that's what the path is for
+            return
+        if s.auto_task == "off":
             return
         if e.task and e.task != self._auto_task:
             return  # you named it yourself
@@ -1275,7 +1529,8 @@ class PomoApp(QObject):
         if s.quest_day == date.today().isoformat() and s.quests:
             return False
         self._quest_pending = ([], [])
-        return quests.roll_over(s, datetime.now(), self._uses_agents())
+        studies = bool(s.study_path) or bool(self.storage.log_days())
+        return quests.roll_over(s, datetime.now(), self._uses_agents(), studies)
 
     def _take_quest_news(self) -> tuple[list, list]:
         news, self._quest_pending = self._quest_pending, ([], [])
@@ -1679,6 +1934,8 @@ class PomoApp(QObject):
                 accent = mode_color(self.theme, self.settings, "focus")
                 actions = [("Start focus", self._start_focus_now, True), ("Later", lambda: None, False)]
                 self.toast.show_message(title, body, accent, actions, self.view.anchor_rect_global())
+        self._maybe_morning_card()
+        self._maybe_log_prompt()
         self._maybe_offer_review()
         if self.settings.quests_on and self._roll_quests():
             self.save_settings()
@@ -1870,7 +2127,20 @@ class PomoApp(QObject):
         e = self.engine
         focusing = e.mode is Mode.FOCUS and e.state is State.RUNNING
         self.guard.set_active(focusing)
+        self.applock.set_active(focusing)
+        if not focusing and self.lock_card is not None:
+            self.lock_card.hide()
         self.away.configure(focusing, self.settings.away_after_min * 60)
+
+    def _on_app_blocked(self, hwnd: int, exe: str) -> None:
+        """A locked app came to the front during focus: put it away and say why."""
+        strict = self.settings.lock_strict
+        (applock.close if strict else applock.minimize)(hwnd)
+        if self.lock_card is None:
+            self.lock_card = applock.LockCard(self)
+        self.lock_card.show_for(hwnd, exe, closed=strict)
+        if self.view.isVisible():
+            self.view.pomo.side_eye()
 
     def _on_went_away(self, idle: float) -> None:
         e = self.engine

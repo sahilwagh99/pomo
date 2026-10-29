@@ -6,6 +6,9 @@ the current task's count goes down and the next task takes over.
 """
 from __future__ import annotations
 
+from datetime import date
+
+from . import studypath
 from .engine import Mode, State
 from .stats import plural
 
@@ -78,6 +81,57 @@ TOOLS = [
                 "long_break_minutes": {"type": "integer"},
             },
             "required": ["focus_minutes", "short_break_minutes", "long_break_minutes"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "set_path",
+        "description": "Make (or replace) the user's study path: one goal to try for a number of weeks, in "
+                       "milestones of concrete steps. Each step should take 1 to 3 focus sessions and start "
+                       "easy. Only use it once the user has told you what they want, or agreed to your path.",
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string", "description": "What they're working toward, under 80 characters"},
+                "why": {"type": "string", "description": "Why it matters to them, in their words (may be empty)"},
+                "weeks": {"type": "integer", "description": "How long to try it before deciding again (4-12)"},
+                "milestones": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "steps": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "title": {"type": "string", "description": "A concrete step, under 60 characters"},
+                                        "pomodoros": {"type": "integer", "description": "Focus sessions it takes (1-6)"},
+                                    },
+                                    "required": ["title", "pomodoros"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                        },
+                        "required": ["title", "steps"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["goal", "why", "weeks", "milestones"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "complete_step",
+        "description": "Mark a step on the user's study path as done, when they say they finished it.",
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {"step": {"type": "string", "description": "The step's title, as on the path"}},
+            "required": ["step"],
             "additionalProperties": False,
         },
     },
@@ -200,4 +254,30 @@ def run_tool(ctrl, name: str, args) -> tuple[str, str]:
             return "Nothing changed.", ""
         ctrl.apply_settings(new)
         return "Lengths set: " + ", ".join(changed) + ".", "Set " + ", ".join(changed)
+    if name == "set_path":
+        goal = _text(args, "goal", 120)
+        why = args.get("why") if isinstance(args.get("why"), str) else ""
+        weeks = _int(args, "weeks", 1, 52)
+        milestones = args.get("milestones")
+        if not isinstance(milestones, list) or not milestones:
+            raise ToolError("milestones must be a non-empty list")
+        for m in milestones:
+            if not isinstance(m, dict) or not isinstance(m.get("steps"), list) or not m["steps"]:
+                raise ToolError("each milestone needs a title and a non-empty list of steps")
+        path = studypath.make(goal, why, weeks, milestones, date.today())
+        done, total = studypath.progress(path)
+        if not total:
+            raise ToolError("the path needs at least one step with a title")
+        ctrl.path_changed(path)
+        first = studypath.next_step(path)
+        return (f"Path set: \"{path['goal']}\" for {path['weeks']} weeks, {len(path['milestones'])} milestones, "
+                f"{total} steps. Today's step: {first[2]['title']}.",
+                f"Made your path: {plural(len(path['milestones']), 'milestone')}, {plural(total, 'step')}")
+    if name == "complete_step":
+        title = _text(args, "step", 120)
+        found = studypath.find_step(s.study_path, title)
+        if found is None:
+            raise ToolError(f"no step on the path that isn't done yet is called {title!r}")
+        ctrl.complete_step(found[0], found[1])
+        return f"Marked done: {found[2]['title']}.", f"Done: {found[2]['title']}"
     raise ToolError(f"there is no tool called {name}")

@@ -229,7 +229,8 @@ class ChatWindow(QWidget):
             chip = QPushButton(label)
             chip.setCursor(Qt.PointingHandCursor)
             chip.setStyleSheet("QPushButton { padding: 4px 10px; border-radius: 12px; font-size: 12px; }")
-            chip.clicked.connect(lambda _=False, k=key: self.send(quick_prompt(k, self.ctrl.engine.task)))
+            chip.clicked.connect(lambda _=False, k=key: self.send(
+                quick_prompt(k, self.ctrl.engine.task, has_path=bool(self.ctrl.settings.study_path))))
             chips.addWidget(chip)
             self.chip_buttons.append(chip)
         chips.addStretch(1)

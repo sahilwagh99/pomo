@@ -30,11 +30,14 @@ Help the user plan focused work, reflect on their focus habits and keep their mo
 
 When planning, break the work into steps that each fit one focus session at the user's focus length, as a numbered list, and say which one to start now.
 
+Many users study on their own and feel unsure what to learn next, and some are learning English. When the user isn't sure which direction to take, help them choose one direction to try for a fixed number of weeks (an experiment they can change later, not a life decision). Ask two or three short questions first (what they study, what they want it to lead to, how much time they have each day), then make their path with set_path: 3 to 6 milestones, each with concrete steps that take 1 to 3 focus sessions, starting easy so the first step feels doable today. When they say they finished a step, mark it with complete_step. Write simply and clearly, in short sentences.
+
 You can also act on the timer with your tools: start a focus session or a break, set the current task, line up a plan of tasks (each with a number of pomodoros), and change the default session lengths. Use them when the user asks you to set something up ("45 minutes on the thesis, then 10 off, three rounds") or agrees to your suggestion, then say in a sentence what you did. Don't start or change anything they didn't ask for.
 
-After each user message you get a Pomo context message with live facts: the time, the timer, today's and this week's focus stats, the current task and plan, thoughts they parked during focus, how their sessions felt, and what their coding agents (Claude Code sessions) did today. Use it for facts and never invent numbers. If something you need isn't there, say so or ask."""
+After each user message you get a Pomo context message with live facts: the time, the timer, today's and this week's focus stats, the current task and plan, their study path and today's step, their study log, thoughts they parked during focus, how their sessions felt, and what their coding agents (Claude Code sessions) did today. Use it for facts and never invent numbers. If something you need isn't there, say so or ask."""
 
 QUICK_ACTIONS = (
+    ("path", "My path"),
     ("plan", "Plan my task"),
     ("review", "My week"),
     ("day", "My day"),
@@ -43,7 +46,9 @@ QUICK_ACTIONS = (
 )
 
 
-def quick_prompt(action: str, task: str) -> str:
+def quick_prompt(action: str, task: str, has_path: bool = False) -> str:
+    if action == "path":
+        return (PATH_CHECK_PROMPT if has_path else PATH_START_PROMPT)
     if action == "plan":
         return (f"Help me plan \"{task}\" into pomodoros for today." if task
                 else "Help me plan my next few pomodoros. Ask me what I'm working on if you need to.")
@@ -54,6 +59,13 @@ def quick_prompt(action: str, task: str) -> str:
         "agents": "Summarize what my coding agents did today, by project, and anything that still needs me.",
         "pep": "Give me a short pep talk for my next focus session.",
     }[action]
+
+
+PATH_START_PROMPT = ("I'm not sure what to study or which direction to take. Help me choose one direction to try "
+                     "for 8 weeks. Ask me a few short questions first, then make my path.")
+PATH_CHECK_PROMPT = "Look at my study path. Am I on track? Help me get started on today's step."
+PATH_RETHINK_PROMPT = ("My path's weeks are up. Help me look back at how it went and decide: keep going, adjust "
+                       "it, or try a different direction. Ask me how it felt first.")
 
 
 def build_context(ctrl, now: datetime | None = None) -> str:
@@ -92,6 +104,10 @@ def build_context(ctrl, now: datetime | None = None) -> str:
 
     plan = plan_text(s)
     lines.append(f"Plan: {plan}." if plan else "Plan: none lined up.")
+    from . import studypath, studylog
+
+    lines.append(studypath.summary(s.study_path, day))
+    lines.append(studylog.summary(ctrl.storage, day))
     ratings = rating_counts(records, day - timedelta(days=6), day)
     if any(ratings.values()):
         lines.append(f"How sessions felt (last 7 days): {ratings[3]} great, {ratings[2]} okay, {ratings[1]} tough.")
@@ -150,12 +166,14 @@ class ChatWorker(QThread):
     refused = Signal()
     failed = Signal(str)
 
-    def __init__(self, api_key: str | None, model: str, messages: list, parent=None, tools: list | None = None):
+    def __init__(self, api_key: str | None, model: str, messages: list, parent=None, tools: list | None = None,
+                 system: str = ""):
         super().__init__(parent)
         self.api_key = api_key
         self.model = model
         self.messages = list(messages)
         self.tools = tools
+        self.system = system or SYSTEM_PROMPT
         self._cancel = False
 
     def cancel(self) -> None:
@@ -169,7 +187,7 @@ class ChatWorker(QThread):
             return
         try:
             client = anthropic.Anthropic(api_key=self.api_key) if self.api_key else anthropic.Anthropic()
-            kwargs = dict(model=self.model, max_tokens=64000, system=SYSTEM_PROMPT, messages=self.messages,
+            kwargs = dict(model=self.model, max_tokens=64000, system=self.system, messages=self.messages,
                           cache_control={"type": "ephemeral"})
             if self.model in CURRENT_CLAUDE:
                 kwargs["output_config"] = {"effort": "medium"}
@@ -274,13 +292,14 @@ class CompatChatWorker(QThread):
     failed = Signal(str)
 
     def __init__(self, provider_key: str, api_key: str | None, model: str, messages: list, parent=None,
-                 tools: list | None = None, transport=None):
+                 tools: list | None = None, transport=None, system: str = ""):
         super().__init__(parent)
         self.provider = provider(provider_key)
         self.api_key = api_key
         self.model = model
         self.messages = list(messages)
         self.tools = tools
+        self.system = system or SYSTEM_PROMPT
         self.transport = transport  # tests pass a mock transport
         self._cancel = False
 
@@ -295,7 +314,7 @@ class CompatChatWorker(QThread):
             self.failed.emit(f"No {p.short} API key yet. Tap **Key** above to add yours.")
             return
         body = {"model": self.model, "stream": True,
-                "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + self.messages}
+                "messages": [{"role": "system", "content": self.system}] + self.messages}
         if self.tools:
             body["tools"] = self.tools
         headers = {"Authorization": f"Bearer {self.api_key}"}
@@ -376,10 +395,14 @@ def tool_results_messages(provider_key: str, results: list[tuple[str, str, bool]
             for cid, text, err in results]
 
 
-def make_worker(provider_key: str, api_key: str | None, model: str, messages: list, parent=None):
+def make_worker(provider_key: str, api_key: str | None, model: str, messages: list, parent=None,
+                tools: bool = True, system: str = ""):
+    """A worker for one reply. tools=False and a system prompt of its own make it a one-off helper
+    (the English tutor) rather than Ask Pomo."""
     if provider(provider_key).kind == "anthropic":
-        return ChatWorker(api_key, model, messages, parent, tools=TOOLS)
-    return CompatChatWorker(provider_key, api_key, model, messages, parent, tools=compat_tools(provider_key))
+        return ChatWorker(api_key, model, messages, parent, tools=TOOLS if tools else None, system=system)
+    return CompatChatWorker(provider_key, api_key, model, messages, parent,
+                            tools=compat_tools(provider_key) if tools else None, system=system)
 
 
 KEYS_URL = PROVIDERS["anthropic"].keys_url

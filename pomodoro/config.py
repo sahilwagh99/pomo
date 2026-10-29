@@ -8,7 +8,7 @@ import shutil
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
-from . import APP_NAME, LEGACY_NAME
+from . import APP_NAME, LEGACY_NAME, studypath
 from .providers import PROVIDERS, default_model
 
 AI_MODELS = dict(PROVIDERS["anthropic"].models)  # Claude model id -> label
@@ -198,6 +198,17 @@ class Settings:
     badges: dict = field(default_factory=dict)              # badge -> times earned
     quests_total: int = 0                                   # quests ever finished (they unlock outfits)
 
+    # Study coach: your path, starting small, and a study log in English (see studypath.py, studylog.py)
+    study_path: dict = field(default_factory=dict)  # the goal, its weeks, milestones and steps
+    morning_card: bool = True       # the first card of the day: today's step, and starting small
+    morning_date: str = ""          # the day it was last shown
+    starter_min: int = 10           # "Just 10 minutes": a starter session's length
+    log_prompt: bool = True         # in the evening, ask for a few sentences in English about the day
+    log_prompt_date: str = ""
+    app_lock: bool = False          # during focus, put the apps you locked away (see applock.py)
+    locked_apps: list[str] = field(default_factory=list)  # exe names, lowercase, without .exe
+    lock_strict: bool = False       # close them instead of minimizing
+
     # Pomo's room (see room.py)
     room: dict = field(default_factory=dict)                # spot -> the item you put there ("" = left empty)
     room_seen: list[str] = field(default_factory=list)      # items whose arrival was announced
@@ -309,6 +320,15 @@ class Settings:
         self.badges = {k: v for k, v in self.badges.items()
                        if isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool) and v > 0}
         self.quests_total = max(0, int(self.quests_total))
+        self.study_path = studypath.clean(self.study_path)
+        self.starter_min = _clip(self.starter_min, 3, 20)
+        apps = []
+        for name in self.locked_apps:
+            if isinstance(name, str):
+                name = name.strip().lower().rsplit("\\", 1)[-1].removesuffix(".exe")
+                if name and name not in apps and name not in ("pomo", "explorer"):
+                    apps.append(name)
+        self.locked_apps = apps[:30]
         self.room = {k: v for k, v in self.room.items() if isinstance(k, str) and isinstance(v, str)}
         self.room_seen = [k for k in self.room_seen if isinstance(k, str)]
         self.stack_best = max(0, int(self.stack_best))

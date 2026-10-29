@@ -17,6 +17,9 @@ from PySide6.QtWidgets import (
     QKeySequenceEdit,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMenu,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -228,7 +231,76 @@ class SettingsDialog(QDialog):
         form.addRow("", _hint("the project and git branch open in your editor, so your\n"
                               "dashboard shows focus per project with no typing."))
         form.addRow("Daily quests", self.quests_on)
+
+        self.morning_card = QCheckBox("Start my day with today's step from my path")
+        self.starter_min = _spin(3, 20, " min")
+        self.log_prompt = QCheckBox("In the evening, ask for a few sentences in English")
+        form.addRow("Study", self.morning_card)
+        form.addRow("Start small with", self.starter_min)
+        form.addRow("", _hint("\"Just 10 minutes\": a short session to get going, then Pomo\n"
+                              "asks if you want to keep going for a full one."))
+        form.addRow("Study log", self.log_prompt)
+
+        self.app_lock = QCheckBox("Lock apps during focus (games, for example)")
+        self.locked_list = QListWidget()
+        self.locked_list.setFixedHeight(84)
+        lock_buttons = QHBoxLayout()
+        add_running = QPushButton("Add a running app…")
+        add_running.clicked.connect(self._add_running_app)
+        browse = QPushButton("Browse for an .exe…")
+        browse.clicked.connect(self._browse_app)
+        remove = QPushButton("Remove")
+        remove.clicked.connect(lambda: [self.locked_list.takeItem(self.locked_list.row(i))
+                                        for i in self.locked_list.selectedItems()])
+        for b in (add_running, browse, remove):
+            b.setCursor(Qt.PointingHandCursor)
+            lock_buttons.addWidget(b)
+        lock_buttons.addStretch(1)
+        lock_box = QWidget()
+        box_lay = QVBoxLayout(lock_box)
+        box_lay.setContentsMargins(0, 0, 0, 0)
+        box_lay.addWidget(self.locked_list)
+        box_lay.addLayout(lock_buttons)
+        lock_box.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.lock_strict = QCheckBox("Close them instead of putting them away")
+        for w in (lock_box, self.lock_strict):
+            self.app_lock.toggled.connect(w.setEnabled)
+        form.addRow("App lock", self.app_lock)
+        form.addRow("Locked apps", lock_box)
+        form.addRow("", self.lock_strict)
+        form.addRow("", _hint("While you focus, a locked app that comes to the front is put away\n"
+                              "(or closed), with a card to get back to work. Unlocking it until\n"
+                              "your break takes a 10-second wait. Outside focus, nothing is locked."))
         return page
+
+    def _add_running_app(self) -> None:
+        from .applock import label, running_apps
+
+        menu = QMenu(self)
+        apps = running_apps()
+        for exe, title in apps:
+            act = menu.addAction(f"{label(exe)}  ({exe}.exe)", lambda e=exe: self._add_locked(e))
+            act.setToolTip(title)
+        if not apps:
+            menu.addAction("No other apps are open", lambda: None).setEnabled(False)
+        menu.exec(self.cursor().pos())
+
+    def _browse_app(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Lock an app", "", "Programs (*.exe)")
+        if path:
+            self._add_locked(path)
+
+    def _add_locked(self, name: str) -> None:
+        from .applock import exe_key, label, lockable
+
+        key = exe_key(name)
+        if not lockable(key):
+            return
+        existing = {self.locked_list.item(i).data(Qt.UserRole) for i in range(self.locked_list.count())}
+        if key not in existing:
+            item = QListWidgetItem(f"{label(key)}  ({key}.exe)")
+            item.setData(Qt.UserRole, key)
+            self.locked_list.addItem(item)
 
     def _keys_tab(self) -> QWidget:
         page, form = _form()
@@ -816,6 +888,16 @@ class SettingsDialog(QDialog):
         self.cheer_on.setChecked(s.cheer_on)
         self.auto_task.setCurrentIndex(max(0, self.auto_task.findData(s.auto_task)))
         self.quests_on.setChecked(s.quests_on)
+        self.morning_card.setChecked(s.morning_card)
+        self.starter_min.setValue(s.starter_min)
+        self.log_prompt.setChecked(s.log_prompt)
+        self.app_lock.setChecked(s.app_lock)
+        self.locked_list.clear()
+        for exe in s.locked_apps:
+            self._add_locked(exe)
+        self.lock_strict.setChecked(s.lock_strict)
+        self.locked_list.parentWidget().setEnabled(s.app_lock)
+        self.lock_strict.setEnabled(s.app_lock)
         self.agent_reviews.setChecked(s.agent_reviews)
         self.taskbar.setChecked(s.taskbar_button)
         self.sound_box.setCurrentIndex(max(0, self.sound_box.findData(s.focus_sound)))
@@ -894,6 +976,12 @@ class SettingsDialog(QDialog):
         s.cheer_on = self.cheer_on.isChecked()
         s.auto_task = self.auto_task.currentData()
         s.quests_on = self.quests_on.isChecked()
+        s.morning_card = self.morning_card.isChecked()
+        s.starter_min = self.starter_min.value()
+        s.log_prompt = self.log_prompt.isChecked()
+        s.app_lock = self.app_lock.isChecked()
+        s.locked_apps = [self.locked_list.item(i).data(Qt.UserRole) for i in range(self.locked_list.count())]
+        s.lock_strict = self.lock_strict.isChecked()
         s.agent_reviews = self.agent_reviews.isChecked()
         s.taskbar_button = self.taskbar.isChecked()
         s.focus_sound = self.sound_box.currentData()

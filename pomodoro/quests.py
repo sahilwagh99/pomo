@@ -34,7 +34,7 @@ class Quest:
     target: int         # 0: your daily goal
     color: str          # the badge
     glyph: str
-    needs: str = ""     # "agents": only for people who use coding agents; "morning": only picked early
+    needs: str = ""     # "agents": only with coding agents; "morning": only picked early; "study": with a path or log
 
 
 QUESTS: dict[str, Quest] = {q.key: q for q in (
@@ -52,10 +52,12 @@ QUESTS: dict[str, Quest] = {q.key: q for q in (
     Quest("tandem", "Perfect timing", "Take a break while a coding agent works", 1, "#c3b3e6", "gear", "agents"),
     Quest("recharge", "Recharge", "Take a long break", 1, "#b0bbe8", "moon"),
     Quest("cozy", "Cozy vibes", "Finish a focus session with Pomo's focus sounds on", 1, "#eea4b4", "music"),
+    Quest("path_step", "On the path", "Finish a step on your path", 1, "#9fd0b4", "flag", "study"),
+    Quest("english_log", "In my words", "Write your study log in English", 1, "#f7b7a3", "pen", "study"),
 )}
 PERFECT = Quest(PERFECT_DAY, "Perfect day", "Finish all three of a day's quests", 1, "#f5c26b", "crown")
 COUNTED = {"laser": "clean", "breathe": "breathe", "park": "park", "play": "play", "review": "review",
-           "tandem": "agent_break", "cozy": "sound_session"}  # quests that count events, not history
+           "tandem": "agent_break", "cozy": "sound_session", "path_step": "path_step", "english_log": "log"}  # quests that count events, not history
 
 
 def badge(key: str) -> Quest | None:
@@ -63,10 +65,12 @@ def badge(key: str) -> Quest | None:
 
 
 # ------------------------------------------------------------------ picking
-def eligible(now: datetime, uses_agents: bool) -> list[str]:
+def eligible(now: datetime, uses_agents: bool, studies: bool = False) -> list[str]:
     out = []
     for q in QUESTS.values():
         if q.needs == "agents" and not uses_agents:
+            continue
+        if q.needs == "study" and not studies:
             continue
         if q.needs == "morning" and now.hour >= 9:
             continue
@@ -82,13 +86,13 @@ def pick(day: date, keys: list[str], count: int = PER_DAY) -> list[str]:
     return pool[:count]
 
 
-def roll_over(settings, now: datetime, uses_agents: bool) -> bool:
+def roll_over(settings, now: datetime, uses_agents: bool, studies: bool = False) -> bool:
     """A new day: pick fresh quests and reset the counters. True if it did."""
     today = now.date().isoformat()
     if settings.quest_day == today and settings.quests:
         return False
     settings.quest_day = today
-    settings.quests = pick(now.date(), eligible(now, uses_agents))
+    settings.quests = pick(now.date(), eligible(now, uses_agents, studies))
     settings.quests_done = []
     settings.quest_counts = {}
     return True
@@ -302,6 +306,27 @@ def _glyph(p: QPainter, name: str, c: QPointF, s: float, ink: QColor, fill: QCol
         cut.addEllipse(QPointF(x + s * 0.32, y - s * 0.2), s * 0.55, s * 0.55)
         p.setBrush(fill)
         p.drawPath(path.subtracted(cut))
+    elif name == "flag":
+        p.drawLine(QPointF(x - s * 0.45, y + s * 0.8), QPointF(x - s * 0.45, y - s * 0.75))
+        flag = QPainterPath(QPointF(x - s * 0.45, y - s * 0.75))
+        flag.lineTo(x + s * 0.6, y - s * 0.45)
+        flag.lineTo(x - s * 0.45, y - s * 0.12)
+        flag.closeSubpath()
+        p.setBrush(fill)
+        p.drawPath(flag)
+    elif name == "pen":
+        p.save()
+        p.translate(c)
+        p.rotate(-40)
+        body = QRectF(-s * 0.2, -s * 0.75, s * 0.4, s * 1.15)
+        p.setBrush(fill)
+        p.drawRect(body)
+        tip = QPainterPath(QPointF(-s * 0.2, s * 0.4))
+        tip.lineTo(0, s * 0.8)
+        tip.lineTo(s * 0.2, s * 0.4)
+        tip.closeSubpath()
+        p.drawPath(tip)
+        p.restore()
     elif name == "music":
         p.setBrush(ink)
         for dx in (-0.4, 0.35):
