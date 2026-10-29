@@ -150,7 +150,8 @@ class TaskbarTests(unittest.TestCase):
         engine.start()
         ctrl = SimpleNamespace(engine=engine, settings=settings, theme=theme_for("light"),
                                icon=__import__("PySide6.QtGui", fromlist=["QIcon"]).QIcon(),
-                               current_outfit=lambda: "headband", agent_signal=lambda: None)
+                               current_outfit=lambda: "headband", agent_signal=lambda: None,
+                               mode_label=lambda: engine.mode.label)
         button = TaskbarButton(ctrl)
         image = button.thumbnail(200, 110)
         self.assertEqual((image.width(), image.height()), (200, 110))
