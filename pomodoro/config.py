@@ -213,6 +213,16 @@ class Settings:
     ultra_start_focus: bool = True  # going Ultra starts a focus session
     app_names: dict = field(default_factory=dict)  # exe -> the name on the shortcut you dragged in
 
+    # The learning loop and focus training (see learnloop.py)
+    learn_loop: bool = True         # a curious question before a step, teach Pomo after it, review cards
+    curious: dict = field(default_factory=dict)  # the open curious question: task, question, guess, day
+    ladder_on: bool = False         # the focus ladder: sessions grow as you finish them
+    ladder_min: int = 10            # its current focus length
+    ladder_goal: int = 45           # where it stops growing
+    ladder_streak: int = 0          # clean sessions in a row at ladder_min
+    ladder_misses: int = 0          # sessions stopped early in a row
+    study_with_pomo: bool = True    # Pomo reads his own book beside you while you focus
+
     # Pomo's room (see room.py)
     room: dict = field(default_factory=dict)                # spot -> the item you put there ("" = left empty)
     room_seen: list[str] = field(default_factory=list)      # items whose arrival was announced
@@ -326,6 +336,11 @@ class Settings:
         self.quests_total = max(0, int(self.quests_total))
         self.study_path = studypath.clean(self.study_path)
         self.starter_min = _clip(self.starter_min, 3, 20)
+        self.ladder_goal = _clip(self.ladder_goal, 10, 120)
+        self.ladder_min = _clip(self.ladder_min, 5, self.ladder_goal)
+        self.ladder_streak = max(0, int(self.ladder_streak))
+        self.ladder_misses = max(0, int(self.ladder_misses))
+        self.curious = {k: v[:300] for k, v in self.curious.items() if isinstance(k, str) and isinstance(v, str)}
         self.locked_apps = _exe_names(self.locked_apps)
         self.ultra_apps = _exe_names(self.ultra_apps)
         keep = set(self.locked_apps) | set(self.ultra_apps)

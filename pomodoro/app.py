@@ -13,7 +13,7 @@ from PySide6.QtGui import QColor, QIcon, QImage
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QSystemTrayIcon
 
 from . import APP_NAME, APP_VERSION, agent_hooks, audio, claude_hooks, garden, insights, keystore, media, planner
-from . import applock, providers, quests, reviews, room, soundscapes, studylog, studypath, ultra, updater
+from . import applock, learnloop, providers, quests, reviews, room, soundscapes, studylog, studypath, ultra, updater
 from .agents import EDIT_TOOLS, AgentHub, Approval
 from .config import FOCUS_SOUNDS, HOTKEYS, OUTFITS, Settings
 from .hotkeys import GlobalHotkeys
@@ -147,6 +147,13 @@ class PomoApp(QObject):
         self._starter_pending = False    # a "just 10 minutes" session is starting
         self._starter = False            # the focus session running is one
         self._step_news = None           # (milestone, step, the step) a finished session counted toward
+        # learning loop and focus training
+        self.curious_card = None
+        self.teach_window = None
+        self.recall_window = None
+        self.urge_card = None
+        self._curious_job = None
+        self._ladder_news: str | None = None  # "up" or "down", for the next card
         # updates from GitHub
         self.update_mode = updater.install_mode()
         self._update_worker = None
@@ -361,9 +368,11 @@ class PomoApp(QObject):
                 body += f"\n{news}"
             actions = ([(f"Start with {s.starter_min} minutes", lambda: self.start_step(nxt[0], nxt[1], True), True),
                         ("Later", lambda: None, False)] if nxt else [("Yay!", lambda: None, True)])
+            extras = [("My path", self.open_path)]
+            if s.learn_loop:
+                extras.insert(0, ("Teach Pomo", lambda t=step["title"]: self.open_teach(t)))
             self.toast.show_message(title, body, mode_color(self.theme, s, "long"), actions,
-                                    self.view.anchor_rect_global(), timeout_ms=20000,
-                                    extras=[("My path", self.open_path)])
+                                    self.view.anchor_rect_global(), timeout_ms=20000, extras=extras)
         else:
             QTimer.singleShot(700, self._flush_quest_news)
 
@@ -416,6 +425,10 @@ class PomoApp(QObject):
         anchor = self.view.anchor_rect_global()
         current, _best = streaks(self.storage.sessions(since=today - timedelta(days=60)), today)
         streak = f" {current} days of focus in a row: keep it going!" if current >= 2 else ""
+        due = self.cards_due()
+        review = [(f"Review ({due})", self.open_recall)] if due else []
+        if due:
+            streak += f" {plural(due, 'review card')} waiting."
         from .ai import PATH_START_PROMPT
 
         if path and studypath.review_due(path, today):
@@ -441,7 +454,7 @@ class PomoApp(QObject):
                 accent, [(f"Start {s.starter_min} minutes", lambda: self.start_step(mi, si, True), True),
                          ("Later", lambda: None, False)],
                 anchor, timeout_ms=60000,
-                extras=[("Full session", lambda: self.start_step(mi, si, False)), ("My path", self.open_path)])
+                extras=review + [("Full session", lambda: self.start_step(mi, si, False)), ("My path", self.open_path)])
         elif not path and (first_time or today.weekday() == 0):  # no path: offer one now and then, not daily
             self.toast.show_message(
                 f"{hello} What will you work on?",
@@ -509,6 +522,101 @@ class PomoApp(QObject):
         window.setWindowState(window.windowState() & ~Qt.WindowMinimized)
         window.raise_()
         window.activateWindow()
+
+    # ------------------------------------------------------------ learning loop
+    def _maybe_curious(self) -> None:
+        """A focus session started on a step of your path: one curious question it will answer (with an AI key)."""
+        s, e = self.settings, self.engine
+        if not s.learn_loop or not (e.mode is Mode.FOCUS and e.state is State.RUNNING) or not self.has_ai_key():
+            return
+        found = studypath.find_step(s.study_path, e.task) if s.study_path else None
+        if found is None or s.curious.get("task") == e.task or self._curious_job is not None:
+            return  # not a step, or already asked about this one
+        from .learn_windows import OneShot
+
+        path, mi, step = s.study_path, found[0], found[2]
+        message = learnloop.context(path["goal"], step["title"], path["milestones"][mi]["title"])
+        job = self._curious_job = OneShot(self, learnloop.CURIOUS_PROMPT, [{"role": "user", "content": message}], self)
+
+        def asked(text: str) -> None:
+            question = learnloop.clean_question(text)
+            if not question or self.engine.task != step["title"]:
+                return
+            s.curious = {"task": step["title"], "question": question, "day": date.today().isoformat()}
+            self.save_settings()
+            if self.view.isVisible() and not self._approval_on_screen():
+                if self.curious_card is None:
+                    from .learn_windows import CuriousCard
+                    self.curious_card = CuriousCard(self)
+                self.curious_card.ask(question, self.view.anchor_rect_global())
+
+        job.done.connect(asked)
+        job.worker.finished.connect(lambda: setattr(self, "_curious_job", None))
+        job.start()
+
+    def open_teach(self, topic: str | None = None) -> None:
+        """Explain a step to Pomo (today's step, or what you're working on)."""
+        s = self.settings
+        path = s.study_path
+        if not topic:
+            nxt = studypath.next_step(path) if path else None
+            topic = self.engine.task or (nxt[2]["title"] if nxt else "")
+        if not topic:
+            topic = "what I studied today"
+        milestone = ""
+        found = studypath.find_step(path, topic) if path else None
+        if found is None and path:  # a step already ticked off
+            found = next(((mi, si, st) for mi, si, st in studypath.steps(path) if st["title"] == topic), None)
+        if found is not None:
+            milestone = path["milestones"][found[0]]["title"]
+        from .learn_windows import TeachWindow
+
+        if self.teach_window is not None:
+            self.teach_window.close()
+        self.teach_window = TeachWindow(self, topic, path.get("goal", "") if path else "", milestone)
+        self._show_window(self.teach_window)
+
+    def open_recall(self) -> None:
+        if self.recall_window is None:
+            from .learn_windows import RecallWindow
+            self.recall_window = RecallWindow(self)
+        self._show_window(self.recall_window)
+        self.recall_window.load()
+
+    def cards_due(self) -> int:
+        return len(self.storage.cards(due_by=date.today()))
+
+    def cards_changed(self) -> None:
+        self._refresh_study()
+
+    def open_urge(self) -> None:
+        """Ride out an urge (to play, to scroll): 90 seconds of breathing while it peaks and passes."""
+        if self.urge_card is None:
+            from .learn_windows import UrgeCard
+            self.urge_card = UrgeCard(self)
+            self.urge_card.finished.connect(self._urge_done)
+        self.urge_card.start()
+
+    def _urge_done(self, rode_out: bool) -> None:
+        if rode_out:
+            self.view.celebrate()
+            back = self.tracker.last_work
+            if back is not None:
+                winutil.activate_window(back.hwnd)
+        self._refresh_study()
+
+    def _sync_reading(self, focusing: bool) -> None:
+        """Study with Pomo: he reads beside you while you focus."""
+        for view in (self.island, self.orb):
+            view.pomo.reading = focusing and self.settings.study_with_pomo
+            view.update()
+
+    def ladder_changed(self) -> None:
+        """The focus ladder was turned on or moved: it sets your focus length."""
+        s = self.settings
+        if s.ladder_on and s.focus_min != s.ladder_min:
+            s.focus_min = s.ladder_min
+            self.engine.apply_settings()
 
     # ------------------------------------------------------------ ultra focus
     def toggle_ultra(self) -> None:
@@ -1144,6 +1252,11 @@ class PomoApp(QObject):
             _action(study, f"Start with just {self.settings.starter_min} minutes", self.start_small)
         _action(study, "My path…", self.open_path)
         _action(study, "Study log…", self.open_study_log)
+        study.addSeparator()
+        _action(study, "Teach Pomo…", lambda: self.open_teach())
+        due = self.cards_due()
+        _action(study, f"Review cards ({due})…" if due else "Review cards…", self.open_recall)
+        _action(study, "Ride the urge…", self.open_urge)
         _action(menu, "Play a game…", self.open_game)
         _action(menu, "Breathe with Pomo…", self.open_breathe)
         sound = self.settings.focus_sound
@@ -1250,6 +1363,12 @@ class PomoApp(QObject):
             if distracted:
                 record = replace(record, distracted_sec=min(distracted, record.actual_sec))
         self.storage.add(record)
+        if record.mode == "focus":  # the focus ladder: three clean sessions up, two stopped early down
+            move = learnloop.ladder_after(self.settings, round(record.planned_sec / 60), record.completed)
+            if move:
+                self._ladder_news = move
+                self.ladder_changed()
+                self.save_settings()
         if record.mode == "focus" and record.completed:  # counted for today's quests
             s = self.settings
             if not self._focus_paused and not record.distracted_sec:
@@ -1272,6 +1391,7 @@ class PomoApp(QObject):
             self._sync_presence()
             self._follow_music(focusing)
             self._sync_focus_sound()
+            self._sync_reading(focusing)
             if was_focusing:
                 QTimer.singleShot(0, self._flush_held)  # a finished session shows them on its card instead
                 self._recap_window = self.tracker.last_work  # for "Where was I?" when the break ends
@@ -1281,6 +1401,7 @@ class PomoApp(QObject):
                 self._cheered = set()
                 self._starter, self._starter_pending = self._starter_pending, False
                 QTimer.singleShot(0, self._offer_project_task)
+                QTimer.singleShot(700, self._maybe_curious)
         if not focusing and self.whisper is not None:
             self.whisper.fade_out()
         if e.mode is Mode.FOCUS and e.state is State.PAUSED and prev_state is State.RUNNING:
@@ -1397,6 +1518,11 @@ class PomoApp(QObject):
             locked = applock.tries_text(self.applock.take_tries())
             if locked:
                 body += f"\n{locked}"
+        ladder, self._ladder_news = self._ladder_news, None
+        if ladder == "up":
+            body += f"\nFocus ladder: level up! Your focus sessions are now {s.ladder_min} minutes."
+        elif ladder == "down":
+            body += f"\nFocus ladder: back to {s.ladder_min} minutes for now. You'll climb again."
         step_news, self._step_news = (self._step_news if finished is Mode.FOCUS else None), None
         if step_news is not None:
             mi, si, st = step_news
