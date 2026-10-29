@@ -49,6 +49,8 @@ Pomo used to be called FocusOrb. Run `Pomo-Setup.exe` and it removes FocusOrb fo
 - **Agent-paced pomodoros.** Take your break while your agent works on a long task, and get agent news on your break instead of in the middle of focus.
 - **Ask Pomo can act.** "45 minutes on the thesis, then 10 off, three rounds" sets up the plan and starts the timer.
 - **Breathe with Pomo.** A short guided break: box breathing, rest your eyes, stretch.
+- **A study coach.** Not sure what to study next? Ask Pomo builds you a path of small steps toward one goal, and Pomo always knows today's step. Start with *just 10 minutes* when it's hard to begin, and write a few sentences in English each evening, with gentle notes on your English if you like.
+- **App lock.** Games and other apps you lock are put away while you focus, with a card to get you back to work.
 - **Daily quests and badges.** Three small goals a day, like "2 pomodoros before 10 AM", with a badge for each and new outfits now and then.
 - **Focus garden.** A sakura tree that grows with every pomodoro and unlocks new outfits.
 - **Pomo's room.** A cozy room on the dashboard that fills up with furniture you earn from focus hours, quests and Perfect days. Swap things around with a click.
@@ -227,6 +229,41 @@ Windows doesn't let apps switch on its own Focus or Do not disturb (that API is 
 
 They work from any app. Change or turn them off in *Settings > Shortcuts*.
 
+## Study coach
+
+For when the hard part isn't the timer, it's knowing what to study, starting, and believing you can.
+
+### My path
+
+Not sure which direction to take, or what to study next? Click **My path** in Ask Pomo (or *Study > My path* in the right-click menu). Pomo asks a few short questions (what you study, what you want it to lead to, how much time you have), then makes a path: one goal to try for 8 weeks, as an experiment you can change, in milestones of concrete steps that each take one to three pomodoros.
+
+- **Today's step is always ready.** Start a focus session without a task and today's step becomes it. The dashboard and the right-click menu show it too.
+- **Pomodoros add up.** Each finished session on a step counts toward it. Once you've given it the time you planned, the card asks *Is it done?* with a **Step done** button, and the next step takes over.
+- **Make it yours.** In the My path window, tick steps off, double-click to rename, and right-click to start a step, change how many pomodoros it takes, add or delete steps and milestones. Tell Ask Pomo "I finished the SQL basics" and it ticks that off for you.
+- **Decide again at the end.** When the weeks are up, Pomo asks whether to keep going for a few more weeks, or to look back with Ask Pomo and maybe change direction.
+
+### Start small
+
+Can't get yourself to start? **Just 10 minutes** starts a short focus session. When it ends, the card says *You started!* and offers to keep going for a full pomodoro on the same task. Starting is the hard part; this makes it small. Each morning a card shows today's step, your streak, and a nudge to put your phone in another room, with **Start 10 minutes** right there. Change the length, or turn the morning card off, in *Settings > Focus*.
+
+### Study log
+
+In the evening, after a day with some focus, Pomo asks for two or three sentences in English about what you learned. Putting it in your own words helps you remember, and writing a little English every day, where a mistake costs nothing, builds confidence. With an AI key, **Save and check my English** gives you your text with minimal corrections, a few notes on why, and one thing you did well. The log and its streak are on the dashboard; the log stays on your PC and is only sent to your AI provider when you ask for a check.
+
+Two daily quests go with it: *On the path* (finish a step) and *In my words* (write your log).
+
+### App lock
+
+Easily pulled away by games? Turn on *App lock* in *Settings > Focus* and drag the apps to lock onto the list, from your desktop, the Start menu or a folder (or browse for them). During a focus session, when a locked app comes to the front, Pomo puts it away and shows a card: **Back to work** brings your work window back, or **Close** it. You can unlock it until your break, but only after a 10-second wait, so it's a decision rather than a reflex. Choose *Close them instead of putting them away* to be strict. The break card tells you how many times the lock kept them away.
+
+Only an administrator can stop a program from starting at all, and Pomo never asks for admin rights, so the lock works on the app in front, during focus sessions only.
+
+### Ultra focus
+
+For the days you need to go all in. Click the lightning button beside Pomo (on the island, or on the orb's rim), or *Ultra focus* in the right-click menu. Pomo asks which apps to block: drag them in from your desktop, the Start menu or a folder (shortcuts work, including Steam and Epic game shortcuts), and the ones you picked last time are already there. Then he powers up in the middle of your screen: a trembling charge, a flash, a tall flame of layered golden spikes with bangs over his forehead, fire in his eyes, a glowing golden aura and white lightning crackling around him, with **ULTRA FOCUS** across the bottom (and a power-up sound, if your alert sounds are on). A focus session starts at the burst, unless you untick it.
+
+While Ultra focus is on, Pomo keeps the look on your timer and the apps you picked stay blocked the whole time, breaks included. There's no quick unlock: to get them back, power down, which takes a 10-second wait so it's a decision rather than a reflex. Ultra focus stays on if Pomo restarts.
+
 ## Focus garden
 
 Every finished pomodoro grows a sakura tree on your dashboard. It goes from a sprout to a grand sakura over your first 250 pomodoros, with one blossom for each pomodoro in the range you're viewing. Milestones unlock new outfits for Pomo: cat ears at 10 pomodoros, a flower crown at 25, a graduation cap at 50 and a wizard hat at 100.
@@ -248,7 +285,7 @@ Each morning Pomo picks three small quests for the day, from the ones that fit h
 | Code reviewer | Finish a focus session reviewing your agent's changes |
 | Perfect timing | Take a break while a coding agent works |
 
-There are thirteen in all. Each one you finish earns its badge (badges count up when you earn them again), and finishing all three in a day earns *Perfect day*. Quests also unlock outfits: a star clip at 5 quests, bunny ears at 15 and a strawberry hat at 30.
+There are fifteen in all. Each one you finish earns its badge (badges count up when you earn them again), and finishing all three in a day earns *Perfect day*. Quests also unlock outfits: a star clip at 5 quests, bunny ears at 15 and a strawberry hat at 30.
 
 Pomo tells you when you finish one, on your break card if you're mid-session. Today's quests are in the right-click menu, and the dashboard shows them with your badge shelf. Turn them off in *Settings > Focus*.
 
@@ -448,7 +485,7 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 | Tab | What you can change |
 |---|---|
 | Timer | Focus, short and long break lengths; long break interval; daily goal; auto-start for breaks and for focus |
-| Focus | Session ratings and length tips, Pomo cheering you on, away detection, the distraction check-in and its list, quiet focus, the break card, "Where was I?" when a break ends, naming sessions after your project (ask, automatically or off), daily quests |
+| Focus | Session ratings and length tips, Pomo cheering you on, away detection, the distraction check-in and its list, quiet focus, the break card, "Where was I?" when a break ends, naming sessions after your project (ask, automatically or off), daily quests, the morning card, the starter session's length, the evening study log, app lock and its apps |
 | Alerts | Notifications, pop-up card, sound, volume, repeats, idle reminder |
 | Appearance | Theme, timer style (island or orb), show Pomo, Pomo's outfit, Pomo dressing for what you're doing, tuck the island away when idle, orb size, opacity, fade while focusing, always on top, show task, colors for each mode |
 | Agents | Connect or disconnect Claude Code, Codex CLI and Gemini CLI, suggesting reviews of agent changes, answer permission requests in Pomo, how long to wait for your answer, finish notifications, answering Claude's questions, replying when a turn ends (and how long the agent waits), break suggestions for long agent tasks |
@@ -456,7 +493,7 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 | Shortcuts | Global shortcuts on or off, and each key combination (including the talk shortcut) |
 | General | Run Pomo on startup, updates (on or off, check now, update now), Pomo on the taskbar, focus sounds (which one, volume, only while focusing), music controls, Pomo listening along, music following the timer, move the orb back to its corner, open the data folder, export CSV, clear history |
 
-Your data lives in `%APPDATA%\Pomo`: `settings.json` (with your quests, badges and reviews waiting), `history.db` (pomodoros with their ratings, agent activity, parked thoughts and, if the check-in is on, minutes per app), `cache\` (the focus sounds once they're made), `updates\` (a downloaded update until it's installed) and, if you saved one, `ai_key.bin` (your API key, encrypted). Window titles (for "Where was I?" and project names) are never written to disk. When you talk to Pomo, the recording and the replies it reads aloud only pass through a temporary file in `cache\`, deleted as soon as Windows is done with it. To check for updates, Pomo asks GitHub's public API for the latest release every hour; nothing about you is sent with it.
+Your data lives in `%APPDATA%\Pomo`: `settings.json` (with your quests, badges, your path and reviews waiting), `history.db` (pomodoros with their ratings, agent activity, parked thoughts, your study log and, if the check-in is on, minutes per app), `cache\` (the focus sounds once they're made), `updates\` (a downloaded update until it's installed) and, if you saved one, `ai_key.bin` (your API key, encrypted). Window titles (for "Where was I?" and project names) are never written to disk. When you talk to Pomo, the recording and the replies it reads aloud only pass through a temporary file in `cache\`, deleted as soon as Windows is done with it. To check for updates, Pomo asks GitHub's public API for the latest release every hour; nothing about you is sent with it.
 
 ## For developers
 
@@ -540,6 +577,12 @@ pomodoro/planner.py         the task plan and Ask Pomo's tools
 pomodoro/thoughts.py        the thought parking lot
 pomodoro/breathe.py         Breathe with Pomo
 pomodoro/garden.py          the focus garden and outfit unlocks
+pomodoro/studypath.py       your path: goal, milestones, steps, today's step and the review (plain data)
+pomodoro/path_window.py     the My path window
+pomodoro/studylog.py        the study log in English, and its gentle English tutor
+pomodoro/applock.py         app lock: locked apps put away during focus (and during Ultra focus), and the lock card
+pomodoro/ultra.py           Ultra focus drawings: the aura, the spiky golden hair, fire in the eyes, the transformation
+pomodoro/ultra_mode.py      Ultra focus windows: picking apps to block, the transformation on screen, powering down
 pomodoro/room.py            Pomo's room: the items, what earns them, where they go and how they're drawn
 pomodoro/hotkeys.py         global shortcuts (Win32 RegisterHotKey)
 pomodoro/music_card.py      the mini player card, and cover drawing shared with the island

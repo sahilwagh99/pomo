@@ -58,7 +58,34 @@ def _soft() -> list[float]:
     return buf
 
 
-_GENERATORS = {"Chime": _chime, "Bell": _bell, "Digital": _digital, "Soft": _soft}
+def _power_up() -> list[float]:
+    """Ultra focus: a trembling charge that rises, a bright burst, then sparkles (about 2.4 seconds)."""
+    import random
+
+    rng = random.Random(9)
+    charge = 0.9
+    buf = [0.0] * int(2.4 * RATE)
+    phase = rumble = 0.0
+    two_pi = 2 * math.pi
+    for i in range(int(charge * RATE)):
+        t = i / RATE
+        u = t / charge
+        phase += two_pi * (90 + 330 * u * u) / RATE
+        amp = 0.15 + 0.55 * u ** 1.5
+        tremble = 1 + 0.3 * math.sin(two_pi * (6 + 18 * u) * t)
+        rumble = rumble * 0.97 + rng.uniform(-1, 1) * 0.03
+        buf[i] += amp * (0.6 * math.sin(phase) + 0.25 * math.sin(2 * phase)) * tremble + rumble * amp * 1.4
+    start = int(charge * RATE)
+    for i in range(int(0.35 * RATE)):  # a rush of air at the burst
+        buf[start + i] += rng.uniform(-1, 1) * 0.5 * math.exp(-i / RATE / 0.08)
+    for f in (523.25, 659.25, 783.99, 1046.5):
+        _note(buf, charge, f, 1.4, 0.5, ((1, 1.0), (2, 0.3), (3, 0.12)), attack=0.006, amp=0.55)
+    for k, f in enumerate((1567.98, 2093.0, 2637.0)):
+        _note(buf, charge + 0.18 + k * 0.13, f, 0.6, 0.18, ((1, 1.0), (2, 0.2)), amp=0.35)
+    return buf
+
+
+_GENERATORS = {"Chime": _chime, "Bell": _bell, "Digital": _digital, "Soft": _soft, "PowerUp": _power_up}
 
 
 def render_wav(name: str, volume: int, path: Path) -> float:

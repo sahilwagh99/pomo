@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 
+from . import ultra
 from .engine import State
 
 BODY = QColor("#d7ecbd")         # matcha mochi
@@ -139,6 +140,12 @@ class Pomo:
         self.listening = False          # music is playing: headphones, a gentle sway and floating notes
         self._next_note = 0.0
         self.talking = False            # reading a reply aloud: the mouth moves
+        self.ultra = False              # Ultra focus: golden aura, spiky hair, fire in his eyes (see ultra.py)
+        self._ultra_at: float | None = None
+        self._ultra_down_at: float | None = None
+        self.aura_strength = 1.0        # a little less on the small timer
+        self.hair_scale = 1.0           # and shorter hair, so it fits under the top of the screen
+        self._look = ultra.Look()
 
     # ---------------------------------------------------------------- events
     @property
@@ -342,11 +349,13 @@ class Pomo:
 
     def is_calm(self) -> bool:
         """True when only slow breathing is going on, so a low frame rate looks the same."""
-        return not self.listening and self._settled(notes_ok=False)
+        return not self.listening and not self.ultra_look().showing and self._settled(notes_ok=False)
 
     def is_grooving(self) -> bool:
-        """True when only the music groove moves (a slow sway and drifting notes): a medium frame rate is plenty."""
-        return self.listening and self._settled(notes_ok=True)
+        """True when only a gentle loop moves (the music groove, or the ultra aura's flicker): a medium frame
+        rate is plenty."""
+        steady_ultra = self._ultra_settled()
+        return (self.listening or steady_ultra) and self._settled(notes_ok=True)
 
     def _settled(self, notes_ok: bool) -> bool:
         particles = all(p.kind == "note" for p in self.particles) if notes_ok else not self.particles
@@ -430,11 +439,16 @@ class Pomo:
     def paint(self, p: QPainter, anchor: QPointF, size: float, ground_shadow: bool = True) -> None:
         s = size
         sx, sy = self._scale()
+        look = self._look = self.ultra_look()
+        if look.charge:  # powering up: he crouches
+            sx, sy = sx * (1 + 0.1 * look.charge), sy * (1 - 0.12 * look.charge)
         rx, ry = s * 0.5 * sx, s * BODY_RY * sy
         base_bottom = anchor.y() + s * BODY_RY
-        c = self.body_center(anchor, s)
+        c = QPointF(anchor.x(), anchor.y() + s * BODY_RY * (1 - sy) - self.hop_y * s)
         p.save()
         p.setRenderHint(QPainter.Antialiasing)
+        if look.aura:
+            ultra.paint_aura(p, c, rx, ry, s, self.t, look.aura * self.aura_strength)
 
         if ground_shadow:
             lift = max(0.25, 1.0 - self.hop_y * 2.2)
@@ -464,17 +478,49 @@ class Pomo:
             p.translate(c)
             p.rotate(360.0 * (1 - (1 - spin) ** 2))
             p.translate(-c)
+        if look.charge:  # trembling with power
+            p.translate(math.sin(self.t * 85.0) * s * 0.018 * look.charge, 0)
+        if look.aura:
+            ultra.paint_rim(p, self._body_path(c.x(), c.y(), rx, ry), s, min(1.0, look.aura) * self.aura_strength)
         self._paint_body(p, c, rx, ry, s)
         self._paint_face(p, c, rx, ry, s)
-        if self.listening and self.outfit != "headphones":
-            self._paint_headphones(p, c, rx, ry, s)  # under any hat
-        self._paint_outfit(p, c, rx, ry, s)
+        if look.hair:
+            ultra.paint_hair(p, c, rx, ry, s, self.t, look.hair * self.hair_scale)  # instead of any hat
+        else:
+            if self.listening and self.outfit != "headphones":
+                self._paint_headphones(p, c, rx, ry, s)  # under any hat
+            self._paint_outfit(p, c, rx, ry, s)
         p.restore()
 
         if self.signal:
             self._paint_bubble(p, c, rx, ry, s)
         self._paint_particles(p, anchor, s)
+        ultra.paint_flash(p, c, s, look.flash)
         p.restore()
+
+    # ------------------------------------------------------------ ultra focus
+    def power_up(self, instant: bool = False) -> None:
+        """Ultra focus on: the transformation plays (or, instant, he's simply powered up already)."""
+        self.ultra = True
+        self._ultra_down_at = None
+        self._ultra_at = self.t - (ultra.TRANSFORM_S if instant else 0.0)
+        if not instant:
+            self._queued_hops.append((self.t + ultra.CHARGE_S, 2.4))  # the burst lifts him off his feet
+
+    def power_down(self) -> None:
+        if self.ultra:
+            self.ultra = False
+            self._ultra_down_at = self.t
+            self.leaf.kick(-60.0)
+
+    def ultra_look(self) -> ultra.Look:
+        since = self.t - self._ultra_at if self.ultra and self._ultra_at is not None else None
+        down = self.t - self._ultra_down_at if not self.ultra and self._ultra_down_at is not None else None
+        return ultra.look_at(since, down)
+
+    def _ultra_settled(self) -> bool:
+        """Powered up and done transforming: only the aura's steady flicker moves."""
+        return self.ultra and self._ultra_at is not None and self.t - self._ultra_at >= ultra.TRANSFORM_S
 
     def _paint_bubble(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
         """A thought bubble over his head: three cycling dots while agents work, '!' when one needs you."""
@@ -538,6 +584,13 @@ class Pomo:
 
     def _paint_face(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
         eyes, mouth, brows = FACES.get(self.face, FACES["idle"])
+        look = self._look
+        fire = 0.0
+        if look.charge:
+            eyes, mouth, brows = "squeeze", "wobble", None  # straining as the power builds
+        elif look.showing and self.reaction is None and self.mood != "sleepy":
+            eyes, mouth, brows = "narrow", "smile" if look.flash else "flat", "focus"  # determined
+            fire = min(1.0, look.aura)
         if self.talking and self.reaction is None:
             mouth = "o" if int(self.t * 7.0) % 3 else "smile"
         lx, ly = self.ex * rx * 0.1, self.ey * ry * 0.1
@@ -563,6 +616,8 @@ class Pomo:
         for side in (-1, 1):
             center = QPointF(x + side * rx * 0.34 + lx, y + ry * 0.1 + ly)
             self._paint_eye(p, eyes, center, r, side, s)
+            if fire:
+                ultra.paint_eye_fire(p, center, r, side, s, self.t, fire)
             if brows:
                 self._paint_brow(p, brows, center, r, side, s)
         self._paint_mouth(p, mouth, QPointF(x + lx * 0.5, y + ry * 0.34 + ly * 0.5), s)

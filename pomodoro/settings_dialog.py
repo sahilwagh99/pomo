@@ -228,7 +228,55 @@ class SettingsDialog(QDialog):
         form.addRow("", _hint("the project and git branch open in your editor, so your\n"
                               "dashboard shows focus per project with no typing."))
         form.addRow("Daily quests", self.quests_on)
+
+        self.morning_card = QCheckBox("Start my day with today's step from my path")
+        self.starter_min = _spin(3, 20, " min")
+        self.log_prompt = QCheckBox("In the evening, ask for a few sentences in English")
+        form.addRow("Study", self.morning_card)
+        form.addRow("Start small with", self.starter_min)
+        form.addRow("", _hint("\"Just 10 minutes\": a short session to get going, then Pomo\n"
+                              "asks if you want to keep going for a full one."))
+        form.addRow("Study log", self.log_prompt)
+
+        from .applock import DropList
+
+        self.app_lock = QCheckBox("Lock apps during focus (games, for example)")
+        self.locked_list = DropList("Drag games and apps here from your desktop")
+        self.locked_list.setFixedHeight(96)
+        self.locked_list.dropped_unknown.connect(
+            lambda names: QMessageBox.information(self, "App lock", f"Pomo couldn't tell which program "
+                                                  f"{', '.join(names)} starts. Try the app's .exe instead."))
+        lock_buttons = QHBoxLayout()
+        browse = QPushButton("Browse…")
+        browse.clicked.connect(self._browse_app)
+        remove = QPushButton("Remove")
+        remove.clicked.connect(self.locked_list.remove_selected)
+        for b in (browse, remove):
+            b.setCursor(Qt.PointingHandCursor)
+            lock_buttons.addWidget(b)
+        lock_buttons.addStretch(1)
+        lock_box = QWidget()
+        box_lay = QVBoxLayout(lock_box)
+        box_lay.setContentsMargins(0, 0, 0, 0)
+        box_lay.addWidget(self.locked_list)
+        box_lay.addLayout(lock_buttons)
+        lock_box.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.lock_strict = QCheckBox("Close them instead of putting them away")
+        for w in (lock_box, self.lock_strict):
+            self.app_lock.toggled.connect(w.setEnabled)
+        form.addRow("App lock", self.app_lock)
+        form.addRow("Locked apps", lock_box)
+        form.addRow("", self.lock_strict)
+        form.addRow("", _hint("While you focus, a locked app that comes to the front is put away\n"
+                              "(or closed), with a card to get back to work. Unlocking it until\n"
+                              "your break takes a 10-second wait. Outside focus, nothing is locked."))
         return page
+
+    def _browse_app(self) -> None:
+        from .applock import BROWSE_FILTER
+
+        paths, _ = QFileDialog.getOpenFileNames(self, "Lock apps", "", BROWSE_FILTER)
+        self.locked_list.add_paths(paths)
 
     def _keys_tab(self) -> QWidget:
         page, form = _form()
@@ -816,6 +864,16 @@ class SettingsDialog(QDialog):
         self.cheer_on.setChecked(s.cheer_on)
         self.auto_task.setCurrentIndex(max(0, self.auto_task.findData(s.auto_task)))
         self.quests_on.setChecked(s.quests_on)
+        self.morning_card.setChecked(s.morning_card)
+        self.starter_min.setValue(s.starter_min)
+        self.log_prompt.setChecked(s.log_prompt)
+        self.app_lock.setChecked(s.app_lock)
+        self.locked_list.clear()
+        for exe in s.locked_apps:
+            self.locked_list.add_app(exe)
+        self.lock_strict.setChecked(s.lock_strict)
+        self.locked_list.parentWidget().setEnabled(s.app_lock)
+        self.lock_strict.setEnabled(s.app_lock)
         self.agent_reviews.setChecked(s.agent_reviews)
         self.taskbar.setChecked(s.taskbar_button)
         self.sound_box.setCurrentIndex(max(0, self.sound_box.findData(s.focus_sound)))
@@ -894,6 +952,14 @@ class SettingsDialog(QDialog):
         s.cheer_on = self.cheer_on.isChecked()
         s.auto_task = self.auto_task.currentData()
         s.quests_on = self.quests_on.isChecked()
+        s.morning_card = self.morning_card.isChecked()
+        s.starter_min = self.starter_min.value()
+        s.log_prompt = self.log_prompt.isChecked()
+        s.app_lock = self.app_lock.isChecked()
+        s.locked_apps = self.locked_list.apps()
+        from .applock import NAMES
+        s.app_names = {**s.app_names, **{k: v for k, v in NAMES.items() if k in s.locked_apps}}
+        s.lock_strict = self.lock_strict.isChecked()
         s.agent_reviews = self.agent_reviews.isChecked()
         s.taskbar_button = self.taskbar.isChecked()
         s.focus_sound = self.sound_box.currentData()

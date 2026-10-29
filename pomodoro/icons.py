@@ -157,6 +157,14 @@ def draw_glyph(p: QPainter, name: str, c: QPointF, size: float, color: QColor) -
         p.setBrush(color)
         for side in (-1, 1):
             p.drawRoundedRect(QRectF(c.x() + side * r - s * 0.1, c.y() - s * 0.06, s * 0.2, s * 0.32), s * 0.07, s * 0.07)
+    elif name in ("bolt", "bolt_on"):  # Ultra focus (filled gold while it's on)
+        bolt = QPainterPath(QPointF(c.x() + s * 0.1, c.y() - s * 0.42))
+        for dx, dy in ((-0.24, 0.04), (-0.02, 0.04), (-0.12, 0.42), (0.24, -0.06), (0.02, -0.06)):
+            bolt.lineTo(c.x() + dx * s, c.y() + dy * s)
+        bolt.closeSubpath()
+        p.setPen(_pen(color, stroke * 0.75))
+        p.setBrush(QColor("#ffd23f") if name == "bolt_on" else Qt.NoBrush)
+        p.drawPath(bolt)
     elif name in ("speaker", "speaker_off"):  # Pomo reads replies aloud (or doesn't)
         cone = QPainterPath(QPointF(c.x() - s * 0.38, c.y() - s * 0.11))
         for dx, dy in ((-0.2, -0.11), (0.0, -0.3), (0.0, 0.3), (-0.2, 0.11), (-0.38, 0.11)):

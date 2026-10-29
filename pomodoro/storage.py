@@ -39,6 +39,16 @@ class Thought:
 
 
 @dataclass(frozen=True)
+class LogEntry:
+    """A few sentences about what you learned that day, in English, and the AI's notes on the English."""
+    id: int
+    day: date
+    created: datetime
+    text: str
+    feedback: str = ""
+
+
+@dataclass(frozen=True)
 class AgentEvent:
     """One recorded coding-agent event: a session start, a prompt, a tool call, a finished turn or an approval."""
     ts: datetime
@@ -101,6 +111,15 @@ class Storage(QObject):
                 created TEXT NOT NULL,
                 text TEXT NOT NULL,
                 done INTEGER NOT NULL DEFAULT 0
+            )"""
+        )
+        self._db.execute(
+            """CREATE TABLE IF NOT EXISTS study_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                day TEXT NOT NULL,
+                created TEXT NOT NULL,
+                text TEXT NOT NULL,
+                feedback TEXT NOT NULL DEFAULT ''
             )"""
         )
         self._db.execute(
@@ -203,6 +222,28 @@ class Storage(QObject):
     def clear_done_thoughts(self) -> None:
         self._db.execute("DELETE FROM thoughts WHERE done = 1")
         self._db.commit()
+
+    # ------------------------------------------------------------ study log
+    def add_log(self, text: str, day: date | None = None) -> LogEntry:
+        now = datetime.now().replace(microsecond=0)
+        day = day or now.date()
+        cur = self._db.execute("INSERT INTO study_log (day, created, text) VALUES (?, ?, ?)",
+                               (day.isoformat(), now.isoformat(timespec="seconds"), text.strip()))
+        self._db.commit()
+        return LogEntry(cur.lastrowid, day, now, text.strip())
+
+    def logs(self, limit: int = 200) -> list[LogEntry]:
+        """Newest first."""
+        rows = self._db.execute("SELECT id, day, created, text, feedback FROM study_log ORDER BY id DESC LIMIT ?",
+                                (limit,))
+        return [LogEntry(r[0], date.fromisoformat(r[1]), datetime.fromisoformat(r[2]), r[3], r[4]) for r in rows]
+
+    def set_log_feedback(self, log_id: int, feedback: str) -> None:
+        self._db.execute("UPDATE study_log SET feedback = ? WHERE id = ?", (feedback, log_id))
+        self._db.commit()
+
+    def log_days(self) -> set[date]:
+        return {date.fromisoformat(r[0]) for r in self._db.execute("SELECT DISTINCT day FROM study_log")}
 
     # ------------------------------------------------------------ app time
     def add_app_time(self, day: date, app: str, seconds: int, distracting: bool) -> None:

@@ -45,6 +45,7 @@ TIPS = {
     "style": "Switch to the floating orb",
     "feed": "Feed Pomo a treat (you earn one per focus session)",
     "play": "Play a game with Pomo",
+    "ultra": "Ultra focus: block your distractions, and Pomo powers up",
     "settings": "Settings",
     "pomo": "Pomo, your focus buddy. Poke him!",
     "time": "Double-click to type a time, scroll to adjust",
@@ -347,7 +348,8 @@ class IslandWidget(QWidget):
             return {}
         r = self._expanded_rect()
         out = {"play": (QPointF(r.left() + 104, r.top() + 114), 11.0),
-               "sounds": (QPointF(r.left() + 104, r.top() + 88), 11.0)}
+               "sounds": (QPointF(r.left() + 104, r.top() + 88), 11.0),
+               "ultra": (QPointF(r.left() + 104, r.top() + 62), 11.0)}
         if self.ctrl.settings.treats > 0:
             out["feed"] = (QPointF(r.left() + 20, r.top() + 114), 11.0)
         return out
@@ -484,11 +486,11 @@ class IslandWidget(QWidget):
         r = self._expanded_rect()
         x0 = r.left() + 122
 
-        label = "PAUSED" if e.state is State.PAUSED else e.mode.label.upper()
+        label = "PAUSED" if e.state is State.PAUSED else self.ctrl.mode_label().upper()
         if e.state is State.FINISHED:
             label = f"UP NEXT · {label}"
         p.setPen(Qt.NoPen)
-        p.setBrush(accent)
+        p.setBrush(self.ctrl.mode_dot() or accent)
         p.drawEllipse(QPointF(x0 + 3, r.top() + 30), 3.2, 3.2)
         p.setFont(self._font(10.5, QFont.DemiBold, 1.2))
         p.setPen(QColor(t.ink_2))
@@ -552,11 +554,13 @@ class IslandWidget(QWidget):
             self._paint_music(p, accent)
 
         for name, (center, radius) in self._badges().items():
-            sounding = name == "sounds" and s.focus_sound != "off"
-            p.setPen(QPen(QColor(t.focus if sounding else t.orb_edge), 1.6 if sounding else 1))
+            sounding = (name == "sounds" and s.focus_sound != "off") or (name == "ultra" and s.ultra_on)
+            p.setPen(QPen(QColor("#f2a51b" if name == "ultra" and sounding else t.focus if sounding else t.orb_edge),
+                          1.6 if sounding else 1))
             p.setBrush(QColor(t.hover if name == self._hot else t.raised))
             p.drawEllipse(center, radius, radius)
-            glyph = {"feed": "dango", "play": "petal", "sounds": "headphones"}[name]
+            glyph = {"feed": "dango", "play": "petal", "sounds": "headphones",
+                     "ultra": "bolt_on" if s.ultra_on else "bolt"}[name]
             draw_glyph(p, glyph, center, radius * (1.15 if name == "sounds" else 1.35), QColor(t.ink_2))
             if name == "feed" and s.treats > 1:
                 dot = QPointF(center.x() + radius * 0.75, center.y() - radius * 0.75)
@@ -761,6 +765,8 @@ class IslandWidget(QWidget):
             self.ctrl.open_game()
         elif name == "sounds":
             self.ctrl.open_sounds_menu(QCursor.pos())
+        elif name == "ultra":
+            self.ctrl.toggle_ultra()
         elif name in MUSIC_COMMANDS:
             self.ctrl.media_command(MUSIC_COMMANDS[name])
 

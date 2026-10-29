@@ -62,6 +62,7 @@ TIPS = {
     "style": "Switch to the top island",
     "feed": "Feed Pomo a treat (you earn one per focus session)",
     "play": "Play a game with Pomo",
+    "ultra": "Ultra focus: block your distractions, and Pomo powers up",
     "settings": "Settings",
     "pomo": "Pomo, your focus buddy. Poke him!",
     "time": "Double-click to type a time, scroll to adjust,\nright-click for more options",
@@ -445,6 +446,10 @@ class OrbWidget(QWidget):
         seen = 1.0 if self.ctrl.settings.focus_sound != "off" else self._hover
         if seen > 0.05:
             out["sounds"] = (QPointF(c.x() + d, c.y() - d), r, seen)
+        # Ultra focus: on the lower-left rim, while it's on or when you hover
+        seen = 1.0 if self.ctrl.settings.ultra_on else self._hover
+        if seen > 0.05:
+            out["ultra"] = (QPointF(c.x() - d, c.y() + d), r, seen)
         if not self._pomo_on:
             return out
         anchor, size = self._pomo_anchor(), POMO_SIZE * self._k()
@@ -633,6 +638,14 @@ class OrbWidget(QWidget):
                 else:
                     draw_glyph(p, "note", center, r * 1.25, QColor(t.ink_2))
                 continue
+            if name == "ultra":
+                on = self.ctrl.settings.ultra_on
+                if on:
+                    p.setBrush(Qt.NoBrush)
+                    p.setPen(QPen(QColor("#f2a51b"), 1.6))
+                    p.drawEllipse(center, r, r)
+                draw_glyph(p, "bolt_on" if on else "bolt", center, r * 1.3, QColor(t.ink_2))
+                continue
             if name == "sounds":
                 if self.ctrl.settings.focus_sound != "off":
                     p.setBrush(Qt.NoBrush)
@@ -661,7 +674,7 @@ class OrbWidget(QWidget):
 
     def _paint_label(self, p: QPainter, c: QPointF, k: float, accent: QColor) -> None:
         t = self.ctrl.theme
-        label = "PAUSED" if self.engine.state is State.PAUSED else self.engine.mode.label.upper()
+        label = "PAUSED" if self.engine.state is State.PAUSED else self.ctrl.mode_label().upper()
         f = self._font(10.5 * k, QFont.DemiBold, 1.3 * k)
         fm = QFontMetricsF(f)
         tw = fm.horizontalAdvance(label) - 1.3 * k
@@ -669,7 +682,7 @@ class OrbWidget(QWidget):
         x0 = c.x() - (2 * dot_r + gap + tw) / 2
         y = c.y() - 38 * k
         p.setPen(Qt.NoPen)
-        p.setBrush(accent)
+        p.setBrush(self.ctrl.mode_dot() or accent)
         p.drawEllipse(QPointF(x0 + dot_r, y), dot_r, dot_r)
         p.setFont(f)
         p.setPen(QColor(t.ink_2))
@@ -934,6 +947,8 @@ class OrbWidget(QWidget):
             self.ctrl.open_music_card()
         elif name == "sounds":
             self.ctrl.open_sounds_menu(QCursor.pos())
+        elif name == "ultra":
+            self.ctrl.toggle_ultra()
 
     # ------------------------------------------------------------ inline edit
     def _layout_edit(self) -> None:

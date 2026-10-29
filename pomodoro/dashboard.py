@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import garden, insights, quests, reviews, room
+from . import garden, insights, quests, reviews, room, studylog, studypath
 from .charts import Bar, CalendarHeatmap, ColumnChart, HBarChart, Meter
 from .quests import BadgeShelf, QuestList
 from .room import RoomGoals, RoomShelf, RoomWidget
@@ -173,6 +173,7 @@ class Dashboard(QWidget):
             grid.addWidget(self.tiles[key], i // 4, i % 4)
         row1.addLayout(grid, 1)
         root.addLayout(row1)
+        root.addLayout(self._build_study_row())
 
         self.daily_card = Card("Daily focus", "Minutes of focus per day. The line marks your daily goal.")
         self.daily = ColumnChart(self.theme, 230)
@@ -338,6 +339,7 @@ class Dashboard(QWidget):
         self._refresh_insights(records, start, today, summary, focus_color)
         self._refresh_quests(records, today)
         self._refresh_room()
+        self.refresh_study()
         self._refresh_table([r for r in records if start <= r.day <= today])
         self._refresh_agents()
 
@@ -443,6 +445,113 @@ class Dashboard(QWidget):
         earned = sum(1 for v in s.badges.values() if v)
         self.badge_note.setText(f"{plural(s.quests_total, 'quest')} finished  ·  {earned} of "
                                 f"{len(quests.QUESTS) + 1} badges\n{quests.next_outfit_text(s.quests_total)}")
+
+    # ------------------------------------------------------------ study coach
+    def _build_study_row(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(16)
+        path_card = Card("My path", "One goal, in small steps. Pomo offers today's step when you sit down.")
+        self.path_goal = _label("", "title", wrap=True)
+        self.path_status = _label("", "muted")
+        self.path_meter = Meter()
+        self.path_step = _label("", "secondary", wrap=True)
+        self.path_step.setTextFormat(Qt.RichText)
+        self.path_milestones = _label("", "muted", wrap=True)
+        self.path_milestones.setTextFormat(Qt.RichText)
+        buttons = QHBoxLayout()
+        self.path_start = QPushButton()
+        self.path_start.setObjectName("primary")
+        self.path_start.setCursor(Qt.PointingHandCursor)
+        self.path_start.clicked.connect(self._start_path_step)
+        self.path_open = QPushButton()
+        self.path_open.setCursor(Qt.PointingHandCursor)
+        self.path_open.clicked.connect(self._open_or_make_path)
+        buttons.addWidget(self.path_start)
+        buttons.addWidget(self.path_open)
+        buttons.addStretch(1)
+        for w in (self.path_goal, self.path_status, self.path_meter, self.path_step, self.path_milestones):
+            path_card.body.addWidget(w)
+        path_card.body.addSpacing(8)
+        path_card.body.addLayout(buttons)
+        path_card.body.addStretch(1)
+
+        log_card = Card("Study log", "A few sentences in English each day about what you learned.")
+        self.log_streak = _label("", "hero")
+        self.log_streak_note = _label("", "secondary")
+        self.log_latest = _label("", "muted", wrap=True)
+        write = QPushButton("Write today's log")
+        write.setCursor(Qt.PointingHandCursor)
+        write.clicked.connect(self.ctrl.open_study_log)
+        log_card.body.addWidget(self.log_streak)
+        log_card.body.addWidget(self.log_streak_note)
+        log_card.body.addSpacing(8)
+        log_card.body.addWidget(self.log_latest)
+        log_card.body.addSpacing(8)
+        log_card.body.addWidget(write, 0, Qt.AlignLeft)
+        log_card.body.addStretch(1)
+        row.addWidget(path_card, 3)
+        row.addWidget(log_card, 2)
+        return row
+
+    def refresh_study(self) -> None:
+        from html import escape
+
+        s = self.ctrl.settings
+        path = s.study_path
+        today = date.today()
+        has = bool(path)
+        for w in (self.path_status, self.path_meter, self.path_milestones):
+            w.setVisible(has)
+        if not has:
+            self.path_goal.setText("No path yet")
+            self.path_step.setText("Not sure what to study, or where to start? Ask Pomo: a few short questions, "
+                                   "then a path of small steps toward one goal, to try for 8 weeks.")
+            self.path_start.setText(f"Just {s.starter_min} minutes")
+            self.path_open.setText("Make my path with Ask Pomo")
+        else:
+            week, weeks = studypath.week_of(path, today)
+            done, total = studypath.progress(path)
+            self.path_goal.setText(path["goal"])
+            self.path_status.setText(f"Week {min(week, weeks)} of {weeks}  ·  {done} of {plural(total, 'step')} done")
+            self.path_meter.set(done, max(1, total), chart_color(self.theme, s))
+            nxt = studypath.next_step(path)
+            self.path_step.setText(f"<b>Today's step:</b> {escape(studypath.step_label(nxt[2]))}" if nxt
+                                   else "<b>Every step is done.</b> Ask Pomo what's next.")
+            parts = []
+            for m in path["milestones"]:
+                d, t = studypath.milestone_progress(m)
+                mark = "✓" if t and d == t else ("●" if d else "○")
+                parts.append(f"{mark} {escape(m['title'])} ({d}/{t})")
+            self.path_milestones.setText("&nbsp;&nbsp;·&nbsp;&nbsp;".join(parts))
+            self.path_start.setText(f"Start with {s.starter_min} minutes" if nxt else f"Just {s.starter_min} minutes")
+            self.path_open.setText("Open my path")
+        days = self.ctrl.storage.log_days()
+        n = studylog.streak(days, today)
+        self.log_streak.setText(plural(n, "day"))
+        self.log_streak_note.setText("in a row" + ("  ·  today's is written" if today in days else "")
+                                     + f"  ·  {plural(len(days), 'day')} in all")
+        entries = self.ctrl.storage.logs(limit=1)
+        if entries:
+            text = entries[0].text.replace("\n", " ")
+            self.log_latest.setText(f"{entries[0].day:%a %d %b}: {text[:160]}{'…' if len(text) > 160 else ''}")
+        else:
+            self.log_latest.setText("Nothing written yet. Two or three sentences is plenty, and Pomo can "
+                                    "check your English gently.")
+
+    def _start_path_step(self) -> None:
+        nxt = studypath.next_step(self.ctrl.settings.study_path)
+        if nxt is not None:
+            self.ctrl.start_step(nxt[0], nxt[1], small=True)
+        else:
+            self.ctrl.start_small()
+
+    def _open_or_make_path(self) -> None:
+        if self.ctrl.settings.study_path:
+            self.ctrl.open_path()
+        else:
+            from .ai import PATH_START_PROMPT
+
+            self.ctrl.ask_pomo(PATH_START_PROMPT)
 
     # ------------------------------------------------------------- Pomo's room
     def _build_room_row(self) -> QHBoxLayout:
@@ -564,11 +673,12 @@ class Dashboard(QWidget):
     def _refresh_today_note(self) -> None:
         e = self.ctrl.engine
         clock = fmt_clock(e.remaining)
+        name = self.ctrl.mode_label()
         note = {
-            State.RUNNING: f"Now: {e.mode.label}, {clock} left",
-            State.PAUSED: f"Paused: {e.mode.label}, {clock} left",
-            State.IDLE: f"Ready: {e.mode.label} ({clock})",
-            State.FINISHED: f"Up next: {e.mode.label} ({clock})",
+            State.RUNNING: f"Now: {name}, {clock} left",
+            State.PAUSED: f"Paused: {name}, {clock} left",
+            State.IDLE: f"Ready: {name} ({clock})",
+            State.FINISHED: f"Up next: {name} ({clock})",
         }[e.state]
         if e.task:
             note += f"\nTask: {e.task}"
