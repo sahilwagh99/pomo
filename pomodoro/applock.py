@@ -381,8 +381,14 @@ class LockCard(QWidget):
         self.close_btn.setObjectName("ghost")
         self.close_btn.setCursor(Qt.PointingHandCursor)
         self.close_btn.clicked.connect(self._close_app)
+        self.urge_btn = QPushButton("Ride the urge")
+        self.urge_btn.setObjectName("ghost")
+        self.urge_btn.setCursor(Qt.PointingHandCursor)
+        self.urge_btn.setToolTip("Still want it? 90 seconds of breathing while the urge passes")
+        self.urge_btn.clicked.connect(self._urge)
         buttons.addWidget(self.back)
         buttons.addWidget(self.close_btn)
+        buttons.addWidget(self.urge_btn)
         buttons.addStretch(1)
         lay.addLayout(buttons)
         self.unlock_btn = QPushButton()
@@ -461,6 +467,10 @@ class LockCard(QWidget):
             from . import winutil
 
             winutil.activate_window(work.hwnd)
+
+    def _urge(self) -> None:
+        self.hide()
+        self.ctrl.open_urge()
 
     def _close_app(self) -> None:
         close(self.hwnd)

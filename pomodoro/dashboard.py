@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import garden, insights, quests, reviews, room, studylog, studypath
+from . import garden, insights, learnloop, quests, reviews, room, studylog, studypath
 from .charts import Bar, CalendarHeatmap, ColumnChart, HBarChart, Meter
 from .quests import BadgeShelf, QuestList
 from .room import RoomGoals, RoomShelf, RoomWidget
@@ -482,12 +482,22 @@ class Dashboard(QWidget):
         write = QPushButton("Write today's log")
         write.setCursor(Qt.PointingHandCursor)
         write.clicked.connect(self.ctrl.open_study_log)
+        self.review_btn = QPushButton("Review cards")
+        self.review_btn.setCursor(Qt.PointingHandCursor)
+        self.review_btn.clicked.connect(self.ctrl.open_recall)
+        self.learn_note = _label("", "secondary", wrap=True)
         log_card.body.addWidget(self.log_streak)
         log_card.body.addWidget(self.log_streak_note)
         log_card.body.addSpacing(8)
         log_card.body.addWidget(self.log_latest)
         log_card.body.addSpacing(8)
-        log_card.body.addWidget(write, 0, Qt.AlignLeft)
+        log_buttons = QHBoxLayout()
+        log_buttons.addWidget(write)
+        log_buttons.addWidget(self.review_btn)
+        log_buttons.addStretch(1)
+        log_card.body.addLayout(log_buttons)
+        log_card.body.addSpacing(8)
+        log_card.body.addWidget(self.learn_note)
         log_card.body.addStretch(1)
         row.addWidget(path_card, 3)
         row.addWidget(log_card, 2)
@@ -525,6 +535,7 @@ class Dashboard(QWidget):
             self.path_milestones.setText("&nbsp;&nbsp;·&nbsp;&nbsp;".join(parts))
             self.path_start.setText(f"Start with {s.starter_min} minutes" if nxt else f"Just {s.starter_min} minutes")
             self.path_open.setText("Open my path")
+        self._refresh_learning()
         days = self.ctrl.storage.log_days()
         n = studylog.streak(days, today)
         self.log_streak.setText(plural(n, "day"))
@@ -537,6 +548,21 @@ class Dashboard(QWidget):
         else:
             self.log_latest.setText("Nothing written yet. Two or three sentences is plenty, and Pomo can "
                                     "check your English gently.")
+
+    def _refresh_learning(self) -> None:
+        """Cards to review, the focus ladder, and urges ridden out today."""
+        s, storage = self.ctrl.settings, self.ctrl.storage
+        due, total = len(storage.cards(due_by=date.today())), len(storage.cards())
+        self.review_btn.setText(f"Review cards ({due})" if due else "Review cards")
+        lines = [f"{plural(due, 'review card')} due  ·  {total} in all" if total else
+                 "No review cards yet: teach Pomo a step to make some."]
+        ladder = learnloop.ladder_text(s)
+        if ladder:
+            lines.append(ladder)
+        rode, urges = storage.urges(since=date.today())
+        if urges:
+            lines.append(f"Urges ridden out today: {rode} of {urges}")
+        self.learn_note.setText("\n".join(lines))
 
     def _start_path_step(self) -> None:
         nxt = studypath.next_step(self.ctrl.settings.study_path)

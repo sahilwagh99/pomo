@@ -49,6 +49,17 @@ class LogEntry:
 
 
 @dataclass(frozen=True)
+class Card:
+    """A review card: a question about something you studied, and its answer."""
+    id: int
+    topic: str
+    question: str
+    answer: str
+    box: int      # how well you know it: 0 new or missed, up to 4 (see learnloop.INTERVALS)
+    due: date
+
+
+@dataclass(frozen=True)
 class AgentEvent:
     """One recorded coding-agent event: a session start, a prompt, a tool call, a finished turn or an approval."""
     ts: datetime
@@ -120,6 +131,23 @@ class Storage(QObject):
                 created TEXT NOT NULL,
                 text TEXT NOT NULL,
                 feedback TEXT NOT NULL DEFAULT ''
+            )"""
+        )
+        self._db.execute(
+            """CREATE TABLE IF NOT EXISTS cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created TEXT NOT NULL,
+                topic TEXT NOT NULL DEFAULT '',
+                question TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                box INTEGER NOT NULL DEFAULT 0,
+                due TEXT NOT NULL
+            )"""
+        )
+        self._db.execute(
+            """CREATE TABLE IF NOT EXISTS urges (
+                ts TEXT NOT NULL,
+                rode_out INTEGER NOT NULL DEFAULT 1
             )"""
         )
         self._db.execute(
@@ -244,6 +272,44 @@ class Storage(QObject):
 
     def log_days(self) -> set[date]:
         return {date.fromisoformat(r[0]) for r in self._db.execute("SELECT DISTINCT day FROM study_log")}
+
+    # ------------------------------------------------------------ review cards
+    def add_card(self, topic: str, question: str, answer: str, due: date) -> Card:
+        cur = self._db.execute("INSERT INTO cards (created, topic, question, answer, due) VALUES (?, ?, ?, ?, ?)",
+                               (datetime.now().replace(microsecond=0).isoformat(), topic.strip()[:120],
+                                question.strip(), answer.strip(), due.isoformat()))
+        self._db.commit()
+        return Card(cur.lastrowid, topic.strip()[:120], question.strip(), answer.strip(), 0, due)
+
+    def cards(self, due_by: date | None = None) -> list[Card]:
+        """All cards, or the ones due by a day, oldest due first."""
+        sql = "SELECT id, topic, question, answer, box, due FROM cards"
+        args: tuple = ()
+        if due_by is not None:
+            sql += " WHERE due <= ?"
+            args = (due_by.isoformat(),)
+        rows = self._db.execute(sql + " ORDER BY due, id", args)
+        return [Card(r[0], r[1], r[2], r[3], r[4], date.fromisoformat(r[5])) for r in rows]
+
+    def review_card(self, card_id: int, box: int, due: date) -> None:
+        self._db.execute("UPDATE cards SET box = ?, due = ? WHERE id = ?", (box, due.isoformat(), card_id))
+        self._db.commit()
+
+    def delete_card(self, card_id: int) -> None:
+        self._db.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+        self._db.commit()
+
+    # ------------------------------------------------------------ urges
+    def add_urge(self, rode_out: bool) -> None:
+        self._db.execute("INSERT INTO urges (ts, rode_out) VALUES (?, ?)",
+                         (datetime.now().replace(microsecond=0).isoformat(), int(rode_out)))
+        self._db.commit()
+
+    def urges(self, since: date) -> tuple[int, int]:
+        """(urges ridden out, urges in all) since a day."""
+        row = self._db.execute("SELECT COALESCE(SUM(rode_out), 0), COUNT(*) FROM urges WHERE ts >= ?",
+                               (since.isoformat(),)).fetchone()
+        return int(row[0]), int(row[1])
 
     # ------------------------------------------------------------ app time
     def add_app_time(self, day: date, app: str, seconds: int, distracting: bool) -> None:

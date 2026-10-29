@@ -178,6 +178,10 @@ class PowerDown(QDialog):
         self.leave.setObjectName("ghost")
         self.leave.setEnabled(False)
         self.leave.clicked.connect(self.accept)
+        urge = QPushButton("Ride the urge first")
+        urge.setObjectName("ghost")
+        urge.clicked.connect(self._urge)
+        buttons.addWidget(urge)
         stay = QPushButton("Stay Ultra")
         stay.setObjectName("primary")
         stay.setDefault(True)
@@ -195,6 +199,10 @@ class PowerDown(QDialog):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         set_dark_title_bar(self, self.ctrl.theme.dark)
+
+    def _urge(self) -> None:
+        self.reject()
+        QTimer.singleShot(0, self.ctrl.open_urge)
 
     def _tick(self, first: bool = False) -> None:
         if not first:

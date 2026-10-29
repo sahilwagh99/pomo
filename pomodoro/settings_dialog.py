@@ -237,6 +237,26 @@ class SettingsDialog(QDialog):
         form.addRow("", _hint("\"Just 10 minutes\": a short session to get going, then Pomo\n"
                               "asks if you want to keep going for a full one."))
         form.addRow("Study log", self.log_prompt)
+        self.learn_loop = QCheckBox("A curious question before a step, Teach Pomo after it, review cards")
+        self.study_with_pomo = QCheckBox("Study with Pomo: he reads his own book while you focus")
+        self.ladder_on = QCheckBox("Focus ladder: sessions grow as you finish them")
+        self.ladder_min = _spin(5, 120, " min")
+        self.ladder_goal = _spin(10, 120, " min")
+        ladder_row = QWidget()
+        ladder_lay = QHBoxLayout(ladder_row)
+        ladder_lay.setContentsMargins(0, 0, 0, 0)
+        ladder_lay.addWidget(QLabel("Now"))
+        ladder_lay.addWidget(self.ladder_min)
+        ladder_lay.addWidget(QLabel("growing to"))
+        ladder_lay.addWidget(self.ladder_goal)
+        ladder_lay.addStretch(1)
+        self.ladder_on.toggled.connect(ladder_row.setEnabled)
+        form.addRow("Learning", self.learn_loop)
+        form.addRow("", self.study_with_pomo)
+        form.addRow("Focus ladder", self.ladder_on)
+        form.addRow("", ladder_row)
+        form.addRow("", _hint("Three clean sessions in a row add 5 minutes; two stopped early\n"
+                              "take 5 off. While it's on, the ladder sets your focus length."))
 
         from .applock import DropList
 
@@ -867,6 +887,12 @@ class SettingsDialog(QDialog):
         self.morning_card.setChecked(s.morning_card)
         self.starter_min.setValue(s.starter_min)
         self.log_prompt.setChecked(s.log_prompt)
+        self.learn_loop.setChecked(s.learn_loop)
+        self.study_with_pomo.setChecked(s.study_with_pomo)
+        self.ladder_on.setChecked(s.ladder_on)
+        self.ladder_min.setValue(s.ladder_min)
+        self.ladder_goal.setValue(s.ladder_goal)
+        self.ladder_min.parentWidget().setEnabled(s.ladder_on)
         self.app_lock.setChecked(s.app_lock)
         self.locked_list.clear()
         for exe in s.locked_apps:
@@ -955,6 +981,15 @@ class SettingsDialog(QDialog):
         s.morning_card = self.morning_card.isChecked()
         s.starter_min = self.starter_min.value()
         s.log_prompt = self.log_prompt.isChecked()
+        s.learn_loop = self.learn_loop.isChecked()
+        s.study_with_pomo = self.study_with_pomo.isChecked()
+        if self.ladder_min.value() != s.ladder_min or not s.ladder_on:
+            s.ladder_streak = s.ladder_misses = 0  # a new rung: count afresh
+        s.ladder_on = self.ladder_on.isChecked()
+        s.ladder_goal = self.ladder_goal.value()
+        s.ladder_min = min(self.ladder_min.value(), s.ladder_goal)
+        if s.ladder_on:
+            s.focus_min = s.ladder_min
         s.app_lock = self.app_lock.isChecked()
         s.locked_apps = self.locked_list.apps()
         from .applock import NAMES

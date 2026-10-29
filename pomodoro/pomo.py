@@ -140,6 +140,7 @@ class Pomo:
         self.listening = False          # music is playing: headphones, a gentle sway and floating notes
         self._next_note = 0.0
         self.talking = False            # reading a reply aloud: the mouth moves
+        self.reading = False            # Study with Pomo: he reads his own book while you focus
         self.ultra = False              # Ultra focus: golden aura, spiky hair, fire in his eyes (see ultra.py)
         self._ultra_at: float | None = None
         self._ultra_down_at: float | None = None
@@ -321,6 +322,8 @@ class Pomo:
             dist = math.hypot(dx, dy) or 1.0
             reach = min(1.0, dist / 3.0)
             target = (dx / dist * reach, dy / dist * reach)
+        elif self.reading:  # eyes on the page, moving along each line
+            target = (-0.45 + 0.9 * ((t * 0.28) % 1.0), 0.8)
         else:
             if t >= self._next_wander:
                 self._next_wander = t + self.rng.uniform(1.5, 4.0)
@@ -349,13 +352,14 @@ class Pomo:
 
     def is_calm(self) -> bool:
         """True when only slow breathing is going on, so a low frame rate looks the same."""
-        return not self.listening and not self.ultra_look().showing and self._settled(notes_ok=False)
+        return (not self.listening and not self.reading and not self.ultra_look().showing
+                and self._settled(notes_ok=False))
 
     def is_grooving(self) -> bool:
         """True when only a gentle loop moves (the music groove, or the ultra aura's flicker): a medium frame
         rate is plenty."""
         steady_ultra = self._ultra_settled()
-        return (self.listening or steady_ultra) and self._settled(notes_ok=True)
+        return (self.listening or self.reading or steady_ultra) and self._settled(notes_ok=True)
 
     def _settled(self, notes_ok: bool) -> bool:
         particles = all(p.kind == "note" for p in self.particles) if notes_ok else not self.particles
@@ -365,7 +369,7 @@ class Pomo:
                 and self.hop_y <= 0.0 and self.hop_v <= 0.0
                 and abs(self.squish.x) + abs(self.squish.v) < 0.03
                 and abs(self.leaf.x) + abs(self.leaf.v) < 1.5
-                and self._eye_speed < 0.004
+                and (self.reading or self._eye_speed < 0.004)  # reading eyes glide along the lines
                 and self._blink_start < 0.0 and self._next_blink - self.t > 0.12
                 and self._next_fidget - self.t > 0.12)
 
@@ -484,6 +488,8 @@ class Pomo:
             ultra.paint_rim(p, self._body_path(c.x(), c.y(), rx, ry), s, min(1.0, look.aura) * self.aura_strength)
         self._paint_body(p, c, rx, ry, s)
         self._paint_face(p, c, rx, ry, s)
+        if self.reading and self.face != "sleepy":
+            self._paint_book(p, c, rx, ry, s)
         if look.hair:
             ultra.paint_hair(p, c, rx, ry, s, self.t, look.hair * self.hair_scale)  # instead of any hat
         else:
@@ -496,6 +502,42 @@ class Pomo:
             self._paint_bubble(p, c, rx, ry, s)
         self._paint_particles(p, anchor, s)
         ultra.paint_flash(p, c, s, look.flash)
+        p.restore()
+
+    def _paint_book(self, p: QPainter, c: QPointF, rx: float, ry: float, s: float) -> None:
+        """Study with Pomo: an open book held in front of him, with a page turning now and then."""
+        cx, cy = c.x(), c.y() + ry * 0.74
+        w, h = rx * 0.7, ry * 0.42  # each page
+        lw = max(1.0, s * 0.024)
+        p.save()
+        p.setPen(QPen(OUTLINE, lw, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(QColor("#a9b6e6"))  # the cover, peeking out under the pages
+        p.drawRoundedRect(QRectF(cx - w - s * 0.02, cy - h * 0.45, 2 * w + s * 0.04, h * 1.0), s * 0.03, s * 0.03)
+        for side in (-1, 1):
+            page = QPainterPath(QPointF(cx, cy - h * 0.4))
+            page.quadTo(QPointF(cx + side * w * 0.5, cy - h * 0.62), QPointF(cx + side * w, cy - h * 0.48))
+            page.lineTo(cx + side * w, cy + h * 0.42)
+            page.quadTo(QPointF(cx + side * w * 0.5, cy + h * 0.3), QPointF(cx, cy + h * 0.48))
+            page.closeSubpath()
+            p.setBrush(QColor("#fffdf8"))
+            p.drawPath(page)
+            p.save()
+            p.setPen(QPen(QColor(91, 44, 41, 70), max(0.6, s * 0.012), Qt.SolidLine, Qt.RoundCap))
+            for k in range(3):  # lines of text
+                y = cy - h * 0.18 + k * h * 0.2
+                p.drawLine(QPointF(cx + side * w * 0.18, y), QPointF(cx + side * w * 0.8, y))
+            p.restore()
+        flip = (self.t % 9.0) / 0.6  # every 9 seconds, a page turns over
+        if flip < 1.0:
+            x = cx + w * math.cos(math.pi * flip)
+            lift = math.sin(math.pi * flip) * h * 0.5
+            turning = QPainterPath(QPointF(cx, cy - h * 0.4))
+            turning.quadTo(QPointF((cx + x) / 2, cy - h * 0.62 - lift), QPointF(x, cy - h * 0.48 - lift * 0.6))
+            turning.lineTo(x, cy + h * 0.42 - lift * 0.6)
+            turning.quadTo(QPointF((cx + x) / 2, cy + h * 0.3 - lift), QPointF(cx, cy + h * 0.48))
+            turning.closeSubpath()
+            p.setBrush(QColor("#f6efe2"))
+            p.drawPath(turning)
         p.restore()
 
     # ------------------------------------------------------------ ultra focus
