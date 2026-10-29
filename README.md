@@ -264,8 +264,10 @@ Two daily quests go with it: *On the path* (finish a step) and *In my words* (wr
 Interest grows from curiosity and from feeling capable. So each step on your path gets three small moments (with an AI key in Ask Pomo):
 
 - **Curious first.** When a focus session starts on a step, Pomo asks one intriguing question the step will answer, and you can type a guess. Trying to answer before you learn helps you learn (the pretesting effect).
-- **Teach Pomo.** When a step is done, the card offers **Teach Pomo** (or use *Study > Teach Pomo*). Explain it in a few sentences, as if to a friend; Pomo plays a curious beginner and asks one follow-up, then answers your curious question with you. Explaining something is one of the best ways to understand it, and it's English practice too: it goes in your study log.
+- **Teach Pomo.** When a step is done, the card offers **Teach Pomo** (or use *Study > Teach Pomo*). Explain it in a few sentences, as if to a friend; Pomo plays a curious beginner, asks one follow-up, and brings back your curious question and guess so you can answer it now. Explaining something is one of the best ways to understand it, and it's English practice too: it goes in your study log.
 - **Review cards.** What you taught becomes three review cards. They come back after 1, 3, 7, 14 and 30 days, on the morning card and in *Study > Review cards*: the question, then the answer, then **Got it** or **Not yet** (a miss comes back tomorrow). Remembering beats re-reading, and getting them right is how "I'm bad at this" becomes "I get this". Add your own cards there too, with or without an AI key.
+
+Turn the learning loop off in *Settings > Focus*. With it on, starting a session on a step sends your goal and the step's name to your AI provider (for the curious question); what you teach is sent when you click **Teach**.
 
 <div align="center"><img src="docs/learning.png" alt="Curious first with a question about loops; Teach Pomo with the explanation, Pomo's follow-up and three review cards; and a review card with its answer" width="100%"></div>
 
@@ -453,7 +455,7 @@ New models come out all the time, so in *Settings > AI* you can also click **Loa
 
 <div align="center"><img src="docs/providers.png" alt="The key panel for OpenAI, and the menu to switch provider and model" width="760"></div>
 
-**Privacy:** nothing is sent until you ask something. Then Pomo sends, to the provider you picked, your question plus a short summary: timer state, focus stats, task names, your plan, parked thoughts, how your sessions felt, your focus score, and agent activity (project names, prompts and tool counts).
+**Privacy:** nothing is sent until you ask something (the one exception is the learning loop's curious question, see [Learn it for real](#learn-it-for-real)). Then Pomo sends, to the provider you picked, your question plus a short summary: timer state, focus stats, task names, your plan, parked thoughts, how your sessions felt, your focus score, and agent activity (project names, prompts and tool counts).
 
 ### Talk to Pomo
 
