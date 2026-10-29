@@ -258,6 +258,12 @@ Easily pulled away by games? Turn on *App lock* in *Settings > Focus* and add th
 
 Only an administrator can stop a program from starting at all, and Pomo never asks for admin rights, so the lock works on the app in front, during focus sessions only.
 
+### Ultra focus
+
+For the days you need to go all in. Click the lightning button beside Pomo (on the island, or on the orb's rim), or *Ultra focus* in the right-click menu. Pomo asks which apps to block: what's running now, plus the ones you picked last time. Then he powers up in the middle of your screen: a trembling charge, a flash, tall golden spiky hair, fire in his eyes and a crackling golden aura, with **ULTRA FOCUS** across the bottom (and a power-up sound, if your alert sounds are on). A focus session starts at the burst, unless you untick it.
+
+While Ultra focus is on, Pomo keeps the look on your timer and the apps you picked stay blocked the whole time, breaks included. There's no quick unlock: to get them back, power down, which takes a 10-second wait so it's a decision rather than a reflex. Ultra focus stays on if Pomo restarts.
+
 ## Focus garden
 
 Every finished pomodoro grows a sakura tree on your dashboard. It goes from a sprout to a grand sakura over your first 250 pomodoros, with one blossom for each pomodoro in the range you're viewing. Milestones unlock new outfits for Pomo: cat ears at 10 pomodoros, a flower crown at 25, a graduation cap at 50 and a wizard hat at 100.
@@ -574,7 +580,9 @@ pomodoro/garden.py          the focus garden and outfit unlocks
 pomodoro/studypath.py       your path: goal, milestones, steps, today's step and the review (plain data)
 pomodoro/path_window.py     the My path window
 pomodoro/studylog.py        the study log in English, and its gentle English tutor
-pomodoro/applock.py         app lock: locked apps put away during focus, and the lock card
+pomodoro/applock.py         app lock: locked apps put away during focus (and during Ultra focus), and the lock card
+pomodoro/ultra.py           Ultra focus drawings: the aura, the spiky golden hair, fire in the eyes, the transformation
+pomodoro/ultra_mode.py      Ultra focus windows: picking apps to block, the transformation on screen, powering down
 pomodoro/room.py            Pomo's room: the items, what earns them, where they go and how they're drawn
 pomodoro/hotkeys.py         global shortcuts (Win32 RegisterHotKey)
 pomodoro/music_card.py      the mini player card, and cover drawing shared with the island

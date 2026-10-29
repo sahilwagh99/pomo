@@ -89,6 +89,7 @@ class AppLock(QObject):
         self._clock = clock
         self._own_pid = os.getpid()
         self._seen: dict[int, float] = {}
+        self._focusing = False
         self.unlocked: set[str] = set()   # unlocked until the break
         self.tries: dict[str, int] = {}   # exe -> times it came to the front this session
         self._timer = QTimer(self)
@@ -99,15 +100,32 @@ class AppLock(QObject):
     def active(self) -> bool:
         return self._timer.isActive()
 
-    def set_active(self, active: bool) -> None:
-        active = active and self.settings.app_lock and bool(self.settings.locked_apps)
-        if active and not self._timer.isActive():
+    def set_active(self, focusing: bool) -> None:
+        """A focus session started or ended."""
+        if self._focusing and not focusing:
+            self.unlocked.clear()  # a new focus session locks them again
+        self._focusing = focusing
+        self.refresh()
+
+    def locked(self) -> set[str]:
+        """What's locked right now: your app lock list during focus, and Ultra focus's apps the whole time it's on."""
+        s = self.settings
+        apps = set(s.locked_apps) - self.unlocked if self._focusing and s.app_lock else set()
+        if s.ultra_on:
+            apps |= set(s.ultra_apps)  # no unlocking these: only powering down does
+        return apps
+
+    def ultra_app(self, exe: str) -> bool:
+        return self.settings.ultra_on and exe_key(exe) in self.settings.ultra_apps
+
+    def refresh(self) -> None:
+        """Watch while anything is locked."""
+        if self.locked() and not self._timer.isActive():
             self._seen.clear()
             self._timer.start()
             self.sample()
-        elif not active and self._timer.isActive():
+        elif not self.locked() and self._timer.isActive():
             self._timer.stop()
-            self.unlocked.clear()  # a new focus session locks them again
 
     def sample(self) -> None:
         front = self._source()
@@ -115,7 +133,7 @@ class AppLock(QObject):
             return
         hwnd, exe, _title, pid = front
         key = exe_key(exe)
-        if pid == self._own_pid or key not in self.settings.locked_apps or key in self.unlocked:
+        if pid == self._own_pid or key not in self.locked():
             return
         now = self._clock()
         if now - self._seen.get(hwnd, -1e9) < REBLOCK_S:
@@ -161,10 +179,11 @@ class LockCard(QWidget):
         m = self.SHADOW
         lay.setContentsMargins(m + 22, m + 20, m + 22, m + 18)
         lay.setSpacing(6)
-        from .chat import PomoAvatar
+        from .ultra_mode import portrait
 
         top = QHBoxLayout()
-        self.avatar = PomoAvatar(64)
+        self.avatar = portrait(46)
+        self.avatar.pomo.power_down()
         self.avatar.pomo.set_mood("focus")
         top.addWidget(self.avatar, 0, Qt.AlignTop)
         text = QVBoxLayout()
@@ -201,12 +220,17 @@ class LockCard(QWidget):
         self._tick.setInterval(1000)
         self._tick.timeout.connect(self._refresh)
 
-    def show_for(self, hwnd: int, exe: str, closed: bool) -> None:
+    def show_for(self, hwnd: int, exe: str, closed: bool, ultra: bool = False) -> None:
         self.hwnd, self.exe = hwnd, exe
         self._wait = 0
+        self._ultra = ultra
         self.unlock_btn.setEnabled(True)
         name = label(exe)
-        self.title.setText(f"Focus time: {name} is locked")
+        self.title.setText(f"Ultra focus: {name} is blocked" if ultra else f"Focus time: {name} is locked")
+        if ultra:
+            self.avatar.pomo.power_up(instant=True)
+        else:
+            self.avatar.pomo.power_down()
         self.close_btn.setText(f"Close {name}")
         self.close_btn.setVisible(not closed)
         self._closed = closed
@@ -227,6 +251,10 @@ class LockCard(QWidget):
 
         name = label(self.exe)
         what = "Pomo closed it." if getattr(self, "_closed", False) else "Pomo put it away."
+        if getattr(self, "_ultra", False):
+            self.body.setText(f"{what} It stays blocked until you power down Ultra focus, breaks included.")
+            self.unlock_btn.setText("Power down Ultra focus…")
+            return
         self.body.setText(f"{what} {fmt_clock(e.remaining)} left in this focus session, then it's all yours "
                           f"on your break.")
         if self._wait > 0:
@@ -241,6 +269,10 @@ class LockCard(QWidget):
             self.unlock_btn.setText(f"Unlock {name} until my break")
 
     def _unlock_clicked(self) -> None:
+        if getattr(self, "_ultra", False):
+            self.hide()
+            self.ctrl.leave_ultra()
+            return
         if self._wait > 0:  # cancel the countdown
             self._wait = 0
         else:

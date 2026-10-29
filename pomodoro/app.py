@@ -13,7 +13,7 @@ from PySide6.QtGui import QColor, QIcon, QImage
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QSystemTrayIcon
 
 from . import APP_NAME, APP_VERSION, agent_hooks, audio, claude_hooks, garden, insights, keystore, media, planner
-from . import applock, providers, quests, reviews, room, soundscapes, studylog, studypath, updater
+from . import applock, providers, quests, reviews, room, soundscapes, studylog, studypath, ultra, updater
 from .agents import EDIT_TOOLS, AgentHub, Approval
 from .config import FOCUS_SOUNDS, HOTKEYS, OUTFITS, Settings
 from .hotkeys import GlobalHotkeys
@@ -226,6 +226,9 @@ class PomoApp(QObject):
         QTimer.singleShot(2000, self._check_quests)  # today's history may already have met a quest
         QTimer.singleShot(2500, self._after_update)  # just updated? say so
         QTimer.singleShot(4000, self._maybe_morning_card)  # today's step
+        if self.settings.ultra_on:  # still Ultra from before: powered up, apps blocked
+            self._sync_ultra_look()
+            self.applock.refresh()
         QTimer.singleShot(updater.FIRST_CHECK_MS, self.check_for_updates)
         self._update_timer.start()
         if not self.settings.welcomed:
@@ -505,6 +508,69 @@ class PomoApp(QObject):
         window.setWindowState(window.windowState() & ~Qt.WindowMinimized)
         window.raise_()
         window.activateWindow()
+
+    # ------------------------------------------------------------ ultra focus
+    def toggle_ultra(self) -> None:
+        if self.settings.ultra_on:
+            self.leave_ultra()
+        else:
+            self.go_ultra()
+
+    def go_ultra(self) -> None:
+        """Ask which apps to block, then Pomo transforms and they stay blocked until you power down."""
+        from PySide6.QtWidgets import QDialog
+
+        from .ultra_mode import UltraBurst, UltraPicker
+
+        s = self.settings
+        if s.ultra_on:
+            return
+        picker = UltraPicker(self)
+        if picker.exec() != QDialog.Accepted:
+            return
+        s.ultra_apps = picker.chosen()
+        s.ultra_start_focus = picker.start_focus.isChecked()
+        s.ultra_on = True
+        s.clamp()
+        self.save_settings()
+        self.applock.refresh()
+        self._sync_ultra_look(animate=True)
+        self._ultra_burst = UltraBurst(self, s.ultra_apps)  # kept, or Python would drop it mid-animation
+        self._ultra_burst.play()
+        if s.sound_enabled:
+            self.notifier.play("PowerUp", s.volume)
+        e = self.engine
+        if s.ultra_start_focus and not (e.mode is Mode.FOCUS and e.state is State.RUNNING):
+            QTimer.singleShot(int(ultra.CHARGE_S * 1000), self._start_focus_now)  # at the burst
+
+    def leave_ultra(self) -> None:
+        """Power down, after a short wait: the apps unlock and Pomo's hair settles."""
+        from PySide6.QtWidgets import QDialog
+
+        from .ultra_mode import PowerDown
+
+        if not self.settings.ultra_on:
+            return
+        if PowerDown(self).exec() != QDialog.Accepted:
+            return
+        self.settings.ultra_on = False
+        self.save_settings()
+        self.applock.refresh()
+        if self.lock_card is not None:
+            self.lock_card.hide()
+        self._sync_ultra_look(animate=True)
+
+    def _sync_ultra_look(self, animate: bool = False) -> None:
+        """Pomo on the island and the orb: powered up while Ultra focus is on."""
+        on = self.settings.ultra_on
+        for view in (self.island, self.orb):
+            pomo = view.pomo
+            pomo.aura_strength, pomo.hair_scale = 0.8, 0.8
+            if on and not pomo.ultra:
+                pomo.power_up(instant=not animate)
+            elif not on and pomo.ultra:
+                pomo.power_down()
+            view.update()
 
     # ------------------------------------------------------------ Pomo's room
     def room_progress(self) -> tuple[float, int, int, list[str]]:
@@ -1050,6 +1116,7 @@ class PomoApp(QObject):
         _action(menu, "Pomo's room…", self.open_room)
         menu.addSeparator()
 
+        _action(menu, "Ultra focus", self.toggle_ultra, checked=self.settings.ultra_on)
         _action(menu, "Ask Pomo…", self.open_chat)
         talk = self.settings.hotkey_talk if self.settings.hotkeys_on and self.settings.hotkey_talk else ""
         _action(menu, f"Talk to Pomo\t{talk}" if talk else "Talk to Pomo", lambda: self.start_talk(None))
@@ -2138,8 +2205,8 @@ class PomoApp(QObject):
         (applock.close if strict else applock.minimize)(hwnd)
         if self.lock_card is None:
             self.lock_card = applock.LockCard(self)
-        self.lock_card.show_for(hwnd, exe, closed=strict)
-        if self.view.isVisible():
+        self.lock_card.show_for(hwnd, exe, closed=strict, ultra=self.applock.ultra_app(exe))
+        if self.view.isVisible() and not self.view.pomo.ultra:
             self.view.pomo.side_eye()
 
     def _on_went_away(self, idle: float) -> None:

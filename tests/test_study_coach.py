@@ -237,3 +237,74 @@ class AppLockTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UltraTests(unittest.TestCase):
+    def test_the_transformation_in_stages(self):
+        from pomodoro import ultra
+
+        self.assertFalse(ultra.look_at(None).showing)
+        charging = ultra.look_at(0.5)
+        self.assertGreater(charging.charge, 0)
+        self.assertEqual(charging.hair, 0)  # no hair until the burst
+        burst = ultra.look_at(ultra.CHARGE_S + 0.05)
+        self.assertGreater(burst.flash, 0.5)
+        self.assertGreater(burst.aura, 1.0)
+        steady = ultra.look_at(ultra.TRANSFORM_S + 5)
+        self.assertEqual((steady.aura, steady.hair, steady.flash, steady.charge), (1.0, 1.0, 0.0, 0.0))
+        self.assertLess(ultra.look_at(None, 0.3).aura, 1.0)  # powering down fades
+        self.assertFalse(ultra.look_at(None, ultra.POWER_DOWN_S).showing)
+
+    def test_pomo_powers_up_and_down(self):
+        import random
+
+        from PySide6.QtGui import QImage, QPainter
+        from PySide6.QtCore import QPointF
+
+        from pomodoro.pomo import Pomo
+
+        pomo = Pomo(random.Random(1))
+        pomo.power_up()
+        image = QImage(200, 260, QImage.Format_ARGB32)
+        for _ in range(140):  # through the whole transformation, painting each frame
+            pomo.update(0.02)
+            image.fill(0)
+            p = QPainter(image)
+            pomo.paint(p, QPointF(100, 180), 80)
+            p.end()
+        self.assertTrue(pomo.ultra_look().showing)
+        self.assertFalse(pomo.is_calm())  # the aura flickers: keep animating
+        pomo.power_down()
+        for _ in range(40):
+            pomo.update(0.02)
+        self.assertFalse(pomo.ultra_look().showing)
+
+    def test_ultra_apps_stay_blocked_through_breaks_with_no_quick_unlock(self):
+        s = Settings()
+        s.ultra_on, s.ultra_apps = True, ["valorant"]
+        s.app_lock, s.locked_apps = True, ["steam"]
+        front = {"w": (1, "valorant", "VALORANT", 5)}
+        blocked = []
+        lock = applock.AppLock(s, source=lambda: front["w"], clock=lambda: 0.0)
+        lock.blocked.connect(lambda hwnd, exe: blocked.append(exe))
+        lock.set_active(False)  # a break
+        lock.refresh()
+        self.assertEqual(blocked, ["valorant"])
+        self.assertEqual(lock.locked(), {"valorant"})  # the app lock list only counts during focus
+        lock.unlock("valorant")
+        self.assertIn("valorant", lock.locked())  # only powering down unlocks it
+        self.assertTrue(lock.ultra_app("Valorant.exe"))
+        s.ultra_on = False
+        lock.refresh()
+        self.assertFalse(lock.active)
+
+    def test_settings_and_the_sound(self):
+        s = Settings()
+        s.ultra_apps = ["D:\Games\Valorant.exe", "explorer", "VALORANT"]
+        s.clamp()
+        self.assertEqual(s.ultra_apps, ["valorant"])
+        from pomodoro.sounds import render_wav
+
+        with tempfile.TemporaryDirectory() as folder:
+            length = render_wav("PowerUp", 60, Path(folder) / "power.wav")
+        self.assertGreater(length, 2.0)
