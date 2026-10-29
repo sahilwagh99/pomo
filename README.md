@@ -51,6 +51,7 @@ Pomo used to be called FocusOrb. Run `Pomo-Setup.exe` and it removes FocusOrb fo
 - **Breathe with Pomo.** A short guided break: box breathing, rest your eyes, stretch.
 - **A study coach.** Not sure what to study next? Ask Pomo builds you a path of small steps toward one goal, and Pomo always knows today's step. Start with *just 10 minutes* when it's hard to begin, and write a few sentences in English each evening, with gentle notes on your English if you like.
 - **App lock.** Games and other apps you lock are put away while you focus, with a card to get you back to work.
+- **Ultra focus.** For the days you need to go all in: Pomo powers up (spiky golden hair, fire in his eyes, a crackling golden aura) and the apps you drag in stay blocked, breaks included, until you power down.
 - **Daily quests and badges.** Three small goals a day, like "2 pomodoros before 10 AM", with a badge for each and new outfits now and then.
 - **Focus garden.** A sakura tree that grows with every pomodoro and unlocks new outfits.
 - **Pomo's room.** A cozy room on the dashboard that fills up with furniture you earn from focus hours, quests and Perfect days. Swap things around with a click.
@@ -242,6 +243,8 @@ Not sure which direction to take, or what to study next? Click **My path** in As
 - **Make it yours.** In the My path window, tick steps off, double-click to rename, and right-click to start a step, change how many pomodoros it takes, add or delete steps and milestones. Tell Ask Pomo "I finished the SQL basics" and it ticks that off for you.
 - **Decide again at the end.** When the weeks are up, Pomo asks whether to keep going for a few more weeks, or to look back with Ask Pomo and maybe change direction.
 
+<div align="center"><img src="docs/study.png" alt="The My path window with today's step and every milestone, the morning card offering to start today's step with 10 minutes, and a session card asking if the step is done" width="100%"></div>
+
 ### Start small
 
 Can't get yourself to start? **Just 10 minutes** starts a short focus session. When it ends, the card says *You started!* and offers to keep going for a full pomodoro on the same task. Starting is the hard part; this makes it small. Each morning a card shows today's step, your streak, and a nudge to put your phone in another room, with **Start 10 minutes** right there. Change the length, or turn the morning card off, in *Settings > Focus*.
@@ -252,17 +255,25 @@ In the evening, after a day with some focus, Pomo asks for two or three sentence
 
 Two daily quests go with it: *On the path* (finish a step) and *In my words* (write your log).
 
+<div align="center"><img src="docs/studylog.png" alt="The study log: today's entry, and Pomo's notes on the English: a polished version, three fixes with why, and what went well" width="420"></div>
+
 ### App lock
 
 Easily pulled away by games? Turn on *App lock* in *Settings > Focus* and drag the apps to lock onto the list, from your desktop, the Start menu or a folder (or browse for them). During a focus session, when a locked app comes to the front, Pomo puts it away and shows a card: **Back to work** brings your work window back, or **Close** it. You can unlock it until your break, but only after a 10-second wait, so it's a decision rather than a reflex. Choose *Close them instead of putting them away* to be strict. The break card tells you how many times the lock kept them away.
 
 Only an administrator can stop a program from starting at all, and Pomo never asks for admin rights, so the lock works on the app in front, during focus sessions only.
 
+<div align="center"><img src="docs/applock.png" alt="The lock card: Valorant is locked, with Back to work, Close Valorant and Unlock until my break; and its Ultra focus version" width="760"></div>
+
 ### Ultra focus
 
 For the days you need to go all in. Click the lightning button beside Pomo (on the island, or on the orb's rim), or *Ultra focus* in the right-click menu. Pomo asks which apps to block: drag them in from your desktop, the Start menu or a folder (shortcuts work, including Steam and Epic game shortcuts), and the ones you picked last time are already there. Then he powers up in the middle of your screen: a trembling charge, a flash, a tall flame of layered golden spikes with bangs over his forehead, fire in his eyes, a glowing golden aura and white lightning crackling around him, with **ULTRA FOCUS** across the bottom (and a power-up sound, if your alert sounds are on). A focus session starts at the burst, unless you untick it.
 
-While Ultra focus is on, Pomo keeps the look on your timer and the apps you picked stay blocked the whole time, breaks included. There's no quick unlock: to get them back, power down, which takes a 10-second wait so it's a decision rather than a reflex. Ultra focus stays on if Pomo restarts.
+While Ultra focus is on, Pomo keeps the look on your timer and the apps you picked stay blocked the whole time, breaks included. There's no quick unlock: to get them back, power down, which takes a 10-second wait so it's a decision rather than a reflex. Ultra focus stays on if Pomo restarts. The timer says **ULTRA FOCUS** instead of FOCUS, with a gold dot.
+
+<div align="center"><img src="docs/ultra_transform.png" alt="Pomo's power-up, frame by frame: straining as the aura charges, a flash, the golden hair bursting up, then the steady glow with lightning" width="100%"></div>
+
+<div align="center"><img src="docs/ultra.png" alt="Go Ultra: the apps dragged in to block; the transformation with ULTRA FOCUS; and the island in Ultra focus" width="100%"></div>
 
 ## Focus garden
 
@@ -460,7 +471,8 @@ Replies are read by a Windows voice on your PC (pick one in *Settings > AI*). Po
 | Focus sounds | The headphones button beside Pomo on the island, or on the orb's rim |
 | From any app | The [global shortcuts](#global-shortcuts): start or pause, skip, park a thought, music, show or hide, talk to Pomo |
 | Taskbar | Hover Pomo's taskbar button for reset, play/pause and skip; click it to bring the timer up |
-| Everything else | Right-click: switch mode, add time, set task, your plan, park a thought, parked thoughts, daily goal, timer style, theme, outfit, Ask Pomo, Talk to Pomo, games, Breathe with Pomo, focus sounds, today's quests, music, reviews waiting, coding agents, run on startup, hide, quit |
+| Ultra focus | The lightning button beside Pomo on the island, or on the orb's rim (it glows gold while it's on) |
+| Everything else | Right-click: switch mode, add time, set task, your plan, park a thought, parked thoughts, daily goal, timer style, theme, outfit, Pomo's room, Study (today's step, just 10 minutes, my path, study log), Ultra focus, Ask Pomo, Talk to Pomo, games, Breathe with Pomo, focus sounds, today's quests, music, reviews waiting, coding agents, run on startup, hide, quit |
 | Tray icon | Click to bring the timer back; double-click for the dashboard |
 
 ## Dashboard
@@ -474,6 +486,7 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 - **Charts:** daily focus with a goal line, a consistency heatmap, top tasks, time of day and weekday rhythm.
 - **Focus garden:** your sakura tree and the next outfit to earn.
 - **Insights:** your best focus length, how your sessions felt, your focus score, and where your focus time went.
+- **My path and Study log:** your goal and today's step, with a button to start it, and your log's streak.
 - **Quests and badges:** today's three quests with their progress, and every badge you've earned.
 - **Pomo's room:** the room you're furnishing, what's next to earn, and every item so far.
 - **Coding agents:** today's sessions, prompts, tool calls, files edited, commands and approvals, how long agents worked and how much of it overlapped with your focus and breaks, what is running right now, and the changes waiting for your review.

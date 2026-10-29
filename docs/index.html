@@ -53,6 +53,8 @@
 
   .spot { display: grid; grid-template-columns: 1fr 1.2fr; gap: 56px; align-items: center; }
   .spot.flip > :first-child { order: 2; }
+  .ultra-strip { margin-top: 36px; }
+  .ultra-shots { margin-top: 18px; }
   .tags { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
   .tag { padding: 6px 14px; border-radius: 999px; background: var(--raised); font-weight: 700; font-size: 14px; }
 
@@ -89,7 +91,7 @@
     <a class="brand" href="#top"><img src="icon.png" alt="" width="30" height="30">Pomo</a>
     <div class="links">
       <a class="optional" href="#highlights">Features</a>
-      <a class="optional" href="#room">Pomo's room</a>
+      <a class="optional" href="#ultra">Ultra focus</a>
       <a href="guide.html">Guide</a>
       <a class="optional" href="https://github.com/sahilwagh99/pomo">GitHub</a>
       <a class="get" href="https://github.com/sahilwagh99/pomo/releases/latest/download/Pomo-Setup.exe">Download</a>
@@ -100,7 +102,7 @@
 <header class="hero" id="top">
   <div class="wrap">
     <div>
-      <a class="chip" href="#room">New in 1.6: Pomo's room</a>
+      <a class="chip" href="#ultra">New: Ultra focus mode</a>
       <h1>A cozy Pomodoro timer <span class="soft">for Windows</span></h1>
       <p class="lead">Starring Pomo the matcha mochi, who sits on your timer, cheers you on, takes breaks with you and keeps an eye on your coding agents.</p>
       <div class="actions">
@@ -162,7 +164,33 @@
   </div>
 </section>
 
-<section class="alt" id="room">
+<section class="center" id="ultra">
+  <div class="wrap">
+    <div class="eyebrow">New: Ultra focus</div>
+    <h2>For the days you go all in</h2>
+    <p class="lead">Click the lightning button and drag in the apps that pull you away. Pomo powers up, with tall golden hair, fire in his eyes and a crackling aura, and those apps stay blocked, breaks included, until you power down.</p>
+    <div class="shot ultra-strip"><img src="ultra_transform.png" alt="Pomo's power-up, frame by frame: straining as the aura charges, a flash, the golden hair bursting up, then the steady glow with lightning" width="2080" height="290" loading="lazy"></div>
+    <div class="shot ultra-shots"><img src="ultra.png" alt="Go Ultra: the apps dragged in to block, the transformation with ULTRA FOCUS, and the island in Ultra focus" width="1582" height="568" loading="lazy"></div>
+  </div>
+</section>
+
+<section class="alt" id="study">
+  <div class="wrap spot">
+    <div>
+      <div class="eyebrow">New: a study coach</div>
+      <h2>Know what to study next</h2>
+      <p class="lead">Not sure which direction to take? Ask Pomo asks a few questions and builds your path: one goal, in small steps. You always know today's step.</p>
+      <ul class="dots">
+        <li><b>Start small.</b> "Just 10 minutes" gets you going, then Pomo asks if you'll keep going.</li>
+        <li><b>A study log in English.</b> A few sentences a day, with gentle notes on your English.</li>
+        <li><b>App lock.</b> Games you lock are put away while you focus.</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="study.png" alt="The My path window, the morning card with today's step, and a session card asking if the step is done" width="930" height="688" loading="lazy"></div>
+  </div>
+</section>
+
+<section id="room">
   <div class="wrap spot">
     <div>
       <div class="eyebrow">New in 1.6</div>
@@ -212,6 +240,11 @@
       <a href="guide.html#looks">Twenty-one outfits</a>
       <a href="guide.html#agents">Agent-paced pomodoros</a>
       <a href="guide.html#install">One-click updates</a>
+      <a href="guide.html#study">My path</a>
+      <a href="guide.html#study">Just 10 minutes</a>
+      <a href="guide.html#study">A study log in English</a>
+      <a href="guide.html#study">App lock for games</a>
+      <a href="#room">Pomo's room</a>
     </div>
   </div>
 </section>
