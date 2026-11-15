@@ -38,6 +38,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QLineEdit, QToolTip, QWidget
 
+from . import habits, medals
 from .engine import Mode, State
 from .icons import draw_equalizer, draw_glyph
 from .music_card import now_playing_tip
@@ -49,6 +50,12 @@ BASE = 190.0     # layout below is designed at this diameter and scaled
 MARGIN = 18      # transparent border for the drop shadow and glow
 HEAD = 56.0      # room above the circle for Pomo (at BASE scale)
 POMO_SIZE = 50.0
+# your habit rank: a 40% arc just outside the face, along the bottom, with the medal hanging in its middle
+ARC_SPAN = 144.0
+ARC_GAP = 4.5
+ARC_W = 5.0
+MEDAL_R = 14.5
+RANK_FOOT = ARC_GAP + ARC_W / 2 + MEDAL_R * 1.13 + 2  # how far the medal reaches below the circle
 SNAP = 28
 EDGE_GAP = 16
 FRAME_MS = 33        # while Pomo moves
@@ -67,6 +74,12 @@ TIPS = {
     "pomo": "Pomo, your focus buddy. Poke him!",
     "time": "Double-click to type a time, scroll to adjust,\nright-click for more options",
 }
+
+
+def rank_shown(ctrl):
+    """Your habit standing, when the timer shows your rank (you track habits and the setting is on)."""
+    standing = getattr(ctrl, "habit_standing", None)
+    return standing if standing is not None and ctrl.settings.show_rank else None
 
 
 def parse_duration(text: str) -> int | None:
@@ -258,7 +271,7 @@ class OrbWidget(QWidget):
             self.setWindowFlags(flags)
             if was_visible:
                 self.show()
-        self.setFixedSize(side, side + int(self._head()))
+        self.setFixedSize(side, side + int(self._head()) + math.ceil(max(0.0, self._below() - MARGIN)))
         if keep_center is not None:
             self.move_circle_to(keep_center)
             self.ensure_on_screen()
@@ -386,6 +399,14 @@ class OrbWidget(QWidget):
     def _head(self) -> float:
         return HEAD * self._k() if self._pomo_on else 0.0
 
+    def _below(self) -> float:
+        """How far the rank medal hangs below the circle (0 when the rank isn't shown)."""
+        return RANK_FOOT * self._k() if rank_shown(self.ctrl) is not None else 0.0
+
+    def _medal_center(self) -> QPointF:
+        c = self._center()
+        return QPointF(c.x(), c.y() + self._diam / 2 + (ARC_GAP + ARC_W / 2) * self._k())
+
     def _center(self) -> QPointF:
         return QPointF(self.width() / 2, MARGIN + self._head() + self._diam / 2)
 
@@ -446,10 +467,15 @@ class OrbWidget(QWidget):
         seen = 1.0 if self.ctrl.settings.focus_sound != "off" else self._hover
         if seen > 0.05:
             out["sounds"] = (QPointF(c.x() + d, c.y() - d), r, seen)
-        # Ultra focus: on the lower-left rim, while it's on or when you hover
+        # Ultra focus: on the lower-left rim (or the left, when the rank's arc runs along the bottom),
+        # while it's on or when you hover
+        ranked = rank_shown(self.ctrl) is not None
         seen = 1.0 if self.ctrl.settings.ultra_on else self._hover
         if seen > 0.05:
-            out["ultra"] = (QPointF(c.x() - d, c.y() + d), r, seen)
+            out["ultra"] = (QPointF(c.x() - self._diam / 2 - r * 0.3, c.y()) if ranked else QPointF(c.x() - d, c.y() + d),
+                            r, seen)
+        if ranked:  # your habit rank: the medal hanging from the bottom of the timer
+            out["rank"] = (self._medal_center(), MEDAL_R * self._k(), 1.0)
         if not self._pomo_on:
             return out
         anchor, size = self._pomo_anchor(), POMO_SIZE * self._k()
@@ -493,15 +519,15 @@ class OrbWidget(QWidget):
 
     def move_to_corner(self) -> None:
         geo = QGuiApplication.primaryScreen().availableGeometry()
-        d, h = int(self._diam), int(self._head())
+        d, h = int(self._diam), int(self._head() + self._below())
         self.move(geo.right() + 1 - EDGE_GAP - d - MARGIN, geo.bottom() + 1 - EDGE_GAP - d - h - MARGIN)
 
     def ensure_on_screen(self) -> None:
         self.move(self._clamp(self.pos(), snap=False))
 
     def _clamp(self, top_left: QPoint, snap: bool) -> QPoint:
-        # the visible block is Pomo's headroom plus the circle
-        bw, bh = int(self._diam), int(self._diam + self._head())
+        # the visible block is Pomo's headroom plus the circle, plus the rank medal hanging below it
+        bw, bh = int(self._diam), int(self._diam + self._head() + self._below())
         left, top = top_left.x() + MARGIN, top_left.y() + MARGIN
         center = QPoint(left + bw // 2, top + bh // 2)
         screen = QGuiApplication.screenAt(center) or QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
@@ -609,6 +635,11 @@ class OrbWidget(QWidget):
                 p.drawEllipse(head, ring_w * 0.24, ring_w * 0.24)
 
         if reaches_face:
+            standing = rank_shown(self.ctrl)
+            if standing is not None:  # your habit rank: 40% of a ring, just outside the face
+                ra = R + (ARC_GAP + ARC_W / 2) * k
+                medals.paint_arc(p, QRectF(c.x() - ra, c.y() - ra, 2 * ra, 2 * ra), 270 - ARC_SPAN / 2, ARC_SPAN,
+                                 ARC_W * k, standing, t.dark, QColor(t.danger))
             self._paint_label(p, c, k, accent)
             if not self._editing:
                 self._paint_time(p, k)
@@ -629,6 +660,16 @@ class OrbWidget(QWidget):
         t = self.ctrl.theme
         for name, (center, r, seen) in self._badges().items():
             p.setOpacity(self._opacity * seen)
+            if name == "rank":
+                standing = rank_shown(self.ctrl)
+                if name == self._hot:  # a soft glow says it opens your habits
+                    glow = QColor(medals.color(standing.rank.medal))
+                    glow.setAlpha(90)
+                    p.setPen(Qt.NoPen)
+                    p.setBrush(glow)
+                    p.drawEllipse(center, r * 1.35, r * 1.35)
+                medals.paint_cached(p, center, r, standing.rank, self.devicePixelRatioF())
+                continue
             p.setPen(QPen(QColor(t.orb_edge), 1))
             p.setBrush(QColor(t.hover if name == self._hot else t.orb_face))
             p.drawEllipse(center, r, r)
@@ -796,6 +837,9 @@ class OrbWidget(QWidget):
             from .island import sounds_tip
 
             text = sounds_tip(self.ctrl.settings)
+        elif name == "rank":
+            standing = rank_shown(self.ctrl)
+            text = habits.tip(standing) if standing is not None else ""
         elif name == "pomo" and self.ctrl.agents.sessions:
             lines = [f"{a.project}: {a.status_text}" + (f" · {a.activity}" if a.status == "working" else "")
                      for a in self.ctrl.agents.live_sessions()[:5]]
@@ -949,6 +993,8 @@ class OrbWidget(QWidget):
             self.ctrl.open_sounds_menu(QCursor.pos())
         elif name == "ultra":
             self.ctrl.toggle_ultra()
+        elif name == "rank":
+            self.ctrl.open_habits()
 
     # ------------------------------------------------------------ inline edit
     def _layout_edit(self) -> None:

@@ -53,6 +53,7 @@ Pomo used to be called FocusOrb. Run `Pomo-Setup.exe` and it removes FocusOrb fo
 - **Learn it for real.** A curious question before each step, Teach Pomo after it, and review cards that come back over days, so studying turns into understanding (and, slowly, interest).
 - **Focus training.** A focus ladder that grows your sessions as you succeed, 90 seconds to ride out an urge, and Pomo reading his own book beside you while you study.
 - **Your path as a game.** Focus earns XP and levels, and your path becomes a skill tree where each finished step unlocks with a burst. The big picture maps how your steps connect, and a focus wallpaper puts today's step on your desktop while you work.
+- **Habits, with a rank to earn.** Track your habits month by month, like a habit tracker spreadsheet (or import yours from Excel). Every day is a ranked match: +30 points for reaching your daily target, +15 for half of it, -30 for less. Climb eight medals from Rookie to Eternal, worn on your timer with an arc that fills toward your next star.
 - **App lock.** Games and other apps you lock are put away while you focus, with a card to get you back to work.
 - **Ultra focus.** For the days you need to go all in: Pomo powers up (spiky golden hair, fire in his eyes, a crackling golden aura) and the apps you drag in stay blocked, breaks included, until you power down.
 - **Daily quests and badges.** Three small goals a day, like "2 pomodoros before 10 AM", with a badge for each and new outfits now and then.
@@ -311,6 +312,24 @@ While Ultra focus is on, Pomo keeps the look on your timer and the apps you pick
 
 <div align="center"><img src="docs/ultra.png" alt="Go Ultra: the apps dragged in to block; the transformation with ULTRA FOCUS; and the island in Ultra focus" width="100%"></div>
 
+## Habits and ranks
+
+Keep the habits you care about (the gym, reading, calling home, no fast food) and earn a rank for it, the way ranked games do. Open the tracker by clicking the medal on your timer, or with *Habit tracker…* in the right-click menu.
+
+- **Your habits, month by month.** Give each habit a monthly goal: on how many days of the month you want to do it (31 means every day). The tracker shows the month as a grid, like a habit tracker spreadsheet: a row per habit with its goal, a box per day, each habit's progress toward its goal, the habits done each day, and a success rate with its verdict, from *Excellent* to *Start again*. Tick today's habits as you do them, in the grid or right from the right-click menu (*Habits*). Yesterday stays open for what you forgot to tick; older days are final.
+- **Import from Excel.** Already track your habits in a spreadsheet? *Import from Excel* reads its HABIT and GOAL columns (TemplateLab's monthly habit tracker works as it is).
+- **Every day is a ranked match.** Your daily target is what your monthly goals add up to per day, or a number you pick. Reach it for **+30** points, at least half of it for **+15**; less than half costs **30**. The day counts once it's over, and the next morning Pomo tells you how it went and what it did to your rank. If you're short of the target in the evening, a reminder asks if you did more (set its time in *Settings > Focus*).
+- **Eight medals, five stars each.** 150 points earn a star (five perfect days), and five stars earn the next medal: Rookie, Squire, Knight, Paladin, Champion, Mythic, Celestial and Eternal, each a little grander, with spikes, then wings, a crown and finally flames. Eternal counts up instead of earning stars. Miss days and you slide back down, star by star.
+- **On your timer.** The orb wears your medal under its face, with a 40% arc around the bottom that fills toward your next star. The island shows a small medal with its own arc, and a rank row with today's habits when it opens. Today's match shows on the arc as it happens: a lighter stretch for the points you're about to earn, a red one for the points at risk. Changing a goal or your daily target later never rewrites days that are already over.
+
+The ladder is inspired by competitive games' ranked medals; the names and the art are Pomo's own. Turn the rank off on the timer in *Settings > Focus*.
+
+<div align="center"><img src="docs/rank.png" alt="The orb wearing three ranks: Knight 4 with today's +30 as a lighter stretch at the start of its arc, Champion 3 with the end of its fill red because today's points are at risk, and Eternal 5 a third of the way to Eternal 6; and the island, compact with a little medal and open with the rank row: Squire 4, 45 to Squire 5, Today 6/8, +15 so far" width="100%"></div>
+
+<div align="center"><img src="docs/habits.png" alt="The habit tracker: Squire 4 with 1,305 points, the ladder of medals, and November as a grid of ten habits with their goals, ticks, progress, habits done each day and the points each day earned" width="100%"></div>
+
+<div align="center"><img src="docs/medals.png" alt="The eight medals: Rookie from 0 points, Squire from 750, Knight from 1,500, Paladin from 2,250, Champion from 3,000, Mythic from 3,750, Celestial from 4,500 and Eternal from 5,250" width="100%"></div>
+
 ## Focus garden
 
 Every finished pomodoro grows a sakura tree on your dashboard. It goes from a sprout to a grand sakura over your first 250 pomodoros, with one blossom for each pomodoro in the range you're viewing. Milestones unlock new outfits for Pomo: cat ears at 10 pomodoros, a flower crown at 25, a graduation cap at 50 and a wizard hat at 100.
@@ -469,7 +488,7 @@ New models come out all the time, so in *Settings > AI* you can also click **Loa
 
 <div align="center"><img src="docs/providers.png" alt="The key panel for OpenAI, and the menu to switch provider and model" width="760"></div>
 
-**Privacy:** nothing is sent until you ask something (the one exception is the learning loop's curious question, see [Learn it for real](#learn-it-for-real)). Then Pomo sends, to the provider you picked, your question plus a short summary: timer state, focus stats, task names, your plan, parked thoughts, how your sessions felt, your focus score, and agent activity (project names, prompts and tool counts).
+**Privacy:** nothing is sent until you ask something (the one exception is the learning loop's curious question, see [Learn it for real](#learn-it-for-real)). Then Pomo sends, to the provider you picked, your question plus a short summary: timer state, focus stats, task names, your plan, parked thoughts, how your sessions felt, your focus score, your habit rank and today's habits (their names, and which are done), and agent activity (project names, prompts and tool counts).
 
 ### Talk to Pomo
 

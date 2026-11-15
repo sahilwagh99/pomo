@@ -261,6 +261,13 @@ class SettingsDialog(QDialog):
         form.addRow("", ladder_row)
         form.addRow("", _hint("Three clean sessions in a row add 5 minutes; two stopped early\n"
                               "take 5 off. While it's on, the ladder sets your focus length."))
+        self.show_rank = QCheckBox("Show my habit rank on the timer: the medal and its progress")
+        self.habit_remind = _spin(0, 23, ":00")
+        self.habit_remind.setSpecialValueText("Off")
+        form.addRow("Habits", self.show_rank)
+        form.addRow("Evening reminder", self.habit_remind)
+        form.addRow("", _hint("When today's habits fall short of your daily target, Pomo reminds\n"
+                              "you at this hour to tick them before midnight."))
 
         from .applock import DropList
 
@@ -894,6 +901,8 @@ class SettingsDialog(QDialog):
         self.learn_loop.setChecked(s.learn_loop)
         self.study_with_pomo.setChecked(s.study_with_pomo)
         self.focus_wallpaper.setChecked(s.focus_wallpaper)
+        self.show_rank.setChecked(s.show_rank)
+        self.habit_remind.setValue(s.habit_remind_hour)
         self.ladder_on.setChecked(s.ladder_on)
         self.ladder_min.setValue(s.ladder_min)
         self.ladder_goal.setValue(s.ladder_goal)
@@ -989,6 +998,8 @@ class SettingsDialog(QDialog):
         s.learn_loop = self.learn_loop.isChecked()
         s.study_with_pomo = self.study_with_pomo.isChecked()
         s.focus_wallpaper = self.focus_wallpaper.isChecked()
+        s.show_rank = self.show_rank.isChecked()
+        s.habit_remind_hour = self.habit_remind.value()
         if self.ladder_min.value() != s.ladder_min or not s.ladder_on:
             s.ladder_streak = s.ladder_misses = 0  # a new rung: count afresh
         s.ladder_on = self.ladder_on.isChecked()
