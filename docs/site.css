@@ -107,3 +107,11 @@ footer a:hover { color: var(--ink); }
   .bar { gap: 14px; }
   .bar .links { gap: 14px; }
 }
+/* phones: tables fit the screen instead of scrolling sideways (headers wrap, web addresses break at their dots) */
+@media (max-width: 560px) {
+  table { font-size: 14.5px; }
+  th, td { padding: 8px 10px; }
+  th { white-space: normal; }
+  td a { overflow-wrap: break-word; }
+  pre { font-size: 12.5px; padding: 12px 14px; }
+}

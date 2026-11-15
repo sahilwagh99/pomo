@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pomo: a cozy Pomodoro timer for Windows</title>
-<meta name="description" content="A cozy Pomodoro timer for Windows, starring Pomo the matcha mochi. Focus sessions, gentle breaks, daily quests, a room that fills up as you focus, and an eye on your coding agents. Free.">
+<meta name="description" content="A cozy Pomodoro timer for Windows, starring Pomo the matcha mochi. Focus sessions, gentle breaks, daily quests, a habit tracker with ranked medals, a room that fills up as you focus, and an eye on your coding agents. Free.">
 <meta property="og:title" content="Pomo: a cozy Pomodoro timer for Windows">
 <meta property="og:description" content="Focus with Pomo the matcha mochi. Free for Windows 10 and 11.">
 <meta property="og:image" content="https://sahilwagh99.github.io/pomo/room.png">
@@ -37,7 +37,8 @@
   .stage { background: var(--desk); border-radius: 28px; padding: 28px; box-shadow: var(--shadow); }
   .stage img { margin-inline: auto; border-radius: 14px; }
 
-  .moods { margin: 36px auto 0; max-width: 960px; }
+  .moods { margin: 36px auto 0; max-width: min(960px, 100%); }
+  .ranks { margin: 26px auto 0; }
 
   .highlights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 44px; }
   .hl { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line);
@@ -92,6 +93,7 @@
     <a class="brand" href="#top"><img src="icon.png" alt="" width="30" height="30">Pomo</a>
     <div class="links">
       <a class="optional" href="#highlights">Features</a>
+      <a class="optional" href="#habits">Habits</a>
       <a class="optional" href="#learn">Learn</a>
       <a class="optional" href="#ultra">Ultra focus</a>
       <a href="guide.html">Guide</a>
@@ -104,7 +106,7 @@
 <header class="hero" id="top">
   <div class="wrap">
     <div>
-      <a class="chip" href="#learn">New: learn it for real, train your focus</a>
+      <a class="chip" href="#habits">New: habits with ranked medals</a>
       <h1>A cozy Pomodoro timer <span class="soft">for Windows</span></h1>
       <p class="lead">Starring Pomo the matcha mochi, who sits on your timer, cheers you on, takes breaks with you and keeps an eye on your coding agents.</p>
       <div class="actions">
@@ -185,7 +187,7 @@
 <section id="learn">
   <div class="wrap">
     <div class="center">
-      <div class="eyebrow">New in 1.8: learn it for real</div>
+      <div class="eyebrow">Learn it for real</div>
       <h2>Grow a real interest in what you study</h2>
       <p class="lead">Interest grows from curiosity and from feeling capable. So each step on your path gets three small moments, built on how memory works.</p>
     </div>
@@ -201,7 +203,7 @@
 <section class="alt" id="train">
   <div class="wrap">
     <div class="center">
-      <div class="eyebrow">New: focus training</div>
+      <div class="eyebrow">Focus training</div>
       <h2>Train your focus like a muscle</h2>
       <p class="lead">Easily distracted? Start small, grow a little at a time, and get through the urge to quit.</p>
     </div>
@@ -211,6 +213,39 @@
       <div><h3>Study with Pomo</h3><p>While you focus, Pomo reads his own little book beside your timer, so you never study alone.</p></div>
     </div>
     <div class="shot wide-shot"><img src="focus_training.png" alt="Pomo reading his book on the island during focus; Ride the urge with Pomo breathing and the urge's wave; and a session card saying the focus ladder levelled up to 15 minutes" width="1396" height="408" loading="lazy"></div>
+  </div>
+</section>
+
+<section id="game">
+  <div class="wrap">
+    <div class="center">
+      <div class="eyebrow">New in 1.9: your path as a game</div>
+      <h2>See your progress, like in a game</h2>
+      <p class="lead">Games show progress all the time; studying almost never does. So Pomo does: focus earns XP, and your path becomes a skill tree you climb.</p>
+    </div>
+    <div class="trio">
+      <div><h3>XP and levels</h3><p>Focus earns 1 XP a minute, a finished step 50, teaching Pomo 20. Levels come with titles from Sprout to Legend, and levelling up gets confetti.</p></div>
+      <div><h3>Skill tree and big picture</h3><p>Done steps glow, today's step pulses with Pomo beside it, and each new step unlocks with a burst. The big picture maps how your steps connect.</p></div>
+      <div><h3>Focus wallpaper</h3><p>Turn it on, and while you focus, today's step is your desktop wallpaper. Your own comes back when the session ends.</p></div>
+    </div>
+    <div class="shot wide-shot"><img src="skill_tree.png" alt="The skill tree at level 23, with Read a CSV unlocking in a burst of petals and Pomo beside today's step; and the big picture, with milestones as islands and arrows between connected steps" width="1412" height="688" loading="lazy"></div>
+  </div>
+</section>
+
+<section class="alt" id="habits">
+  <div class="wrap">
+    <div class="center">
+      <div class="eyebrow">New in 1.9: habits and ranks</div>
+      <h2>Keep your habits, earn your rank</h2>
+      <p class="lead">Track the habits you care about month by month, like a habit tracker spreadsheet (or import yours from Excel), and climb a ranked ladder for keeping them. Miss days and you slide back down.</p>
+    </div>
+    <div class="trio">
+      <div><h3>Every day is a match</h3><p>Reach your daily target for +30 points, at least half of it for +15. Less than half costs 30. Forgot to tick something? Yesterday stays open.</p></div>
+      <div><h3>Eight medals, five stars each</h3><p>150 points earn a star, and five stars the next medal, from Rookie to Eternal, each grander than the last: wings, a crown, then flames.</p></div>
+      <div><h3>Worn on your timer</h3><p>The orb wears your medal with an arc that fills toward your next star. Today's points show as you tick: lighter when you're gaining, red when they're at risk.</p></div>
+    </div>
+    <img class="ranks" src="medals.png" alt="The eight medals: Rookie, Squire, Knight, Paladin, Champion, Mythic, Celestial and Eternal" width="1220" height="200" loading="lazy">
+    <div class="shot wide-shot"><img src="rank.png" alt="The orb wearing three ranks, each with its arc, and the island with a little medal and its rank row" width="1221" height="312" loading="lazy"></div>
   </div>
 </section>
 
@@ -280,6 +315,10 @@
       <a href="guide.html#study">App lock for games</a>
       <a href="guide.html#learn">Review cards</a>
       <a href="guide.html#train">Ride the urge</a>
+      <a href="guide.html#game">Skill tree</a>
+      <a href="guide.html#game">Focus wallpaper</a>
+      <a href="guide.html#habits">Habit tracker</a>
+      <a href="guide.html#habits">Import habits from Excel</a>
       <a href="#room">Pomo's room</a>
     </div>
   </div>
@@ -292,7 +331,7 @@
       <h2>Your focus is your business</h2>
     </div>
     <div class="trio">
-      <div><h3>Stays on your PC</h3><p>Your history, ratings, tasks and parked thoughts live in a folder on your PC. No account, no server, no tracking.</p></div>
+      <div><h3>Stays on your PC</h3><p>Your history, ratings, tasks, habits and parked thoughts live in a folder on your PC. No account, no server, no tracking.</p></div>
       <div><h3>Your key, your provider</h3><p>Pomo only talks to the AI provider you picked: when you ask, or, with the learning loop on, to ask about the step you start. Keys are encrypted for your Windows account.</p></div>
       <div><h3>Open source</h3><p>Every line is on GitHub, and updates are checked against GitHub's checksum before Pomo installs them.</p></div>
     </div>
