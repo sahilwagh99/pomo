@@ -8,12 +8,13 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QImage
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QSystemTrayIcon
 
 from . import APP_NAME, APP_VERSION, agent_hooks, audio, claude_hooks, garden, insights, keystore, media, planner
 from . import applock, learnloop, providers, quests, reviews, room, soundscapes, studylog, studypath, ultra, updater
+from . import habits, medals, skills, wallpaper
 from .agents import EDIT_TOOLS, AgentHub, Approval
 from .config import FOCUS_SOUNDS, HOTKEYS, OUTFITS, Settings
 from .hotkeys import GlobalHotkeys
@@ -26,7 +27,7 @@ from .engine import Mode, State, TimerEngine
 from .icons import app_icon, render_tray_icon
 from .island import IslandWidget
 from .notifier import Notifier
-from .orb import OrbWidget
+from .orb import OrbWidget, rank_shown
 from .stats import fmt_clock, fmt_day, plural, streaks
 from .storage import Storage
 from .theme import THEMES, build_palette, build_qss, ensure_qss_assets, mode_color, theme_for
@@ -86,6 +87,11 @@ class PomoApp(QObject):
         self._apply_style()
 
         self._idle_since: float | None = time.monotonic()
+        # habits, and the rank you earn by keeping them: counted before the timer is made, since it shows the rank
+        self.habit_standing: habits.Standing | None = None
+        self.habit_ticks: dict = {}
+        self.habit_window = None
+        self._recount_habits()
         self.orb = OrbWidget(self)
         self.island = IslandWidget(self)
         self.toast = ToastCard(self)
@@ -154,6 +160,13 @@ class PomoApp(QObject):
         self.urge_card = None
         self._curious_job = None
         self._ladder_news: str | None = None  # "up" or "down", for the next card
+        # your path as a game, and the focus wallpaper
+        self.path_map_window = None
+        self._xp_news: tuple[int, bool] | None = None  # XP the last focus session earned, and if it levelled up
+        self.wallpaper = wallpaper.FocusWallpaper(data_dir / "wallpaper.json", self.cache_dir)
+        if self.settings.xp < 0:  # XP is new: count what you've already done
+            self.settings.xp = skills.starting_xp(self.storage.lifetime_focus_sec(), self.settings.study_path)
+            self.settings.save(self.settings_path)
         # updates from GitHub
         self.update_mode = updater.install_mode()
         self._update_worker = None
@@ -234,6 +247,8 @@ class PomoApp(QObject):
         QTimer.singleShot(2000, self._check_quests)  # today's history may already have met a quest
         QTimer.singleShot(2500, self._after_update)  # just updated? say so
         QTimer.singleShot(4000, self._maybe_morning_card)  # today's step
+        QTimer.singleShot(9000, self._maybe_habit_news)  # how yesterday's habits went
+        self.wallpaper.restore()  # Pomo stopped mid-session last time: your own wallpaper back
         if self.settings.ultra_on:  # still Ultra from before: powered up, apps blocked
             self._sync_ultra_look()
             self.applock.refresh()
@@ -337,6 +352,8 @@ class PomoApp(QObject):
     def _refresh_study(self) -> None:
         if self.path_window is not None and self.path_window.isVisible():
             self.path_window.refresh()
+        if self.path_map_window is not None and self.path_map_window.isVisible():
+            self.path_map_window.refresh()
         if self.dashboard is not None and self.dashboard.isVisible():
             self.dashboard.refresh_study()
 
@@ -352,9 +369,11 @@ class PomoApp(QObject):
             self._path_task = step["title"]  # so the next step takes over as the task
         self.path_changed()
         if not done:
+            self.add_xp(-skills.STEP_XP, celebrate=False)  # ticking it back off takes its XP back too
             return
+        leveled = self.add_xp(skills.STEP_XP, celebrate=False)
         self.quest_event("path_step", announce=False)
-        self.view.celebrate(big=milestone_done)
+        self.view.celebrate(big=milestone_done or leveled)
         nxt = studypath.next_step(path)
         s = self.settings
         if s.popup_card and self.view.isVisible() and not self._approval_on_screen() and not self.toast.showing:
@@ -363,12 +382,15 @@ class PomoApp(QObject):
             else:
                 title = "Step done!"
             body = f"Next on your path: {nxt[2]['title']}." if nxt else "That was the last step on your path. Wow!"
+            body += f"\n+{skills.STEP_XP} XP: a new skill unlocked on your skill tree."
+            if leveled:
+                body += f"\n{self._level_up_text()}"
             news = self._quest_news(self._take_quest_news())[0]
             if news:
                 body += f"\n{news}"
             actions = ([(f"Start with {s.starter_min} minutes", lambda: self.start_step(nxt[0], nxt[1], True), True),
                         ("Later", lambda: None, False)] if nxt else [("Yay!", lambda: None, True)])
-            extras = [("My path", self.open_path)]
+            extras = [("Skill tree", self.open_skill_tree)]
             if s.learn_loop:
                 extras.insert(0, ("Teach Pomo", lambda t=step["title"]: self.open_teach(t)))
             self.toast.show_message(title, body, mode_color(self.theme, s, "long"), actions,
@@ -511,6 +533,56 @@ class PomoApp(QObject):
             self.path_window = PathWindow(self)
         self._show_window(self.path_window)
 
+    def open_skill_tree(self) -> None:
+        self._open_path_map(0)
+
+    def open_big_picture(self) -> None:
+        self._open_path_map(1)
+
+    def _open_path_map(self, tab: int) -> None:
+        if self.path_map_window is None:
+            from .skill_windows import PathMapWindow
+            self.path_map_window = PathMapWindow(self)
+        self.path_map_window.show_tab(tab)
+        self._show_window(self.path_map_window)
+
+    def add_xp(self, amount: int, celebrate: bool = True) -> bool:
+        """Earn XP (focus, a step, teaching Pomo, a review card). True if it reached a new level."""
+        s = self.settings
+        if s.xp < 0:
+            s.xp = 0
+        leveled = skills.add(s, amount, date.today().isoformat())
+        self.save_settings()
+        if leveled and celebrate:
+            self.view.celebrate(big=True)
+        if self.path_map_window is not None and self.path_map_window.isVisible():
+            self.path_map_window.refresh()
+        return leveled
+
+    def _level_up_text(self) -> str:
+        level = skills.level_for(self.settings.xp)[0]
+        return f"Level up! You're level {level}: {skills.rank(level)}."
+
+    def _sync_wallpaper(self) -> None:
+        """The focus wallpaper: today's step on your desktop while you focus, yours back the rest of the time."""
+        s, e = self.settings, self.engine
+        if not (s.focus_wallpaper and e.mode is Mode.FOCUS and e.state in (State.RUNNING, State.PAUSED)):
+            self.wallpaper.restore()
+            return
+        step, where = e.task or "One focused session", ""
+        found = studypath.find_step(s.study_path, e.task) if s.study_path and e.task else None
+        if found is not None:
+            where = f"{s.study_path['milestones'][found[0]]['title']}  ·  {s.study_path['goal']}"
+        key = f"{self.theme.key}|{step}|{where}"
+        if key == self.wallpaper.showing:
+            return
+        size = QSize(1920, 1080)
+        screen = self.qapp.primaryScreen()
+        if screen is not None:  # in real pixels, so the words stay crisp
+            ratio = screen.devicePixelRatio()
+            size = QSize(round(screen.size().width() * ratio), round(screen.size().height() * ratio))
+        self.wallpaper.show(wallpaper.render(self.theme, step, where, size), key)
+
     def open_study_log(self) -> None:
         if self.study_log is None:
             self.study_log = studylog.StudyLogWindow(self)
@@ -522,6 +594,158 @@ class PomoApp(QObject):
         window.setWindowState(window.windowState() & ~Qt.WindowMinimized)
         window.raise_()
         window.activateWindow()
+
+    # ------------------------------------------------------------ habits
+    def _recount_habits(self) -> None:
+        """Your habit rank and today's match, from the ticks. Days older than yesterday are settled for good."""
+        s, today = self.settings, date.today()
+        self.habit_ticks = self.storage.habit_log()
+        settled = self.storage.settled_habit_days()
+        standing = habits.standing(s.habits, s.habit_target, self.habit_ticks, today, settled)
+        if standing is not None:
+            fresh = habits.to_settle(standing.days, settled, today)
+            if fresh:
+                self.storage.settle_habit_days([(d.day, d.done, d.target) for d in fresh])
+        self.habit_standing = standing
+
+    def refresh_habits(self) -> None:
+        shown = rank_shown(self) is not None
+        self._recount_habits()
+        if shown != (rank_shown(self) is not None):
+            self.orb.apply_settings()  # the medal hangs below the orb: room for it, or not
+        self.orb.update()
+        self.island.update()
+        if self.habit_window is not None and self.habit_window.isVisible():
+            self.habit_window.refresh()
+
+    def open_habits(self) -> None:
+        if self.habit_window is None:
+            from .habit_window import HabitWindow
+            self.habit_window = HabitWindow(self)
+        self._show_window(self.habit_window)
+
+    def toggle_habit(self, hid: str, day: date) -> None:
+        """Tick a habit for today or yesterday, or untick it."""
+        today = date.today()
+        if not habits.editable(day, today):
+            return
+        before = self.habit_standing
+        self.storage.set_habit(day, hid, hid not in self.habit_ticks.get(day, set()))
+        self.refresh_habits()
+        after = self.habit_standing
+        if day == today and before is not None and after is not None and before.pending < habits.WIN <= after.pending:
+            self.view.celebrate(big=after.preview.step > after.rank.step)  # today's target, reached
+            if self.view.isVisible():
+                from . import cheer
+
+                if self.whisper is None:
+                    self.whisper = cheer.Whisper(self)
+                up = f" You'll rank up to {after.preview.label}." if after.preview.step > after.rank.step else ""
+                self.whisper.say(f"Daily target reached: +{habits.WIN} tonight!{up}", self.view.whisper_anchor())
+
+    def save_habits(self, rows: list, target: int) -> None:
+        """The habit editor's habits (id or None, name, monthly goal) and daily target (0 = automatic)."""
+        s, today = self.settings, date.today()
+        habits.apply_edit(s.habits, rows, today)
+        s.habit_target = max(0, min(habits.MAX_HABITS, int(target)))
+        self._habits_started(today)
+        self.save_settings()
+        self.refresh_habits()
+
+    def import_habits(self, found: list[tuple[str, int]]) -> tuple[int, int]:
+        """Habits and monthly goals read from a spreadsheet. Returns (added, updated)."""
+        s, today = self.settings, date.today()
+        added, updated = habits.merge(s.habits, found, today)
+        s.habits = habits.clean(s.habits)
+        self._habits_started(today)
+        self.save_settings()
+        self.refresh_habits()
+        return added, updated
+
+    def _habits_started(self, today: date) -> None:
+        if not self.settings.habit_day:  # there's nothing to report from before you started
+            self.settings.habit_day = (today - timedelta(days=1)).isoformat()
+
+    def _card_ok(self) -> bool:
+        """A card may show now: not in the middle of a focus session, nothing else up, and you're here."""
+        e, s = self.engine, self.settings
+        if e.mode is Mode.FOCUS and e.state is State.RUNNING:
+            return False
+        if self.toast.showing or self._approval_on_screen():
+            return False
+        return s.popup_card and self.view.isVisible() and idle_seconds() <= updater.AWAY_S
+
+    def _maybe_habit_news(self) -> None:
+        """Once a day: how yesterday's habits went, and what it did to your rank."""
+        s, st = self.settings, self.habit_standing
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        if st is None or not st.days:
+            return
+        try:
+            seen = date.fromisoformat(s.habit_day)
+        except ValueError:  # not set yet (or edited by hand): report from the first day
+            seen = st.days[0].day - timedelta(days=1)
+        if seen >= yesterday or not self._card_ok():
+            return
+        fresh, before, after = habits.news(st.days, seen, yesterday)
+        s.habit_day = yesterday.isoformat()
+        self.save_settings()
+        if not fresh:
+            return
+        last = fresh[-1]
+        if len(fresh) == 1:
+            when = "Yesterday" if last.day == yesterday else f"{last.day:%A}"
+            title = f"{when}: {last.done} of {plural(last.target, 'habit')}"
+            body = f"{habits.signed(last.delta)} points."
+        else:
+            title = f"Your habits, the last {len(fresh)} days"
+            body = (", ".join(habits.signed(d.delta) for d in fresh[-7:]) +
+                    f": {habits.signed(after.points - before.points)} points in all.")
+        if after.step > before.step:
+            title = f"Rank up: {after.label}!"
+            body = f"{body}\nYou climbed from {before.label} to {after.label}. Keep it going!"
+            self.view.celebrate(big=True)
+        elif after.step < before.step:
+            body += (f"\nYour rank slipped from {before.label} to {after.label}. Today is a new match: "
+                     f"{plural(st.today_target, 'habit')} for +{habits.WIN}.")
+        else:
+            body += f"\n{after.label}: {after.to_next} points to {after.next_label}."
+        if last.day == yesterday and last.delta < habits.WIN:
+            body += "\nForgot to tick something? Yesterday's habits can still be ticked today."
+        self.toast.show_message(title, body, medals.color(after.medal),
+                                [("Tick habits", self.open_habits, True), ("OK", lambda: None, False)],
+                                self.view.anchor_rect_global(), timeout_ms=45000)
+
+    def _maybe_habit_reminder(self) -> None:
+        """In the evening, when today's habits fall short of the target: a nudge to tick them before midnight."""
+        s, st = self.settings, self.habit_standing
+        now = datetime.now()
+        if st is None or not s.habit_remind_hour or now.hour < s.habit_remind_hour:
+            return
+        if s.habit_remind_date == now.date().isoformat() or st.pending == habits.WIN or not self._card_ok():
+            return
+        s.habit_remind_date = now.date().isoformat()
+        self.save_settings()
+        self.toast.show_message(
+            "Today's habits", f"{habits.today_line(st)}\nDid you do more? Tick them before midnight.",
+            medals.color(st.rank.medal), [("Tick habits", self.open_habits, True), ("Later", lambda: None, False)],
+            self.view.anchor_rect_global(), timeout_ms=45000)
+
+    def _fill_habits_menu(self, menu: QMenu) -> None:
+        st = self.habit_standing
+        if st is None:
+            _action(menu, "Habit tracker…", self.open_habits)
+            return
+        sub = styled_menu(menu.addMenu(f"Habits: {st.rank.label}"))
+        _action(sub, habits.today_line(st), lambda: None, enabled=False)
+        sub.addSeparator()
+        today = date.today()
+        done = self.habit_ticks.get(today, set())
+        for h in habits.current(self.settings.habits, today):
+            _action(sub, h["name"], lambda hid=h["id"]: self.toggle_habit(hid, date.today()), checked=h["id"] in done)
+        sub.addSeparator()
+        _action(sub, "Habit tracker…", self.open_habits)
 
     # ------------------------------------------------------------ learning loop
     def _maybe_curious(self) -> None:
@@ -1025,6 +1249,7 @@ class PomoApp(QObject):
         self._sync_hotkeys()
         self._sync_presence()
         self._sync_focus_sound()
+        self._sync_wallpaper()
         self._taskbar_dismissed = False
         self._sync_taskbar()
         if self.taskbar is not None:
@@ -1146,6 +1371,7 @@ class PomoApp(QObject):
         self._auto_task = ""
         self.save_settings()
         self.view.update()
+        self._sync_wallpaper()
 
     def plan_changed(self) -> None:
         """The plan was set or changed: its first task becomes the current one."""
@@ -1251,12 +1477,15 @@ class PomoApp(QObject):
         else:
             _action(study, f"Start with just {self.settings.starter_min} minutes", self.start_small)
         _action(study, "My path…", self.open_path)
+        _action(study, "Skill tree…", self.open_skill_tree)
+        _action(study, "Big picture…", self.open_big_picture)
         _action(study, "Study log…", self.open_study_log)
         study.addSeparator()
         _action(study, "Teach Pomo…", lambda: self.open_teach())
         due = self.cards_due()
         _action(study, f"Review cards ({due})…" if due else "Review cards…", self.open_recall)
         _action(study, "Ride the urge…", self.open_urge)
+        self._fill_habits_menu(menu)
         _action(menu, "Play a game…", self.open_game)
         _action(menu, "Breathe with Pomo…", self.open_breathe)
         sound = self.settings.focus_sound
@@ -1363,6 +1592,9 @@ class PomoApp(QObject):
             if distracted:
                 record = replace(record, distracted_sec=min(distracted, record.actual_sec))
         self.storage.add(record)
+        if record.mode == "focus" and record.actual_sec >= 60:  # a point of XP a minute
+            minutes = int(record.actual_sec // 60)
+            self._xp_news = (minutes, self.add_xp(minutes, celebrate=False))
         if record.mode == "focus":  # the focus ladder: three clean sessions up, two stopped early down
             move = learnloop.ladder_after(self.settings, round(record.planned_sec / 60), record.completed)
             if move:
@@ -1404,6 +1636,7 @@ class PomoApp(QObject):
                 QTimer.singleShot(700, self._maybe_curious)
         if not focusing and self.whisper is not None:
             self.whisper.fade_out()
+        self._sync_wallpaper()
         if e.mode is Mode.FOCUS and e.state is State.PAUSED and prev_state is State.RUNNING:
             self._focus_paused = True
         if (e.mode.is_break and e.state is State.RUNNING and not (prev_mode.is_break and prev_state is State.RUNNING)
@@ -1523,6 +1756,10 @@ class PomoApp(QObject):
             body += f"\nFocus ladder: level up! Your focus sessions are now {s.ladder_min} minutes."
         elif ladder == "down":
             body += f"\nFocus ladder: back to {s.ladder_min} minutes for now. You'll climb again."
+        xp_news, self._xp_news = (self._xp_news if finished is Mode.FOCUS else None), None
+        if xp_news is not None:
+            gained, leveled = xp_news
+            body += f"\n{self._level_up_text()} (+{gained} XP)" if leveled else f"\n+{gained} XP  ·  {skills.xp_line(s)}"
         step_news, self._step_news = (self._step_news if finished is Mode.FOCUS else None), None
         if step_news is not None:
             mi, si, st = step_news
@@ -1546,7 +1783,8 @@ class PomoApp(QObject):
         self.notifier.toast(title, body)
         view = self.view
         if finished is Mode.FOCUS:
-            view.celebrate(big=count == goal or bool(room_text) or any(e[0].startswith("Wear") for e in extras))
+            view.celebrate(big=count == goal or bool(room_text) or any(e[0].startswith("Wear") for e in extras)
+                           or bool(xp_news and xp_news[1]))
             if s.treats < 9:  # a dango for Pomo, fed from the badge beside him
                 s.treats += 1
             self.save_settings()
@@ -2124,6 +2362,7 @@ class PomoApp(QObject):
             if self.engine.state in (State.IDLE, State.FINISHED):
                 self.engine.cycle_index = 0
                 self.engine.changed.emit()
+            self.refresh_habits()  # yesterday's match is over, and today's begins
             self.view.update()
             self._update_tray()
 
@@ -2142,7 +2381,9 @@ class PomoApp(QObject):
                 actions = [("Start focus", self._start_focus_now, True), ("Later", lambda: None, False)]
                 self.toast.show_message(title, body, accent, actions, self.view.anchor_rect_global())
         self._maybe_morning_card()
+        self._maybe_habit_news()
         self._maybe_log_prompt()
+        self._maybe_habit_reminder()
         self._maybe_offer_review()
         if self.settings.quests_on and self._roll_quests():
             self.save_settings()
@@ -2498,6 +2739,7 @@ class PomoApp(QObject):
         if self.chat is not None:
             self.chat.shutdown()
         self.engine.shutdown()
+        self.wallpaper.shutdown()  # your own wallpaper back before Pomo goes
         self.settings.cycle_index = self.engine.cycle_index
         self.settings.cycle_date = date.today().isoformat()
         self._save_timer.stop()

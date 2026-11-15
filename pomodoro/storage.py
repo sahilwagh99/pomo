@@ -159,6 +159,20 @@ class Storage(QObject):
                 PRIMARY KEY (day, app)
             )"""
         )
+        self._db.execute(
+            """CREATE TABLE IF NOT EXISTS habit_log (
+                day TEXT NOT NULL,
+                habit TEXT NOT NULL,
+                PRIMARY KEY (day, habit)
+            )"""
+        )
+        self._db.execute(
+            """CREATE TABLE IF NOT EXISTS habit_days (
+                day TEXT PRIMARY KEY,
+                done INTEGER NOT NULL,
+                target INTEGER NOT NULL
+            )"""
+        )
         self._db.commit()
 
     def add(self, rec: SessionRecord) -> None:
@@ -310,6 +324,35 @@ class Storage(QObject):
         row = self._db.execute("SELECT COALESCE(SUM(rode_out), 0), COUNT(*) FROM urges WHERE ts >= ?",
                                (since.isoformat(),)).fetchone()
         return int(row[0]), int(row[1])
+
+    # ------------------------------------------------------------ habits
+    def set_habit(self, day: date, habit: str, done: bool) -> None:
+        """Tick a habit for a day, or untick it."""
+        if done:
+            self._db.execute("INSERT OR IGNORE INTO habit_log (day, habit) VALUES (?, ?)", (day.isoformat(), habit))
+        else:
+            self._db.execute("DELETE FROM habit_log WHERE day = ? AND habit = ?", (day.isoformat(), habit))
+        self._db.commit()
+
+    def habit_log(self, since: date | None = None) -> dict[date, set[str]]:
+        """The habits ticked each day."""
+        sql, args = "SELECT day, habit FROM habit_log", ()
+        if since is not None:
+            sql, args = sql + " WHERE day >= ?", (since.isoformat(),)
+        log: dict[date, set[str]] = {}
+        for day, habit in self._db.execute(sql, args):
+            log.setdefault(date.fromisoformat(day), set()).add(habit)
+        return log
+
+    def settle_habit_days(self, days: list[tuple[date, int, int]]) -> None:
+        """Days of the habit tracker that are final now: (day, habits done, the day's target)."""
+        self._db.executemany("INSERT OR REPLACE INTO habit_days (day, done, target) VALUES (?, ?, ?)",
+                             [(d.isoformat(), int(done), int(target)) for d, done, target in days])
+        self._db.commit()
+
+    def settled_habit_days(self) -> dict[date, tuple[int, int]]:
+        return {date.fromisoformat(r[0]): (r[1], r[2])
+                for r in self._db.execute("SELECT day, done, target FROM habit_days")}
 
     # ------------------------------------------------------------ app time
     def add_app_time(self, day: date, app: str, seconds: int, distracting: bool) -> None:

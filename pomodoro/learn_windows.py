@@ -309,6 +309,10 @@ class TeachWindow(QWidget):
         self._done()
 
     def _done(self) -> None:
+        if not self.finished_teaching and self.taught:
+            from .skills import TEACH_XP
+
+            self.ctrl.add_xp(TEACH_XP)
         self.finished_teaching = True
         self.input.hide()
         self.send_btn.setText("Done")
@@ -438,6 +442,10 @@ class RecallWindow(QWidget):
         card = self.queue.pop(0)
         box, due = learnloop.next_review(card.box, got_it, date.today())
         self.ctrl.storage.review_card(card.id, box, due)
+        if got_it:
+            from .skills import CARD_XP
+
+            self.ctrl.add_xp(CARD_XP)
         self.done_n += 1
         self.right += int(got_it)
         if not self.queue:

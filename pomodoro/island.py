@@ -16,10 +16,11 @@ from PySide6.QtCore import QEasingCurve, QLineF, QPoint, QPointF, QRect, QRectF,
 from PySide6.QtGui import QColor, QCursor, QFont, QFontMetricsF, QGuiApplication, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QToolTip, QWidget
 
+from . import habits, medals
 from .engine import State
 from .icons import draw_glyph
 from .music_card import now_playing_tip, paint_cover, songs_left_text
-from .orb import TimeEdit, apply_typed_time
+from .orb import ARC_SPAN, TimeEdit, apply_typed_time, rank_shown
 from .pomo import Pomo, mood_for
 from .stats import fmt_clock
 from .theme import FONT_FAMILY, mode_color
@@ -28,6 +29,7 @@ from .theme import FONT_FAMILY, mode_color
 SLIVER = (110.0, 8.0, 4.0)       # width, height, bottom corner radius
 COMPACT = (212.0, 38.0, 19.0)
 EXPANDED = (392.0, 136.0, 28.0)
+RANK_H = 40.0                    # the habit rank row of the open island, while you track habits
 MUSIC_H = 46.0                   # the now-playing row the open island grows while music plays or is paused
 FLARE = 10.0                     # concave shoulders where the pill meets the screen edge
 PAD = 30                         # room for spring overshoot and the shadow
@@ -108,7 +110,7 @@ class IslandWidget(QWidget):
         self.setMouseTracking(True)
         self.setWindowTitle("Pomo island")
         ew, eh, _ = EXPANDED
-        self.setFixedSize(int(ew * 1.08 + 2 * (FLARE + PAD)), int((eh + MUSIC_H) * 1.1 + PAD))
+        self.setFixedSize(int(ew * 1.08 + 2 * (FLARE + PAD)), int((eh + RANK_H + MUSIC_H) * 1.1 + PAD))
 
         self._presence_anim = self._animation(lambda v: self._set("_presence", float(v)))
         self._expand_anim = self._animation(lambda v: self._set("_expand", float(v)))
@@ -281,7 +283,18 @@ class IslandWidget(QWidget):
         return QRectF((self.width() - w) / 2, 0.0, w, h), r
 
     def _expanded_h(self) -> float:
-        return EXPANDED[1] + MUSIC_H * max(0.0, self._music)
+        return self._music_top() + MUSIC_H * max(0.0, self._music)
+
+    def _rank_h(self) -> float:
+        return RANK_H if rank_shown(self.ctrl) is not None else 0.0
+
+    def _music_top(self) -> float:
+        """Where the now-playing row starts in the open island: below the rank row, if there is one."""
+        return EXPANDED[1] + self._rank_h()
+
+    def _rank_rect(self) -> QRectF:
+        r = self._expanded_rect()
+        return QRectF(r.left() + 14, r.top() + EXPANDED[1] - 2, r.width() - 28, RANK_H - 2)
 
     def _expanded_rect(self) -> QRectF:
         ew = EXPANDED[0]
@@ -360,7 +373,7 @@ class IslandWidget(QWidget):
         if track is None or self._music < 0.05:
             return {}
         r = self._expanded_rect()
-        cy = r.top() + EXPANDED[1] + MUSIC_H / 2 - 5
+        cy = r.top() + self._music_top() + MUSIC_H / 2 - 5
         return {
             "m_prev": (QPointF(r.right() - 120, cy), 12.0, track.can_previous),
             "m_toggle": (QPointF(r.right() - 76, cy), 15.0, track.can_toggle),
@@ -370,7 +383,7 @@ class IslandWidget(QWidget):
     def _music_rect(self) -> QRectF:
         """The cover and song: hover it for the full title."""
         r = self._expanded_rect()
-        cy = r.top() + EXPANDED[1] + MUSIC_H / 2 - 5
+        cy = r.top() + self._music_top() + MUSIC_H / 2 - 5
         return QRectF(r.left() + 20, cy - 17, r.right() - 140 - (r.left() + 20), 34)
 
     def _button_at(self, pos: QPointF) -> str | None:
@@ -383,6 +396,8 @@ class IslandWidget(QWidget):
             for name, (center, radius, enabled) in self._music_buttons().items():
                 if enabled and QLineF(pos, center).length() <= radius + 3:
                     return name
+        if self._rank_h() and self._rank_rect().contains(pos):
+            return "rank"
         return None
 
     def _time_rect(self) -> QRectF:
@@ -467,6 +482,13 @@ class IslandWidget(QWidget):
             accent = QColor(accent)
             accent.setAlphaF(0.55 + 0.45 * abs(math.sin(time.monotonic() * 3.0)))
         self._ring(p, QPointF(rect.right() - 20, rect.center().y()), 7.5, 2.6, accent)
+        standing = rank_shown(self.ctrl)
+        if standing is not None:  # your habit rank: the little medal with its 40% arc, like the orb's
+            mc = QPointF(rect.left() + 76, rect.center().y() - 2)
+            ra = 12.5
+            medals.paint_arc(p, QRectF(mc.x() - ra, mc.y() - ra, 2 * ra, 2 * ra), 270 - ARC_SPAN / 2, ARC_SPAN, 2.5,
+                             standing, t.dark, QColor(t.danger))
+            medals.paint_cached(p, mc, 8.5, standing.rank, self.devicePixelRatioF())
         signal = self.ctrl.agent_signal()
         if signal:
             # a small dot between Pomo and the time: sakura when an agent needs you, matcha while one works
@@ -550,6 +572,9 @@ class IslandWidget(QWidget):
                 p.drawEllipse(center, radius, radius)
             draw_glyph(p, glyphs[name], center, radius * 1.2, QColor(t.ink if hot else t.ink_2))
 
+        standing = rank_shown(self.ctrl)
+        if standing is not None:
+            self._paint_rank(p, standing)
         if self._music > 0.01:
             self._paint_music(p, accent)
 
@@ -572,6 +597,46 @@ class IslandWidget(QWidget):
                 p.drawText(QRectF(dot.x() - radius, dot.y() - radius, 2 * radius, 2 * radius), Qt.AlignCenter,
                            str(s.treats))
 
+    def _paint_rank(self, p: QPainter, standing) -> None:
+        """The habit rank row: the medal, your rank and its progress, and today's habits."""
+        t = self.ctrl.theme
+        r = self._expanded_rect()
+        top = r.top() + EXPANDED[1]
+        if self._hot == "rank":
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(t.hover))
+            p.drawRoundedRect(self._rank_rect().adjusted(4, 1, -4, -3), 12, 12)
+        line = QColor(t.ink_2)
+        line.setAlpha(30)
+        p.setPen(QPen(line, 1))
+        p.drawLine(QPointF(r.left() + 22, top - 3.5), QPointF(r.right() - 22, top - 3.5))
+
+        rank = standing.rank
+        medals.paint_cached(p, QPointF(r.left() + 42, top + 16), 12.0, rank, self.devicePixelRatioF())
+        x = r.left() + 68
+        name_font = self._font(12.5, QFont.DemiBold)
+        p.setFont(name_font)
+        p.setPen(QColor(t.ink))
+        p.drawText(QRectF(x, top + 1, 150, 18), Qt.AlignLeft | Qt.AlignVCenter, rank.label)
+        after = x + QFontMetricsF(name_font).horizontalAdvance(rank.label) + 8
+        p.setFont(self._font(11))
+        p.setPen(QColor(t.muted))
+        bar_right = r.right() - 150
+        p.drawText(QRectF(after, top + 1, bar_right - after, 18), Qt.AlignLeft | Qt.AlignVCenter,
+                   f"{rank.to_next} to {rank.next_label}")
+        medals.paint_bar(p, QRectF(x, top + 23, bar_right - x, 5), standing, t.dark, QColor(t.danger))
+
+        right = QRectF(r.right() - 142, top + 1, 120, 18)
+        p.setFont(self._font(12, QFont.DemiBold))
+        p.setPen(QColor(t.ink))
+        p.drawText(right, Qt.AlignRight | Qt.AlignVCenter,
+                   f"Today {standing.today_done}/{standing.today_target}")
+        pending = standing.pending
+        note = "target reached!" if pending == habits.WIN else f"{habits.signed(pending)} so far"
+        p.setFont(self._font(11, QFont.DemiBold if pending == habits.WIN else QFont.Normal))
+        p.setPen(QColor(t.success if pending > 0 else t.danger))
+        p.drawText(right.translated(0, 16), Qt.AlignRight | Qt.AlignVCenter, note)
+
     def _paint_music(self, p: QPainter, accent: QColor) -> None:
         """The now-playing row: cover, song and artist, then previous, play/pause and next."""
         track = self.ctrl.track
@@ -579,7 +644,7 @@ class IslandWidget(QWidget):
             return
         t = self.ctrl.theme
         r = self._expanded_rect()
-        top = r.top() + EXPANDED[1]
+        top = r.top() + self._music_top()
         p.save()
         p.setOpacity(p.opacity() * _clamp01((self._music - 0.35) / 0.65))
         line = QColor(t.ink_2)
@@ -652,6 +717,9 @@ class IslandWidget(QWidget):
             text = f"Skip to {self.engine.skip_target().label.lower()}"
         elif name == "sounds":
             text = sounds_tip(self.ctrl.settings)
+        elif name == "rank":
+            standing = rank_shown(self.ctrl)
+            text = habits.tip(standing) if standing is not None else ""
         else:
             text = TIPS.get(name, "")
         QToolTip.showText(QCursor.pos(), text, self)
@@ -767,6 +835,8 @@ class IslandWidget(QWidget):
             self.ctrl.open_sounds_menu(QCursor.pos())
         elif name == "ultra":
             self.ctrl.toggle_ultra()
+        elif name == "rank":
+            self.ctrl.open_habits()
         elif name in MUSIC_COMMANDS:
             self.ctrl.media_command(MUSIC_COMMANDS[name])
 

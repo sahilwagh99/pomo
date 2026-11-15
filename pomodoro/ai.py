@@ -34,7 +34,7 @@ Many users study on their own and feel unsure what to learn next, and some are l
 
 You can also act on the timer with your tools: start a focus session or a break, set the current task, line up a plan of tasks (each with a number of pomodoros), and change the default session lengths. Use them when the user asks you to set something up ("45 minutes on the thesis, then 10 off, three rounds") or agrees to your suggestion, then say in a sentence what you did. Don't start or change anything they didn't ask for.
 
-After each user message you get a Pomo context message with live facts: the time, the timer, today's and this week's focus stats, the current task and plan, their study path and today's step, their study log, thoughts they parked during focus, how their sessions felt, and what their coding agents (Claude Code sessions) did today. Use it for facts and never invent numbers. If something you need isn't there, say so or ask."""
+After each user message you get a Pomo context message with live facts: the time, the timer, today's and this week's focus stats, the current task and plan, their study path and today's step, their study log, their habit tracker (habit rank and today's habits), thoughts they parked during focus, how their sessions felt, and what their coding agents (Claude Code sessions) did today. Use it for facts and never invent numbers. If something you need isn't there, say so or ask."""
 
 QUICK_ACTIONS = (
     ("path", "My path"),
@@ -108,6 +108,16 @@ def build_context(ctrl, now: datetime | None = None) -> str:
 
     lines.append(studypath.summary(s.study_path, day))
     lines.append(studylog.summary(ctrl.storage, day))
+    standing = getattr(ctrl, "habit_standing", None)
+    if standing is not None:
+        from .habits import current
+
+        ticked = getattr(ctrl, "habit_ticks", {}).get(day, set())
+        left = [h["name"] for h in current(s.habits, day) if h["id"] not in ticked]
+        rank = standing.rank
+        lines.append(f"Habit tracker: rank {rank.label} ({standing.points} points, {rank.to_next} to {rank.next_label}; "
+                     f"a day on target is +30, half of it +15, less -30); today {standing.today_done} of "
+                     f"{standing.today_target} habits done" + (f", not yet: {', '.join(left[:14])}" if left else "") + ".")
     ratings = rating_counts(records, day - timedelta(days=6), day)
     if any(ratings.values()):
         lines.append(f"How sessions felt (last 7 days): {ratings[3]} great, {ratings[2]} okay, {ratings[1]} tough.")

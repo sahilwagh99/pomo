@@ -58,6 +58,16 @@ class PathWindow(QWidget):
         lay.addWidget(self.why)
         lay.addWidget(self.status)
         lay.addWidget(self.meter)
+        self.views = QWidget()
+        views = QHBoxLayout(self.views)
+        views.setContentsMargins(0, 4, 0, 0)
+        for text, slot in (("Skill tree", ctrl.open_skill_tree), ("Big picture", ctrl.open_big_picture)):
+            b = QPushButton(text)
+            b.setObjectName("ghost")
+            b.clicked.connect(slot)
+            views.addWidget(b)
+        views.addStretch(1)
+        lay.addWidget(self.views)
         lay.addSpacing(6)
 
         self.today = QFrame()
@@ -126,7 +136,7 @@ class PathWindow(QWidget):
         path = self.ctrl.settings.study_path
         has = bool(path)
         today = date.today()
-        for w in (self.why, self.status, self.meter, self.tree, self.hint):
+        for w in (self.why, self.status, self.meter, self.views, self.tree, self.hint):
             w.setVisible(has)
         self.empty.setVisible(not has)
         self.ask_btn.setText("Ask Pomo about my path" if has else "Make my path with Ask Pomo")

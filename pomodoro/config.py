@@ -8,7 +8,8 @@ import shutil
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
-from . import APP_NAME, LEGACY_NAME, studypath
+from . import APP_NAME, LEGACY_NAME, skills, studypath
+from .habits import MAX_HABITS, clean as clean_habits
 from .providers import PROVIDERS, default_model
 
 AI_MODELS = dict(PROVIDERS["anthropic"].models)  # Claude model id -> label
@@ -223,6 +224,22 @@ class Settings:
     ladder_misses: int = 0          # sessions stopped early in a row
     study_with_pomo: bool = True    # Pomo reads his own book beside you while you focus
 
+    # Your path as a game, and the focus wallpaper (see skills.py, wallpaper.py)
+    xp: int = -1                    # -1 until it's first counted from your history
+    xp_day: str = ""
+    xp_today: int = 0
+    tree_seen: list[str] = field(default_factory=list)  # steps whose unlock the skill tree already celebrated
+    path_map: dict = field(default_factory=dict)        # the big picture: summary, what each step is for, links
+    focus_wallpaper: bool = False   # while you focus, today's step on your desktop wallpaper
+
+    # Habits, and the rank you earn by keeping them (see habits.py)
+    habits: list[dict] = field(default_factory=list)  # {"id", "name", "goal" (days a month), "since", "until"}
+    habit_target: int = 0           # habits a day for a win; 0 = what the monthly goals add up to
+    habit_day: str = ""             # the last day whose result was shown
+    show_rank: bool = True          # the rank medal and its progress on the timer
+    habit_remind_hour: int = 21     # in the evening, a nudge to tick today's habits (0 = off)
+    habit_remind_date: str = ""
+
     # Pomo's room (see room.py)
     room: dict = field(default_factory=dict)                # spot -> the item you put there ("" = left empty)
     room_seen: list[str] = field(default_factory=list)      # items whose arrival was announced
@@ -341,6 +358,13 @@ class Settings:
         self.ladder_streak = max(0, int(self.ladder_streak))
         self.ladder_misses = max(0, int(self.ladder_misses))
         self.curious = {k: v[:300] for k, v in self.curious.items() if isinstance(k, str) and isinstance(v, str)}
+        self.xp = max(-1, int(self.xp))
+        self.xp_today = max(0, int(self.xp_today))
+        self.tree_seen = [k[:120] for k in self.tree_seen if isinstance(k, str)][-300:]
+        self.path_map = skills.clean_map(self.path_map)
+        self.habits = clean_habits(self.habits)
+        self.habit_target = _clip(self.habit_target, 0, MAX_HABITS)
+        self.habit_remind_hour = _clip(self.habit_remind_hour, 0, 23)
         self.locked_apps = _exe_names(self.locked_apps)
         self.ultra_apps = _exe_names(self.ultra_apps)
         keep = set(self.locked_apps) | set(self.ultra_apps)
