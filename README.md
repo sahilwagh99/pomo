@@ -653,6 +653,9 @@ pomodoro/learn_windows.py   Curious first, Teach Pomo, review cards and Ride the
 pomodoro/skills.py          XP and levels, and the big picture's prompt and map
 pomodoro/skill_windows.py   the skill tree and big picture window
 pomodoro/wallpaper.py       the focus wallpaper: the picture, and swapping yours back safely
+pomodoro/habits.py          the habit tracker: daily matches, the rank ladder, the month, Excel import
+pomodoro/medals.py          the rank medals, and the rank's arc and bar
+pomodoro/habit_window.py    the habit tracker window and the habit editor
 pomodoro/applock.py         app lock: locked apps put away during focus (and during Ultra focus), and the lock card
 pomodoro/ultra.py           Ultra focus drawings: the aura, the spiky golden hair, fire in the eyes, the transformation
 pomodoro/ultra_mode.py      Ultra focus windows: picking apps to block, the transformation on screen, powering down
