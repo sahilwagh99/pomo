@@ -810,12 +810,15 @@ class SettingsDialog(QDialog):
         lay.addWidget(check_now)
         lay.addWidget(self.update_now)
         lay.addStretch(1)
-        form.addRow("Updates", self.auto_update)
-        form.addRow("", self.update_status)
-        form.addRow("", update_row)
-        form.addRow("", _hint("Pomo asks GitHub for a new version every hour and tells you when\n"
-                              "one is ready. Updating takes one click and keeps your history\n"
-                              "and settings."))
+        if self.ctrl.update_mode == "store":  # the Microsoft Store updates it: nothing to set
+            form.addRow("Updates", self.update_status)
+        else:
+            form.addRow("Updates", self.auto_update)
+            form.addRow("", self.update_status)
+            form.addRow("", update_row)
+            form.addRow("", _hint("Pomo asks GitHub for a new version every hour and tells you when\n"
+                                  "one is ready. Updating takes one click and keeps your history\n"
+                                  "and settings."))
         self.ctrl.update_status_changed.connect(self._refresh_update_status)
         self._refresh_update_status()
         form.addRow("Taskbar", self.taskbar)

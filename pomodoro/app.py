@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QSystemTrayIcon
 
 from . import APP_NAME, APP_VERSION, agent_hooks, audio, claude_hooks, garden, insights, keystore, media, planner
 from . import applock, learnloop, providers, quests, reviews, room, soundscapes, studylog, studypath, ultra, updater
-from . import habits, medals, skills, wallpaper
+from . import habits, medals, notes, skills, wallpaper
 from .agents import EDIT_TOOLS, AgentHub, Approval
 from .config import FOCUS_SOUNDS, HOTKEYS, OUTFITS, Settings
 from .hotkeys import GlobalHotkeys
@@ -29,6 +29,7 @@ from .island import IslandWidget
 from .notifier import Notifier
 from .orb import OrbWidget, rank_shown
 from .stats import fmt_clock, fmt_day, plural, streaks
+from .stickies import StickyBoard
 from .storage import Storage
 from .theme import THEMES, build_palette, build_qss, ensure_qss_assets, mode_color, theme_for
 from .toast import ToastCard
@@ -111,6 +112,10 @@ class PomoApp(QObject):
         self.thoughts_window = None
         self.path_window = None
         self.study_log = None
+        self.notes_window = None
+        self._vault: notes.Vault | None = None
+        self.stickies = StickyBoard(self, data_dir / "stickies.json")
+        self.stickies.created.connect(self._offer_sticky_startup)
         self.pacer = AgentPacer(self, parent=self)
         self.away = AwayWatcher(parent=self)
         self.guard = FocusGuard(self.storage, self.settings, parent=self)
@@ -248,6 +253,7 @@ class PomoApp(QObject):
         QTimer.singleShot(2500, self._after_update)  # just updated? say so
         QTimer.singleShot(4000, self._maybe_morning_card)  # today's step
         QTimer.singleShot(9000, self._maybe_habit_news)  # how yesterday's habits went
+        QTimer.singleShot(600, self.stickies.restore)  # your sticky notes, back where you left them
         self.wallpaper.restore()  # Pomo stopped mid-session last time: your own wallpaper back
         if self.settings.ultra_on:  # still Ultra from before: powered up, apps blocked
             self._sync_ultra_look()
@@ -285,9 +291,15 @@ class PomoApp(QObject):
         Pomo may have moved, been upgraded, or been renamed from FocusOrb since they were set up.
         """
         frozen = getattr(sys, "frozen", False)
-        on = self.settings.start_with_windows or winutil.starts_with_windows()
-        if on and frozen:  # a source checkout must never take over the installed app's entry
-            winutil.set_start_with_windows(True)
+        if winutil.is_packaged():
+            # The Store version's entry never moves. Turned off in Task Manager, it stays off: that wins.
+            if self.settings.start_with_windows and not winutil.starts_with_windows():
+                winutil.set_start_with_windows(True)
+            on = winutil.starts_with_windows()
+        else:
+            on = self.settings.start_with_windows or winutil.starts_with_windows()
+            if on and frozen:  # a source checkout must never take over the installed app's entry
+                winutil.set_start_with_windows(True)
         if on != self.settings.start_with_windows:
             self.settings.start_with_windows = on
             self.save_settings()
@@ -1244,6 +1256,9 @@ class PomoApp(QObject):
             self.settings.start_with_windows = False
         self.theme = theme_for(self.settings.theme)
         self._apply_style()
+        self.stickies.retheme()
+        if self.notes_window is not None:
+            self.notes_window.retheme()
         self.engine.apply_settings()
         self._sync_media()
         self._sync_hotkeys()
@@ -1425,6 +1440,7 @@ class PomoApp(QObject):
         if e.task:
             task = styled_menu(menu.addMenu(f"Task: {e.task[:28]}"))
             _action(task, "Change task…", self.edit_task)
+            _action(task, "Its note…", self.open_task_note)
             _action(task, "Clear task", self.clear_task)
         else:
             _action(menu, "Set task…", self.edit_task)
@@ -1441,6 +1457,18 @@ class PomoApp(QObject):
                 self.park_thought)
         if thoughts:
             _action(menu, f"Parked thoughts ({thoughts})…", self.open_thoughts)
+        notes_menu = styled_menu(menu.addMenu("Notes"))
+        _action(notes_menu, "Open notes…", self.open_notes)
+        _action(notes_menu, "Today's note…", self.open_daily_note)
+        if e.task:
+            _action(notes_menu, f"Note for {e.task[:28]}…", self.open_task_note)
+        step = studypath.next_step(self.settings.study_path)
+        if step is not None:
+            _action(notes_menu, f"Note for today's step ({step[2]['title'][:24]})…",
+                    lambda: self.open_step_note(step[0], step[1]))
+        sticky = styled_menu(menu.addMenu(f"Sticky notes ({self.stickies.count()})" if self.stickies.count()
+                                          else "Sticky notes"))
+        self.fill_sticky_menu(sticky)
 
         goal = styled_menu(menu.addMenu(f"Daily goal: {self.settings.daily_goal}"))
         for g in GOAL_PRESETS:
@@ -1592,6 +1620,8 @@ class PomoApp(QObject):
             if distracted:
                 record = replace(record, distracted_sec=min(distracted, record.actual_sec))
         self.storage.add(record)
+        if record.mode == "focus":
+            self.refresh_daily_note()
         if record.mode == "focus" and record.actual_sec >= 60:  # a point of XP a minute
             minutes = int(record.actual_sec // 60)
             self._xp_news = (minutes, self.add_xp(minutes, celebrate=False))
@@ -2141,7 +2171,7 @@ class PomoApp(QObject):
     def check_for_updates(self, manual: bool = False) -> None:
         """Ask GitHub for a newer Pomo. The installed app also downloads and verifies it, ready to offer."""
         s = self.settings
-        if self._update_worker is not None:
+        if self._update_worker is not None or self.update_mode == "store":  # the Store updates it
             return
         if not manual and (not s.auto_update or self.update_mode == "source"):
             return
@@ -2332,6 +2362,8 @@ class PomoApp(QObject):
     def update_status_text(self) -> str:
         """For Settings: where updates stand."""
         s = self.settings
+        if self.update_mode == "store":
+            return f"Pomo {APP_VERSION}, from the Microsoft Store, which keeps it up to date."
         if self._update_worker is not None:
             return "Checking GitHub for a new version…"
         newer = s.update_version and updater.is_newer(s.update_version, APP_VERSION)
@@ -2689,6 +2721,153 @@ class PomoApp(QObject):
     def thoughts_changed(self) -> None:
         if self.thoughts_window is not None and self.thoughts_window.isVisible():
             self.thoughts_window.refresh()
+        self.refresh_daily_note()
+
+    # ------------------------------------------------------------ notes
+    def notes_vault(self) -> notes.Vault:
+        """Your notes folder: Documents\\Pomo Notes unless you picked another, made (with a welcome) on first use."""
+        s = self.settings
+        if not s.notes_dir:
+            from PySide6.QtCore import QStandardPaths
+
+            docs = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation) or str(Path.home() / "Documents")
+            s.notes_dir = str(Path(docs) / "Pomo Notes")
+            self.save_settings()
+        root = Path(s.notes_dir)
+        if self._vault is None or self._vault.root != root:
+            self._vault = notes.Vault(root)
+            if self._vault.ensure() and self._vault.resolve(notes.WELCOME) is None:
+                self._vault.create(notes.WELCOME, text=notes.welcome_text())
+        return self._vault
+
+    def open_notes(self, path: Path | None = None) -> None:
+        try:
+            self.notes_vault()
+        except OSError as exc:
+            self.toast.show_message("Notes", f"Pomo couldn't open your notes folder: {exc}",
+                                    mode_color(self.theme, self.settings, "focus"), [("OK", lambda: None, True)],
+                                    self.view.anchor_rect_global(), timeout_ms=15000)
+            return
+        if self.notes_window is None:
+            from .notes_window import NotesWindow
+
+            self.notes_window = NotesWindow(self)
+        self._show_window(self.notes_window)
+        if path is not None:
+            self.notes_window.refresh()
+            self.notes_window.open_path(path)
+
+    def open_daily_note(self) -> None:
+        self.open_notes(self.refresh_daily_note(force=True))
+
+    def refresh_daily_note(self, force: bool = False) -> Path | None:
+        """Today's focus sessions and parked thoughts into today's daily note (Pomo's part of it only)."""
+        s = self.settings
+        if not force and (not s.notes_dir or not s.notes_daily):
+            return None
+        try:
+            vault = self.notes_vault()
+            today = date.today()
+            path = notes.daily_path(vault, today)
+            sessions = [r for r in self.storage.sessions(since=today) if r.day == today]
+            thoughts = [t for t in self.storage.thoughts(include_done=True) if t.created.date() == today]
+            block = notes.daily_block(sessions, thoughts)
+            if self.notes_window is not None and self.notes_window.is_open(path):
+                self.notes_window.edit_open_note(lambda text: notes.with_block(text, block))
+            else:
+                text = vault.read(path) if path.exists() else ""
+                new = notes.with_block(text, block)
+                if new != text:
+                    vault.write(path, new)
+            if self.notes_window is not None:
+                self.notes_window.schedule_refresh()
+            return path
+        except OSError:
+            return None
+
+    def open_task_note(self, task: str = "") -> None:
+        """The note for a task: its step's note when it's a step of your path, else one in Tasks/."""
+        task = (task or self.engine.task).strip()
+        if not task:
+            return
+        found = studypath.find_step(self.settings.study_path, task)
+        if found is not None:
+            self.open_step_note(found[0], found[1])
+            return
+        try:
+            path = self.notes_vault().open_or_create(task, notes.TASKS)
+        except OSError:
+            return
+        self.open_notes(path)
+
+    def sticky_button(self, pos) -> None:
+        """The sticky-note button on the timer: a new note, or (once you have some) a little menu."""
+        if not self.stickies.count():
+            self.stickies.new_note()
+            return
+        menu = styled_menu(QMenu())
+        self.fill_sticky_menu(menu)
+        menu.exec(pos)
+        menu.deleteLater()
+
+    def fill_sticky_menu(self, menu: QMenu) -> None:
+        _action(menu, "New sticky note", self.stickies.new_note)
+        if self.stickies.count():
+            hidden = self.stickies.count() - self.stickies.shown()
+            _action(menu, f"Show all ({hidden} hidden)" if hidden else "Show all", self.stickies.show_all)
+            _action(menu, "Hide all", self.stickies.hide_all, enabled=self.stickies.shown() > 0)
+        upcoming = self.stickies.upcoming()
+        if upcoming:
+            from .stickies import when_text
+
+            menu.addSeparator()
+            now = datetime.now()
+            for when, note in upcoming[:6]:
+                _action(menu, f"{when_text(when, now)}  ·  {note.first_line() or 'Sticky note'}", note.show_note)
+
+    def sticky_reminder(self, note, late: bool = False) -> None:
+        """A sticky note's reminder went off: Pomo hops and says it, with a ding and a Windows notification."""
+        from . import cheer
+
+        text = note.first_line() or "Your sticky note"
+        if self.view.isVisible():
+            self.view.pomo.hello()
+            if self.whisper is None:
+                self.whisper = cheer.Whisper(self)
+            self.whisper.say(f"{'Missed reminder' if late else 'Reminder'}: {text}", self.view.whisper_anchor())
+        s = self.settings
+        if s.sound_enabled and not late:
+            self.notifier.play(s.sound_name, s.volume)
+        self.notifier.toast("Missed reminder" if late else "Reminder", text, on_click=note.show_note)
+
+    def _offer_sticky_startup(self) -> None:
+        """Sticky notes come back when Pomo starts, so offer (once) to start Pomo with Windows."""
+        s = self.settings
+        if s.sticky_startup_offered or s.start_with_windows or not getattr(sys, "frozen", False):
+            return
+        s.sticky_startup_offered = True
+        self.save_settings()
+        self.toast.show_message(
+            "Keep your sticky notes on screen",
+            "They're saved as you type, and come back whenever Pomo starts. Start Pomo when you sign in to "
+            "Windows, so they're there after every restart?",
+            mode_color(self.theme, s, "focus"),
+            [("Start with Windows", lambda: self.set_start_with_windows(True), True), ("Not now", lambda: None, False)],
+            self.view.anchor_rect_global(), timeout_ms=30000)
+
+    def open_step_note(self, mi: int, si: int) -> None:
+        sp = self.settings.study_path
+        try:
+            milestone = sp["milestones"][mi]
+            step = milestone["steps"][si]
+        except (KeyError, IndexError, TypeError):
+            return
+        try:
+            path = self.notes_vault().open_or_create(step["title"], notes.STUDY,
+                                                     notes.step_seed(sp.get("goal", ""), milestone["title"]))
+        except OSError:
+            return
+        self.open_notes(path)
 
     def open_thoughts(self) -> None:
         if self.thoughts_window is None:

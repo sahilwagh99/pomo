@@ -46,7 +46,8 @@ FOCUS_SOUNDS = {"off": "Off", "rain": "Rain", "cafe": "Café murmur", "brown": "
 AUTO_TASK = ("ask", "auto", "off")  # name sessions after the project in your editor
 VOICE_INPUT = ("auto", "windows", "openai", "gemini")  # who turns your voice into text
 ORB_SIZES = {"Small": 150, "Medium": 190, "Large": 230}
-THEME_KEYS = ("light", "sakura", "lavender", "peach", "mint", "dark", "blueberry", "plum")  # see theme.THEMES
+THEME_KEYS = ("light", "sakura", "lavender", "peach", "mint", "lemon", "sky",
+              "dark", "blueberry", "plum", "forest", "rosewood")  # see theme.THEMES
 DEFAULT_DISTRACTING = ("youtube", "netflix", "twitch", "tiktok", "instagram", "facebook", "reddit", "twitter",
                        "9gag", "prime video", "disney+", "steam")
 HOTKEYS = {  # action -> (setting, label)
@@ -243,6 +244,11 @@ class Settings:
     # Pomo's room (see room.py)
     room: dict = field(default_factory=dict)                # spot -> the item you put there ("" = left empty)
     room_seen: list[str] = field(default_factory=list)      # items whose arrival was announced
+
+    # Notes (see notes.py): plain Markdown files in a folder, which Obsidian can open too
+    notes_dir: str = ""      # "" until notes are first opened, then Documents\Pomo Notes unless you pick another
+    notes_daily: bool = True  # Pomo keeps today's sessions and parked thoughts in a daily note
+    sticky_startup_offered: bool = False  # asked once, with the first sticky note, to start with Windows
 
     # Mini games
     stack_best: int = 0      # Mochi Stack: the tallest tower

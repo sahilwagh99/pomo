@@ -132,6 +132,33 @@ def draw_glyph(p: QPainter, name: str, c: QPointF, size: float, color: QColor) -
         p.drawEllipse(rect)
         p.setPen(_pen(color, stroke * 2.0))
         p.drawArc(rect, 90 * 16, -200 * 16)
+    elif name == "notes":  # a notebook: a page with lines, bound on the left
+        w, h = s * 0.6, s * 0.74
+        rect = QRectF(c.x() - w / 2 + s * 0.04, c.y() - h / 2, w, h)
+        p.setPen(_pen(color, stroke))
+        p.drawRoundedRect(rect, s * 0.08, s * 0.08)
+        for dy in (-0.17, 0.0, 0.17):
+            y = c.y() + dy * s
+            p.drawLine(QPointF(rect.left() + w * 0.32, y), QPointF(rect.right() - w * 0.2, y))
+        for dy in (-0.22, 0.0, 0.22):  # the rings of the binding
+            p.drawLine(QPointF(rect.left() - s * 0.09, c.y() + dy * s), QPointF(rect.left() + s * 0.07, c.y() + dy * s))
+    elif name == "sticky":  # a sticky note with its corner curling up
+        w = s * 0.66
+        x0, y0 = c.x() - w / 2, c.y() - w / 2
+        fold = w * 0.32
+        path = QPainterPath(QPointF(x0, y0))
+        path.lineTo(x0 + w, y0)
+        path.lineTo(x0 + w, y0 + w - fold)
+        path.lineTo(x0 + w - fold, y0 + w)
+        path.lineTo(x0, y0 + w)
+        path.closeSubpath()
+        p.setPen(_pen(color, stroke))
+        p.drawPath(path)
+        corner = QPainterPath(QPointF(x0 + w, y0 + w - fold))
+        corner.lineTo(x0 + w - fold, y0 + w - fold)
+        corner.lineTo(x0 + w - fold, y0 + w)
+        p.drawPath(corner)
+        p.drawLine(QPointF(x0 + w * 0.22, y0 + w * 0.3), QPointF(x0 + w * 0.72, y0 + w * 0.3))
     elif name == "dango":  # three mochi balls on a skewer (the treat)
         p.setPen(_pen(color, stroke * 1.1))
         p.drawLine(QPointF(c.x() + s * 0.38, c.y() + s * 0.38), QPointF(c.x() - s * 0.4, c.y() - s * 0.4))

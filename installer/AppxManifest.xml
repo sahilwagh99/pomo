@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pomo's Microsoft Store (MSIX) package manifest. tools\make_msix.py fills in the placeholders:
+  the identity comes from Partner Center (Product identity), the version from pomodoro/__init__.py.
+  STARTUP_TASK and APP_ALIAS in pomodoro/winutil.py must match the start-up task and the alias below.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 desktop rescap">
+
+  <Identity Name="${name}" Publisher="${publisher}" Version="${version}" ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>${display_name}</DisplayName>
+    <PublisherDisplayName>${publisher_name}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Pomo" Executable="Pomo.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="${display_name}" Description="${description}" BackgroundColor="transparent"
+                          Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <!-- Run on startup: a packaged app can't use the registry's Run key -->
+        <desktop:Extension Category="windows.startupTask" Executable="Pomo.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="PomoStartup" Enabled="false" DisplayName="${display_name}" />
+        </desktop:Extension>
+        <!-- pomo.exe for coding-agent hooks: the install folder changes with every update -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="Pomo.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="pomo.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <rescap:Capability Name="runFullTrust" />
+    <!-- Talk to Pomo: only while you hold the shortcut or the mic button -->
+    <DeviceCapability Name="microphone" />
+  </Capabilities>
+</Package>

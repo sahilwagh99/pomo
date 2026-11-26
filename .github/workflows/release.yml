@@ -46,6 +46,27 @@ jobs:
           $hash = (Get-FileHash dist/Pomo-Setup.exe -Algorithm SHA256).Hash.ToLower()
           Set-Content -Path dist/Pomo-Setup.exe.sha256 -Value "$hash  Pomo-Setup.exe" -NoNewline -Encoding ascii
 
+      # The Microsoft Store package (tools/make_msix.py), uploaded to Partner Center by hand. Its identity
+      # comes from the repository's Actions variables, copied from Partner Center's Product identity page;
+      # without them this is a local test package.
+      - name: Store package
+        continue-on-error: true  # the GitHub release mustn't wait on the Store package
+        shell: cmd
+        env:
+          POMO_STORE_NAME: ${{ vars.POMO_STORE_NAME }}
+          POMO_STORE_PUBLISHER: ${{ vars.POMO_STORE_PUBLISHER }}
+          POMO_STORE_PUBLISHER_NAME: ${{ vars.POMO_STORE_PUBLISHER_NAME }}
+          POMO_STORE_DISPLAY_NAME: ${{ vars.POMO_STORE_DISPLAY_NAME }}
+        run: |
+          if defined POMO_STORE_NAME (python tools\make_msix.py --store) else (python tools\make_msix.py)
+
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: Pomo-store
+          path: dist/Pomo.msix
+          if-no-files-found: ignore
+
       - uses: actions/upload-artifact@v4
         with:
           name: Pomo-windows

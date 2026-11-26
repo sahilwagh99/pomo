@@ -13,6 +13,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from . import winutil
 from .hook import ANSWER_FLAG, LEGACY_MARKERS, MARKER
 
 # Watched without slowing Claude Code down: async hooks run in the background.
@@ -36,6 +37,8 @@ def default_settings_path() -> Path:
 def hook_command() -> tuple[str, list[str]]:
     """Executable and arguments that run Pomo's hook client."""
     if getattr(sys, "frozen", False):
+        if winutil.is_packaged():  # the Store version: its folder changes with every update
+            return str(winutil.app_alias_path()), [MARKER]
         return sys.executable, [MARKER]
     exe = Path(sys.executable)
     console = exe.with_name("python.exe")  # hooks need stdin/stdout, so not pythonw

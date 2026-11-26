@@ -66,6 +66,8 @@ TIPS = {
     "reset": "Reset  (R)",
     "dashboard": "Dashboard  (D)",
     "chat": "Ask Pomo",
+    "notes": "Notes",
+    "sticky": "Sticky notes",
     "style": "Switch to the top island",
     "feed": "Feed Pomo a treat (you earn one per focus session)",
     "play": "Play a game with Pomo",
@@ -441,10 +443,11 @@ class OrbWidget(QWidget):
     def _button_geometry(self) -> dict[str, tuple[QPointF, float]]:
         c, k = self._center(), self._k()
         return {
-            "dashboard": (QPointF(c.x() - 37.5 * k, c.y() - 55 * k), 10.5 * k),
-            "chat": (QPointF(c.x() - 12.5 * k, c.y() - 55 * k), 10.5 * k),
-            "style": (QPointF(c.x() + 12.5 * k, c.y() - 55 * k), 10.5 * k),
-            "settings": (QPointF(c.x() + 37.5 * k, c.y() - 55 * k), 10.5 * k),
+            "dashboard": (QPointF(c.x() - 50 * k, c.y() - 55 * k), 10.5 * k),
+            "chat": (QPointF(c.x() - 25 * k, c.y() - 55 * k), 10.5 * k),
+            "notes": (QPointF(c.x(), c.y() - 55 * k), 10.5 * k),
+            "style": (QPointF(c.x() + 25 * k, c.y() - 55 * k), 10.5 * k),
+            "settings": (QPointF(c.x() + 50 * k, c.y() - 55 * k), 10.5 * k),
             "reset": (QPointF(c.x() - 40 * k, c.y() + 40 * k), 14 * k),
             "toggle": (QPointF(c.x(), c.y() + 40 * k), 19 * k),
             "skip": (QPointF(c.x() + 40 * k, c.y() + 40 * k), 14 * k),
@@ -474,6 +477,10 @@ class OrbWidget(QWidget):
         if seen > 0.05:
             out["ultra"] = (QPointF(c.x() - self._diam / 2 - r * 0.3, c.y()) if ranked else QPointF(c.x() - d, c.y() + d),
                             r, seen)
+        # sticky notes: on the lower-right rim (or the right, when the rank's arc runs along the bottom), on hover
+        if self._hover > 0.05:
+            out["sticky"] = (QPointF(c.x() + self._diam / 2 + r * 0.3, c.y()) if ranked else QPointF(c.x() + d, c.y() + d),
+                             r, self._hover)
         if ranked:  # your habit rank: the medal hanging from the bottom of the timer
             out["rank"] = (self._medal_center(), MEDAL_R * self._k(), 1.0)
         if not self._pomo_on:
@@ -694,6 +701,9 @@ class OrbWidget(QWidget):
                     p.drawEllipse(center, r, r)
                 draw_glyph(p, "headphones", center, r * 1.15, QColor(t.ink_2))
                 continue
+            if name == "sticky":
+                draw_glyph(p, "sticky", center, r * 1.2, QColor(t.ink_2))
+                continue
             draw_glyph(p, "dango" if name == "feed" else "petal", center, r * 1.35, QColor(t.ink_2))
             if name == "feed" and self.ctrl.settings.treats > 1:
                 p.setFont(self._font(8.5 * k, QFont.DemiBold))
@@ -784,7 +794,7 @@ class OrbWidget(QWidget):
     def _paint_controls(self, p: QPainter, k: float, accent: QColor) -> None:
         t, e = self.ctrl.theme, self.engine
         glyphs = {"reset": "reset", "skip": "skip", "dashboard": "chart", "chat": "chat", "settings": "gear",
-                  "style": "island"}
+                  "style": "island", "notes": "notes"}
         for name, (center, r) in self._button_geometry().items():
             hot = name == self._hot
             if name == "toggle":
@@ -979,6 +989,10 @@ class OrbWidget(QWidget):
             self.dashboard_requested.emit()
         elif name == "chat":
             self.chat_requested.emit()
+        elif name == "notes":
+            self.ctrl.open_notes()
+        elif name == "sticky":
+            self.ctrl.sticky_button(QCursor.pos())
         elif name == "settings":
             self.settings_requested.emit()
         elif name == "style":

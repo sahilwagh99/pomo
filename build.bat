@@ -17,24 +17,37 @@ if defined CI (
     set "PY=.venv\Scripts\python.exe"
 )
 
-echo [1/5] Installing dependencies...
+echo [1/6] Installing dependencies...
 %PY% -m pip install --quiet --disable-pip-version-check -r requirements.txt pyinstaller || goto :error
 
-echo [2/5] Running tests...
+echo [2/6] Running tests...
 %PY% -m unittest discover -s tests -t . || goto :error
 
-echo [3/5] Preparing icon, wizard images and version info...
+echo [3/6] Preparing icon, wizard images and version info...
 set "APP_VERSION="
 for /f "delims=" %%v in ('%PY% tools\prepare_build.py') do set "APP_VERSION=%%v"
 if "%APP_VERSION%"=="" goto :error
 
-echo [4/5] Building Pomo %APP_VERSION%...
-%PY% -m PyInstaller --noconfirm --clean --onedir --windowed --name Pomo ^
+rem --noupx: UPX-packed files lose the signatures Qt, Python and Microsoft put on theirs
+echo [4/6] Building Pomo %APP_VERSION%...
+%PY% -m PyInstaller --noconfirm --clean --onedir --windowed --noupx --name Pomo ^
     --icon assets\pomo.ico --version-file build\version_info.txt ^
     --add-data "pomodoro\sounds;pomodoro\sounds" main.py || goto :error
+
+rem Smart App Control blocks unsigned binaries it doesn't know, so sign every one that isn't signed yet
+rem (see tools\sign.py), then have Inno Setup sign the installer and its uninstaller with the same tool.
+echo [5/6] Signing...
+set "SIGN_ARGS="
+%PY% tools\sign.py --configured
+if errorlevel 2 goto :signed
+if errorlevel 1 goto :error
+%PY% tools\sign.py dist\Pomo || goto :error
+for /f "delims=" %%p in ('%PY% -c "import sys; print(sys.executable)"') do set "PY_EXE=%%p"
+set SIGN_ARGS="/Spomosign=$q%PY_EXE%$q $q%~dp0tools\sign.py$q $f" /DSignBuild
+:signed
 %PY% -c "import shutil, sys; shutil.make_archive(sys.argv[1], 'zip', 'dist', 'Pomo')" "dist\Pomo-portable" || goto :error
 
-echo [5/5] Building installer...
+echo [6/6] Building installer...
 set "ISCC="
 for /f "delims=" %%i in ('where iscc 2^>nul') do if not defined ISCC set "ISCC=%%i"
 if not defined ISCC if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
@@ -49,7 +62,7 @@ if not defined ISCC (
 )
 set "URL_ARG="
 if defined GITHUB_REPOSITORY set "URL_ARG=/DAppURL=https://github.com/%GITHUB_REPOSITORY%"
-"%ISCC%" /Q /DAppVersion=%APP_VERSION% %URL_ARG% installer\Pomo.iss || goto :error
+"%ISCC%" /Q /DAppVersion=%APP_VERSION% %URL_ARG% %SIGN_ARGS% installer\Pomo.iss || goto :error
 
 echo.
 echo Done (version %APP_VERSION%):

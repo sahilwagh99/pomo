@@ -21,6 +21,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
+from . import winutil
+
 REPO = "sahilwagh99/pomo"
 LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases/latest"
@@ -110,11 +112,14 @@ def dir_writable(folder: Path) -> bool:
         return False
 
 
-def install_mode(frozen: bool | None = None, folder: Path | None = None) -> str:
-    """'installer' (updates itself), 'manual' (portable or all-users: tell the user) or 'source' (a dev run)."""
+def install_mode(frozen: bool | None = None, folder: Path | None = None, packaged: bool | None = None) -> str:
+    """'installer' (updates itself), 'manual' (portable or all-users: tell the user), 'store' (the Microsoft
+    Store updates it, so Pomo never looks at GitHub) or 'source' (a dev run)."""
     frozen = getattr(sys, "frozen", False) if frozen is None else frozen
     if not frozen:
         return "source"
+    if winutil.is_packaged() if packaged is None else packaged:
+        return "store"
     folder = folder or app_dir()
     if (folder / "unins000.exe").exists() and dir_writable(folder):
         return "installer"
