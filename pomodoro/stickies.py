@@ -52,6 +52,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .notes import replace_file
+
 SHADOW = 10
 RADIUS = 12
 HEADER = 30
@@ -123,7 +125,7 @@ def save(path: Path, items: list[dict]) -> None:
         f.write(json.dumps(items, indent=2))
         f.flush()
         os.fsync(f.fileno())
-    os.replace(tmp, path)
+    replace_file(tmp, path)
 
 
 def colors(theme, key: str) -> tuple[QColor, QColor, QColor]:
@@ -1089,4 +1091,4 @@ class StickyBoard(QObject):
         try:
             save(self.path, [n.data for n in self.notes])
         except OSError:
-            pass
+            self._save_timer.start(2000)  # the file stayed locked: try again shortly

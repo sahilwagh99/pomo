@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import time
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -36,6 +37,19 @@ FENCE_RE = re.compile(r"^\s*(```|~~~)")
 INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 UNSAFE_NAME = re.compile(r'[\\/:*?"<>|#^\[\]\x00-\x1f]')
 UNLINKABLE = re.compile(r"[\[\]|#^]")
+
+
+def replace_file(tmp: Path, path: Path, attempts: int = 8) -> None:
+    """Swap a freshly written file into place. Windows refuses while another program has the file open
+    for a moment (antivirus, the search indexer, OneDrive, an editor), so try again briefly first."""
+    for attempt in range(attempts):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.03 * (attempt + 1))
 
 
 # ------------------------------------------------------------------ reading notes
@@ -167,7 +181,7 @@ class Vault:
         eol = self._cache[path][3] if path in self._cache else "\n"
         tmp = path.with_name(f".{path.name}.pomo-tmp")
         tmp.write_bytes(text.replace("\r\n", "\n").replace("\n", eol).encode("utf-8"))
-        os.replace(tmp, path)
+        replace_file(tmp, path)
         stat = path.stat()
         self._cache[path] = (stat.st_mtime_ns, stat.st_size, text, eol)
 

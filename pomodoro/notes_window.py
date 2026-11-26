@@ -1302,7 +1302,8 @@ class NotesWindow(QWidget):
             if str(self.current) not in self.watcher.files():
                 self.watcher.addPath(str(self.current))
         except OSError as exc:
-            self.meta.setText(f"Couldn't save: {exc}")
+            self.meta.setText(f"Couldn't save yet ({exc.strerror or exc}). Trying again…")
+            self.save_timer.start(2000)  # still dirty: the next try may find the file free
             return
         self.schedule_refresh()
 

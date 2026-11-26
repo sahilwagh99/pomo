@@ -86,6 +86,23 @@ class VaultTests(unittest.TestCase):
         new = self.vault.create("Fresh", text="a\nb")
         self.assertEqual(new.read_bytes(), b"a\nb")
 
+    def test_saving_waits_out_a_brief_lock(self):
+        # antivirus or OneDrive holding the file for a moment makes Windows refuse the swap: try again
+        path = self.vault.create("Locked", text="before")
+        real, refusals = notes.os.replace, []
+
+        def flaky(src, dst):
+            if len(refusals) < 3:
+                refusals.append(dst)
+                raise PermissionError(13, "The process cannot access the file")
+            real(src, dst)
+
+        from unittest import mock
+        with mock.patch.object(notes.os, "replace", flaky):
+            self.vault.write(path, "after")
+        self.assertEqual(len(refusals), 3)
+        self.assertEqual(path.read_text(encoding="utf-8"), "after")
+
     def test_new_notes_get_free_names(self):
         first = self.vault.create("Idea")
         second = self.vault.create("Idea")
