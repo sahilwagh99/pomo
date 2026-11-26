@@ -1,12 +1,63 @@
 """Windows integration: start-up registration, title bar color, app identity."""
 from __future__ import annotations
 
+import functools
+import os
 import sys
 from pathlib import Path
 
 from . import APP_NAME, LEGACY_NAME
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+# The Microsoft Store package (installer/AppxManifest.xml) declares these two
+STARTUP_TASK = "PomoStartup"
+APP_ALIAS = "pomo.exe"
+APPMODEL_ERROR_NO_PACKAGE = 15700
+
+
+@functools.cache
+def is_packaged() -> bool:
+    """True when Pomo runs from its Microsoft Store (MSIX) package rather than the GitHub installer."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+
+    length = ctypes.c_uint32(0)
+    try:
+        result = ctypes.windll.kernel32.GetCurrentPackageFullName(ctypes.byref(length), None)
+    except (AttributeError, OSError):
+        return False
+    return result != APPMODEL_ERROR_NO_PACKAGE
+
+
+def app_alias_path() -> Path:
+    """The Store version's `pomo.exe` alias. Each update installs to a new folder other apps can't run
+    from, so agent hooks go through this instead: it always starts the current version."""
+    local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+    return Path(local) / "Microsoft" / "WindowsApps" / APP_ALIAS
+
+
+def _startup_task(action: str) -> bool:
+    """The Store version's start-up entry: 'enable', 'disable' or 'state'. True if it ends up enabled.
+
+    A packaged app can't use the Run key (its registry writes are kept private to the package), and you
+    can turn this entry off in Task Manager, after which only you can turn it back on there.
+    """
+    import asyncio
+
+    from winrt.windows.applicationmodel import StartupTask, StartupTaskState
+
+    async def run() -> bool:
+        task = await StartupTask.get_async(STARTUP_TASK)
+        if action == "enable":
+            state = await task.request_enable_async()
+        else:
+            if action == "disable":
+                task.disable()
+            state = task.state
+        return state in (StartupTaskState.ENABLED, StartupTaskState.ENABLED_BY_POLICY)
+
+    return asyncio.run(run())
 
 
 def launch_command() -> str:
@@ -22,6 +73,11 @@ def set_start_with_windows(enabled: bool) -> bool:
     """Register (or remove) Pomo in the current user's Run key. Also clears FocusOrb's old entry."""
     if sys.platform != "win32":
         return False
+    if is_packaged():
+        try:
+            return _startup_task("enable" if enabled else "disable") == enabled
+        except Exception:  # a WinRT failure just means start-up didn't change
+            return False
     import winreg
 
     try:
@@ -42,6 +98,11 @@ def set_start_with_windows(enabled: bool) -> bool:
 def starts_with_windows() -> bool:
     if sys.platform != "win32":
         return False
+    if is_packaged():
+        try:
+            return _startup_task("state")
+        except Exception:
+            return False
     import winreg
 
     try:

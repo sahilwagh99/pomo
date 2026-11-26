@@ -54,13 +54,15 @@ Pomo used to be called FocusOrb. Run `Pomo-Setup.exe` and it removes FocusOrb fo
 - **Focus training.** A focus ladder that grows your sessions as you succeed, 90 seconds to ride out an urge, and Pomo reading his own book beside you while you study.
 - **Your path as a game.** Focus earns XP and levels, and your path becomes a skill tree where each finished step unlocks with a burst. The big picture maps how your steps connect, and a focus wallpaper puts today's step on your desktop while you work.
 - **Habits, with a rank to earn.** Track your habits month by month, like a habit tracker spreadsheet (or import yours from Excel). Every day is a ranked match: +30 points for reaching your daily target, +15 for half of it, -30 for less. Climb eight medals from Rookie to Eternal, worn on your timer with an arc that fills toward your next star.
+- **Notes that link up.** Markdown notes that format as you type, `[[links]]` between them, #tags, search and a graph of how it all connects. They're plain files in a folder (Obsidian opens it too), with a note for each step and task, and a daily note Pomo fills with your focus sessions.
+- **Sticky notes.** As many as you like, anywhere on your screen, in your theme's colors, with bullets, tick-boxes and strikethrough. Set one to remind you at 6 PM and it bounces to the front while Pomo hops and tells you.
 - **App lock.** Games and other apps you lock are put away while you focus, with a card to get you back to work.
 - **Ultra focus.** For the days you need to go all in: Pomo powers up (spiky golden hair, fire in his eyes, a crackling golden aura) and the apps you drag in stay blocked, breaks included, until you power down.
 - **Daily quests and badges.** Three small goals a day, like "2 pomodoros before 10 AM", with a badge for each and new outfits now and then.
 - **Focus garden.** A sakura tree that grows with every pomodoro and unlocks new outfits.
 - **Pomo's room.** A cozy room on the dashboard that fills up with furniture you earn from focus hours, quests and Perfect days. Swap things around with a click.
 - **Global shortcuts.** Start, pause, skip, park a thought, play music or talk to Pomo from any app.
-- **Eight pastel themes and twenty-one outfits.** Pick your colors and dress Pomo up, or let Pomo dress for what you're doing; four outfits are earned in the focus garden and three with daily quests.
+- **Twelve pastel themes and twenty-one outfits.** Pick your colors and dress Pomo up, or let Pomo dress for what you're doing; four outfits are earned in the focus garden and three with daily quests.
 - **Answer your coding agent from Pomo.** See its exact message, answer Claude's questions, approve requests, and reply when it finishes a turn.
 - **Things to play with.** Pet Pomo, feed treats you earn by focusing, and play Petal Catch, Mochi Stack or Memory Match on your break.
 - **Music controls.** See what's playing on Spotify, YouTube or any other player, and play, pause or skip it from Pomo. Pomo puts on headphones and listens along.
@@ -330,6 +332,31 @@ The ladder is inspired by competitive games' ranked medals; the names and the ar
 
 <div align="center"><img src="docs/medals.png" alt="The eight medals: Rookie from 0 points, Squire from 750, Knight from 1,500, Paladin from 2,250, Champion from 3,000, Mythic from 3,750, Celestial from 4,500 and Eternal from 5,250" width="100%"></div>
 
+## Notes
+
+A place to write down what you learn, linked like a little wiki. Open it with the notebook button along the top of the timer, or from the right-click menu (*Notes*).
+
+- **Plain Markdown files.** Each note is a `.md` file in your notes folder, *Documents\Pomo Notes* unless you pick another with **Change…** (an Obsidian vault works). Obsidian, VS Code or Notepad open the same files, and Pomo picks up changes made there.
+- **Formats as you type.** Headings grow, **bold**, *italic*, ~~strikethrough~~, ==highlights==, `code`, lists and checkboxes show as you write them, with their marks faded. Lists carry on when you press Enter; Ctrl+Enter ticks a checkbox; Ctrl+B, Ctrl+I and Ctrl+Shift+X format the selection.
+- **Links and tags.** Type `[[` and Pomo suggests your notes. Ctrl+click a link to open it, even before the note exists: that starts it. The side panel lists the notes that link to this one, and the ones it links to. `#tags` gather notes, and search (Ctrl+P) finds words or a `#tag`. Rename a note and the links to it follow.
+- **Graph.** Your notes as bubbles and your links as lines, with Pomo sitting on the note you have open. Drag to move things around, scroll to zoom, click a bubble to open it. Dashed bubbles are notes you've linked to but haven't written yet.
+- **Study notes.** *Notes > Note for today's step* opens a note for the step you're on (in *Study/*, linked to its milestone and goal), and *Note for (your task)* one for the task (in *Tasks/*).
+- **A daily note.** Pomo keeps today's focus sessions (what you worked on, for how long, how it felt) and parked thoughts in *Daily/2026-11-26.md* and so on, between two comment lines it never strays outside of, so the rest of the note is yours. Turn it off with *Daily note* in the notes window.
+
+Deleting a note moves it to the *.trash* folder inside your notes folder, so it can come back.
+
+## Sticky notes
+
+Little notes for your screen. The sticky-note button on the timer (beside Pomo on the island, on the orb's rim) makes one by your mouse, and once you have some it also shows or hides them all; so does *Sticky notes* in the right-click menu. The **+** on a note makes another beside it.
+
+- **Anywhere.** Drag one by its top strip, resize it from the corner, and pin it above other windows if you like. Each remembers where it was, and they all come back when Pomo starts.
+- **In your theme.** Each takes your theme's focus, break or long-break color, or plain paper, and changes with your theme.
+- **Bullets and strikethrough.** Type `- ` to start a list, or use the buttons along the bottom: bullets (Ctrl+Shift+L), strikethrough (Ctrl+T) and bold (Ctrl+B). Tab indents a bullet.
+- **Checklists.** Type `[] ` to start one, or use the checklist button (Ctrl+Shift+C). Click a box, or press Ctrl+Enter, to tick it: done items fade and get crossed out. They're saved as `- [ ]` and `- [x]`, like any Markdown checklist.
+- **Reminders.** The bell at the top sets one: in 15 minutes, in an hour, this evening at 6 PM, tomorrow morning at 9, or a day and time you pick. When it's time, the note jumps to the front and bounces, Pomo hops and says what it's about, and you get a ding and a Windows notification. It bounces again a minute later, twice, until you click it. If the PC was off at that time, it goes off as a missed reminder when Pomo starts. The time shows at the bottom of the note (click it to change or remove it), and the sticky-notes menu lists what's coming up.
+- **Put away, not lost.** × hides a note; *Show all* in the menu brings them back. The bin deletes it (after asking, if it has anything in it).
+- **Still there after a restart.** Each note is saved as you type (and again as Windows shuts down), and they all come back, where you left them, whenever Pomo starts. With your first sticky note, Pomo offers to start with Windows, so they're on screen after every restart; you can also turn on *Run on startup* in the right-click menu.
+
 ## Focus garden
 
 Every finished pomodoro grows a sakura tree on your dashboard. It goes from a sprout to a grand sakura over your first 250 pomodoros, with one blossom for each pomodoro in the range you're viewing. Milestones unlock new outfits for Pomo: cat ears at 10 pomodoros, a flower crown at 25, a graduation cap at 50 and a wizard hat at 100.
@@ -375,9 +402,9 @@ The room keeps time with you. The window goes from sunrise to blue sky to sunset
 
 ## Themes and outfits
 
-Pick a theme in *Settings > Appearance* or from the right-click menu: **Matcha** (the default), **Sakura**, **Lavender**, **Peach** and **Mint** are light; **Cocoa**, **Blueberry** and **Plum** are dark.
+Pick a theme in *Settings > Appearance* or from the right-click menu: **Matcha** (the default), **Sakura**, **Lavender**, **Peach**, **Mint**, **Lemon** and **Sky** are light; **Cocoa**, **Blueberry**, **Plum**, **Forest** and **Rosewood** are dark.
 
-<div align="center"><img src="docs/themes.png" alt="The orb in all eight themes: Matcha, Sakura, Lavender, Peach, Mint, Cocoa, Blueberry and Plum" width="100%"></div>
+<div align="center"><img src="docs/themes.png" alt="The orb in all twelve themes: Matcha, Sakura, Lavender, Peach, Mint, Lemon, Sky, Cocoa, Blueberry, Plum, Forest and Rosewood" width="100%"></div>
 
 Pomo has twenty-one outfits. Four are earned in the [focus garden](#focus-garden) (the number is the pomodoros it takes) and three with [daily quests](#daily-quests-and-badges). Choose one under *Pomo's outfit* in *Settings > Appearance* or in the right-click menu.
 
@@ -519,7 +546,8 @@ Replies are read by a Windows voice on your PC (pick one in *Settings > AI*). Po
 | Reset / skip | The buttons next to play, or **R** / **S** |
 | Edit the time | Double-click the time and type a value. When the timer is idle, whole minutes become the new default for that mode. While it is running, this changes the time left. |
 | Nudge the time | Scroll over the timer: 1 min per notch (Shift or Ctrl: 5 min), or **Up** / **Down** |
-| Dashboard, Ask Pomo, timer style, settings | The small buttons along the top of the timer (hover to see them) |
+| Dashboard, Ask Pomo, notes, timer style, settings | The small buttons along the top of the timer (hover to see them) |
+| Sticky notes | The sticky-note button beside Pomo on the island, or on the orb's rim |
 | Move it | Drag the orb anywhere. The island stays at the top center. |
 | Play | Poke, pet or double-click Pomo; click the dango to feed a treat or the petal for the games |
 | Music | The now-playing row on the island, or the music badge on the orb: previous, play/pause, next |
@@ -527,7 +555,7 @@ Replies are read by a Windows voice on your PC (pick one in *Settings > AI*). Po
 | From any app | The [global shortcuts](#global-shortcuts): start or pause, skip, park a thought, music, show or hide, talk to Pomo |
 | Taskbar | Hover Pomo's taskbar button for reset, play/pause and skip; click it to bring the timer up |
 | Ultra focus | The lightning button beside Pomo on the island, or on the orb's rim (it glows gold while it's on) |
-| Everything else | Right-click: switch mode, add time, set task, your plan, park a thought, parked thoughts, daily goal, timer style, theme, outfit, Pomo's room, Study (today's step, just 10 minutes, my path, skill tree, big picture, study log, Teach Pomo, review cards, ride the urge), Ultra focus, Ask Pomo, Talk to Pomo, games, Breathe with Pomo, focus sounds, today's quests, music, reviews waiting, coding agents, run on startup, hide, quit |
+| Everything else | Right-click: switch mode, add time, set task (and its note), your plan, park a thought, parked thoughts, notes (open notes, today's note, notes for your task and today's step), sticky notes (new, show all, hide all), daily goal, timer style, theme, outfit, Pomo's room, Study (today's step, just 10 minutes, my path, skill tree, big picture, study log, Teach Pomo, review cards, ride the urge), Ultra focus, Ask Pomo, Talk to Pomo, games, Breathe with Pomo, focus sounds, today's quests, music, reviews waiting, coding agents, run on startup, hide, quit |
 | Tray icon | Click to bring the timer back; double-click for the dashboard |
 
 ## Dashboard
@@ -561,7 +589,7 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 | Shortcuts | Global shortcuts on or off, and each key combination (including the talk shortcut) |
 | General | Run Pomo on startup, updates (on or off, check now, update now), Pomo on the taskbar, focus sounds (which one, volume, only while focusing), music controls, Pomo listening along, music following the timer, move the orb back to its corner, open the data folder, export CSV, clear history |
 
-Your data lives in `%APPDATA%\Pomo`: `settings.json` (with your quests, badges, your path, its big picture, your XP and reviews waiting), `history.db` (pomodoros with their ratings, agent activity, parked thoughts, your study log, review cards, urges ridden out and, if the check-in is on, minutes per app), `cache\` (the focus sounds once they're made), `updates\` (a downloaded update until it's installed), `wallpaper.json` (only while the focus wallpaper is up: the wallpaper to put back) and, if you saved one, `ai_key.bin` (your API key, encrypted). Window titles (for "Where was I?" and project names) are never written to disk. When you talk to Pomo, the recording and the replies it reads aloud only pass through a temporary file in `cache\`, deleted as soon as Windows is done with it. To check for updates, Pomo asks GitHub's public API for the latest release every hour; nothing about you is sent with it.
+Your data lives in `%APPDATA%\Pomo`: `settings.json` (with your quests, badges, your path, its big picture, your XP and reviews waiting), `history.db` (pomodoros with their ratings, agent activity, parked thoughts, your study log, review cards, urges ridden out and, if the check-in is on, minutes per app), `cache\` (the focus sounds once they're made), `updates\` (a downloaded update until it's installed), `wallpaper.json` (only while the focus wallpaper is up: the wallpaper to put back), `stickies.json` (your sticky notes and where they sit) and, if you saved one, `ai_key.bin` (your API key, encrypted). Your notes are Markdown files in your notes folder (*Documents\Pomo Notes* unless you chose another), which stays put if you uninstall Pomo. Window titles (for "Where was I?" and project names) are never written to disk. When you talk to Pomo, the recording and the replies it reads aloud only pass through a temporary file in `cache\`, deleted as soon as Windows is done with it. To check for updates, Pomo asks GitHub's public API for the latest release every hour; nothing about you is sent with it. The Microsoft Store version doesn't: the Store updates it, and Windows keeps its data in Pomo's own app data, removed when you uninstall it. The full privacy policy is in [PRIVACY.md](PRIVACY.md).
 
 ## For developers
 
@@ -591,6 +619,27 @@ This runs the tests, then writes two files:
 
 - `dist\Pomo-Setup.exe`, the installer
 - `dist\Pomo-portable.zip`, the portable build
+
+### Sign the build
+
+Windows Smart App Control blocks an app it doesn't recognise unless every binary it loads is signed with a certificate from a CA in Microsoft's Trusted Root Program, and each release is new files Microsoft hasn't seen yet. When a certificate is set up, `build.bat` signs every `.exe`, `.dll` and `.pyd` in `dist\Pomo` that isn't signed yet (Pomo.exe and a few Python extensions: Qt, Python and Microsoft sign their own), then Inno Setup signs the uninstaller and `Pomo-Setup.exe`. Set one of:
+
+- `POMO_SIGN_CERT_SHA1`: the thumbprint of a code signing certificate in your Windows certificate store (a USB token, Certum SimplySign and the like), used with `signtool` from the Windows SDK.
+- `POMO_SIGN_COMMAND`: any command that signs one file in place, with `{file}` where its path goes, for signing services such as Azure Artifact Signing.
+
+Without either, the build is unsigned and says so; set `POMO_SIGN_REQUIRED=1` to make that an error. `python tools\sign.py --list dist\Pomo` shows what still lacks a trusted signature. The details are in [`tools/sign.py`](tools/sign.py).
+
+### The Microsoft Store package
+
+The Store version is the same build in an MSIX package, which the Store signs, so Smart App Control trusts it. After `build.bat`, run:
+
+```powershell
+python tools\make_msix.py
+```
+
+This writes the package layout to `dist\msix\` and, if the Windows SDK's `makeappx.exe` is installed, `dist\Pomo.msix` to upload to Partner Center. The package identity comes from Partner Center's *Product identity* page: set `POMO_STORE_NAME`, `POMO_STORE_PUBLISHER` and `POMO_STORE_PUBLISHER_NAME` (and `POMO_STORE_DISPLAY_NAME` if the name you reserved isn't Pomo), or the same names as repository variables for GitHub Actions, which builds `Pomo.msix` on every push. Without them you get a package for testing on your own PC: with Developer Mode on, `Add-AppxPackage -Register dist\msix\AppxManifest.xml` installs it straight from the layout.
+
+Packaged, Pomo leaves updates to the Store, starts with Windows through the package's startup task (you can also turn it off in Task Manager's *Startup apps*), and points agent hooks at its `pomo.exe` alias, since each Store update installs to a new folder. The manifest is [`installer/AppxManifest.xml`](installer/AppxManifest.xml), and the Store listing links to [PRIVACY.md](PRIVACY.md).
 
 ### Publish a release
 
@@ -656,6 +705,9 @@ pomodoro/wallpaper.py       the focus wallpaper: the picture, and swapping yours
 pomodoro/habits.py          the habit tracker: daily matches, the rank ladder, the month, Excel import
 pomodoro/medals.py          the rank medals, and the rank's arc and bar
 pomodoro/habit_window.py    the habit tracker window and the habit editor
+pomodoro/notes.py           notes on disk: links, tags, backlinks, search, renaming, the daily note
+pomodoro/notes_window.py    the notes window: the Markdown editor, the side panels and the graph
+pomodoro/stickies.py        sticky notes: each little window, and saving them
 pomodoro/applock.py         app lock: locked apps put away during focus (and during Ultra focus), and the lock card
 pomodoro/ultra.py           Ultra focus drawings: the aura, the spiky golden hair, fire in the eyes, the transformation
 pomodoro/ultra_mode.py      Ultra focus windows: picking apps to block, the transformation on screen, powering down
@@ -670,10 +722,13 @@ pomodoro/config.py          settings, outfits and the FocusOrb to Pomo data move
 pomodoro/storage.py         SQLite history (pomodoros and agent events)
 pomodoro/stats.py           KPI calculations
 pomodoro/sounds.py          alert sounds synthesized at runtime
-pomodoro/theme.py           the eight pastel themes, stylesheet
+pomodoro/theme.py           the twelve pastel themes, stylesheet
 pomodoro/icons.py           button glyphs and the Pomo app icon
 pomodoro/winutil.py         Windows helpers: run on startup, dark title bars, bringing a window back to the front
 installer/Pomo.iss          Inno Setup installer script (also removes FocusOrb when upgrading, and runs silent updates)
 tools/prepare_build.py      generates the .exe icon, installer artwork and version info
+tools/sign.py               code-signs the build, the installer and the uninstaller for Smart App Control
+tools/make_msix.py          builds the Microsoft Store package from the build and installer/AppxManifest.xml
+PRIVACY.md                  the privacy policy (linked from the Store listing)
 tests/                      unit tests
 ```

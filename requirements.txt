@@ -7,3 +7,5 @@ winrt-Windows.Foundation>=3.2,<4; sys_platform == "win32"
 winrt-Windows.Foundation.Collections>=3.2,<4; sys_platform == "win32"
 winrt-Windows.Media.Control>=3.2,<4; sys_platform == "win32"
 winrt-Windows.Storage.Streams>=3.2,<4; sys_platform == "win32"
+# Run on startup in the Microsoft Store version (its StartupTask)
+winrt-Windows.ApplicationModel>=3.2,<4; sys_platform == "win32"

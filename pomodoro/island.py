@@ -44,6 +44,8 @@ TIPS = {
     "reset": "Reset  (R)",
     "dashboard": "Dashboard",
     "chat": "Ask Pomo",
+    "notes": "Notes",
+    "sticky": "Sticky notes",
     "style": "Switch to the floating orb",
     "feed": "Feed Pomo a treat (you earn one per focus session)",
     "play": "Play a game with Pomo",
@@ -346,6 +348,7 @@ class IslandWidget(QWidget):
     def _buttons(self) -> dict[str, tuple[QPointF, float]]:
         r = self._expanded_rect()
         return {
+            "notes": (QPointF(r.right() - 152, r.top() + 28), 12.0),
             "style": (QPointF(r.right() - 122, r.top() + 28), 12.0),
             "chat": (QPointF(r.right() - 92, r.top() + 28), 12.0),
             "dashboard": (QPointF(r.right() - 62, r.top() + 28), 12.0),
@@ -357,12 +360,15 @@ class IslandWidget(QWidget):
 
     def _badges(self) -> dict[str, tuple[QPointF, float]]:
         """Toys beside the big Pomo in the open island: treat (feed), games (play) and focus sounds."""
-        if not self._pomo_on or self._expand < 0.8:
+        if self._expand < 0.8:
             return {}
         r = self._expanded_rect()
-        out = {"play": (QPointF(r.left() + 104, r.top() + 114), 11.0),
-               "sounds": (QPointF(r.left() + 104, r.top() + 88), 11.0),
-               "ultra": (QPointF(r.left() + 104, r.top() + 62), 11.0)}
+        out = {"sticky": (QPointF(r.left() + 104, r.top() + 36), 11.0)}  # sticky notes, with or without Pomo
+        if not self._pomo_on:
+            return out
+        out.update({"play": (QPointF(r.left() + 104, r.top() + 114), 11.0),
+                    "sounds": (QPointF(r.left() + 104, r.top() + 88), 11.0),
+                    "ultra": (QPointF(r.left() + 104, r.top() + 62), 11.0)})
         if self.ctrl.settings.treats > 0:
             out["feed"] = (QPointF(r.left() + 20, r.top() + 114), 11.0)
         return out
@@ -516,8 +522,8 @@ class IslandWidget(QWidget):
         p.drawEllipse(QPointF(x0 + 3, r.top() + 30), 3.2, 3.2)
         p.setFont(self._font(10.5, QFont.DemiBold, 1.2))
         p.setPen(QColor(t.ink_2))
-        p.drawText(QRectF(x0 + 12, r.top() + 22, 116, 16), Qt.AlignLeft | Qt.AlignVCenter,
-                   QFontMetricsF(p.font()).elidedText(label, Qt.ElideRight, 116))
+        p.drawText(QRectF(x0 + 12, r.top() + 22, 92, 16), Qt.AlignLeft | Qt.AlignVCenter,  # the notes button follows
+                   QFontMetricsF(p.font()).elidedText(label, Qt.ElideRight, 92))
 
         if not self._editing:
             text = fmt_clock(e.remaining)
@@ -555,7 +561,7 @@ class IslandWidget(QWidget):
             p.drawRoundedRect(QRectF(bar.left(), bar.top(), max(4.0, bar.width() * frac), bar.height()), 2, 2)
 
         glyphs = {"reset": "reset", "skip": "skip", "dashboard": "chart", "chat": "chat", "settings": "gear",
-                  "style": "orb"}
+                  "style": "orb", "notes": "notes"}
         for name, (center, radius) in self._buttons().items():
             hot = name == self._hot
             if name == "toggle":
@@ -584,9 +590,9 @@ class IslandWidget(QWidget):
                           1.6 if sounding else 1))
             p.setBrush(QColor(t.hover if name == self._hot else t.raised))
             p.drawEllipse(center, radius, radius)
-            glyph = {"feed": "dango", "play": "petal", "sounds": "headphones",
+            glyph = {"feed": "dango", "play": "petal", "sounds": "headphones", "sticky": "sticky",
                      "ultra": "bolt_on" if s.ultra_on else "bolt"}[name]
-            draw_glyph(p, glyph, center, radius * (1.15 if name == "sounds" else 1.35), QColor(t.ink_2))
+            draw_glyph(p, glyph, center, radius * (1.15 if name in ("sounds", "sticky") else 1.35), QColor(t.ink_2))
             if name == "feed" and s.treats > 1:
                 dot = QPointF(center.x() + radius * 0.75, center.y() - radius * 0.75)
                 p.setPen(Qt.NoPen)
@@ -823,6 +829,10 @@ class IslandWidget(QWidget):
             self.dashboard_requested.emit()
         elif name == "chat":
             self.chat_requested.emit()
+        elif name == "notes":
+            self.ctrl.open_notes()
+        elif name == "sticky":
+            self.ctrl.sticky_button(QCursor.pos())
         elif name == "settings":
             self.settings_requested.emit()
         elif name == "style":

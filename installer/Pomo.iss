@@ -62,6 +62,11 @@ MinVersion=10.0
 VersionInfoVersion={#AppVersion}
 VersionInfoProductName={#AppName}
 VersionInfoDescription={#AppName} Setup
+#ifdef SignBuild
+; build.bat defines the pomosign tool (tools\sign.py) when code signing is set up. Inno Setup then signs
+; the uninstaller it writes and Pomo-Setup.exe itself: Smart App Control would block them unsigned.
+SignTool=pomosign
+#endif
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
