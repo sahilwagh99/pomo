@@ -36,7 +36,7 @@ Pomo used to be called FocusOrb. Run `Pomo-Setup.exe` and it removes FocusOrb fo
 
 - **Pomo, your focus buddy.** A soft matcha mochi who lives on your timer, follows your cursor and reacts to everything (see [Meet Pomo](#meet-pomo)).
 - **Two timer styles, one click apart.** A slim island at the top of the screen (the default), or a round orb you can drag anywhere. The style button on the timer switches between them.
-- **Buttons right on the timer.** Ask Pomo, the dashboard, the timer style and settings are on the timer itself. No right-click needed.
+- **Buttons right on the timer.** Ask Pomo, the dashboard, notes, sticky notes, the timer style and settings are on the timer itself. No right-click needed.
 - **Editable time.** Double-click the time and type `30`, `45:00` or `1:30:00`, or scroll over it to add or remove minutes.
 - **Pomodoro turns.** Dots show your place in the cycle before the long break, and *3/8 today* tracks your daily goal.
 - **Alerts when a session ends:** a Windows notification, a sound (four built in), a pop-up card with *Start break* / *Skip* and a one-tap *How was that?*, and a soft glow on the timer.
@@ -345,6 +345,10 @@ A place to write down what you learn, linked like a little wiki. Open it with th
 
 Deleting a note moves it to the *.trash* folder inside your notes folder, so it can come back.
 
+<div align="center"><img src="docs/notes.png" alt="The notes window: the list of notes and tags, a note on SQL basics formatted as you type, and the notes it links to and from" width="100%"></div>
+
+<div align="center"><img src="docs/notes_graph.png" alt="The graph: notes as bubbles linked by lines, Pomo on SQL basics, and dashed bubbles for notes not written yet" width="100%"></div>
+
 ## Sticky notes
 
 Little notes for your screen. The sticky-note button on the timer (beside Pomo on the island, on the orb's rim) makes one by your mouse, and once you have some it also shows or hides them all; so does *Sticky notes* in the right-click menu. The **+** on a note makes another beside it.
@@ -356,6 +360,8 @@ Little notes for your screen. The sticky-note button on the timer (beside Pomo o
 - **Reminders.** The bell at the top sets one: in 15 minutes, in an hour, this evening at 6 PM, tomorrow morning at 9, or a day and time you pick. When it's time, the note jumps to the front and bounces, Pomo hops and says what it's about, and you get a ding and a Windows notification. It bounces again a minute later, twice, until you click it. If the PC was off at that time, it goes off as a missed reminder when Pomo starts. The time shows at the bottom of the note (click it to change or remove it), and the sticky-notes menu lists what's coming up.
 - **Put away, not lost.** × hides a note; *Show all* in the menu brings them back. The bin deletes it (after asking, if it has anything in it).
 - **Still there after a restart.** Each note is saved as you type (and again as Windows shuts down), and they all come back, where you left them, whenever Pomo starts. With your first sticky note, Pomo offers to start with Windows, so they're on screen after every restart; you can also turn on *Run on startup* in the right-click menu.
+
+<div align="center"><img src="docs/stickies.png" alt="Sticky notes in a light and a dark theme, with checklists, one with a reminder at 6:00 PM and one ringing now" width="620"></div>
 
 ## Focus garden
 

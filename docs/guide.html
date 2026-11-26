@@ -104,7 +104,7 @@
       <ul class="inside">
         <li><b>Pomo, your focus buddy</b>A soft matcha mochi who lives on your timer, follows your cursor and reacts to everything.</li>
         <li><b>Two timer styles</b>A slim island at the top of the screen (the default), or a round orb you can drag anywhere.</li>
-        <li><b>Buttons right on the timer</b>Ask Pomo, the dashboard, the timer style and settings, no right-click needed.</li>
+        <li><b>Buttons right on the timer</b>Ask Pomo, the dashboard, notes, sticky notes, the timer style and settings, no right-click needed.</li>
         <li><b>Editable time</b>Double-click the time and type <code>30</code>, <code>45:00</code> or <code>1:30:00</code>, or scroll over it.</li>
         <li><b>Pomodoro turns</b>Dots show your place in the cycle, and <i>3/8 today</i> tracks your daily goal.</li>
         <li><b>Alerts when a session ends</b>A notification, a sound, a pop-up card with a one-tap <i>How was that?</i>, and a soft glow.</li>
@@ -135,6 +135,8 @@
         <li><b>Habits, with a rank to earn</b>Track your habits month by month (or import them from Excel), and climb eight ranked medals by keeping them.</li>
         <li><b>App lock</b>Games and other apps you lock are put away while you focus.</li>
         <li><b>Ultra focus</b>Pomo powers up, and the apps you drag in stay blocked until you power down.</li>
+        <li><b>Notes that link up</b>Markdown notes with [[links]], tags, search and a graph, in a folder Obsidian opens too.</li>
+        <li><b>Sticky notes</b>Anywhere on your screen, in your theme's colors, with checklists and reminders.</li>
       </ul>
       <p>Pomo runs on startup if you want it to: one switch in <i>Settings &gt; General</i>.</p>
       <figure class="shot desk small"><img src="popup.png" alt="The card when a focus session ends: what's next, agent news, a new outfit, How was that? with three Pomo faces, and Breathe and Thoughts" width="328" height="288" loading="lazy"></figure>
@@ -352,6 +354,38 @@
       <p>The ladder is inspired by competitive games' ranked medals; the names and the art are Pomo's own.</p>
     </section>
 
+    <section id="notes" data-title="Notes">
+      <h2>Notes</h2>
+      <p>A place to write down what you learn, linked like a little wiki. Open it with the notebook button along the top of the timer, or from the right-click menu (<i>Notes</i>).</p>
+      <h3>Plain Markdown files</h3>
+      <p>Each note is a <code>.md</code> file in your notes folder, <i>Documents\Pomo Notes</i> unless you pick another with <b>Change…</b> (an Obsidian vault works). Obsidian, VS Code or Notepad open the same files, and Pomo picks up changes made there.</p>
+      <h3>Formats as you type</h3>
+      <p>Headings grow, and <b>bold</b>, <i>italic</i>, strikethrough, highlights, code, lists and checkboxes show as you write them, with their marks faded. Lists carry on when you press Enter; Ctrl+Enter ticks a checkbox; Ctrl+B, Ctrl+I and Ctrl+Shift+X format the selection.</p>
+      <figure class="shot"><img src="notes.png" alt="The notes window: the list of notes and tags, a note on SQL basics formatted as you type, and the notes it links to and from" width="1240" height="760" loading="lazy"></figure>
+      <h3>Links and tags</h3>
+      <p>Type <code>[[</code> and Pomo suggests your notes. Ctrl+click a link to open it, even before the note exists: that starts it. The side panel lists the notes that link to this one, and the ones it links to. <code>#tags</code> gather notes, and search (Ctrl+P) finds words or a <code>#tag</code>. Rename a note and the links to it follow.</p>
+      <h3>Graph</h3>
+      <p>Your notes as bubbles and your links as lines, with Pomo sitting on the note you have open. Drag to move things around, scroll to zoom, click a bubble to open it. Dashed bubbles are notes you've linked to but haven't written yet.</p>
+      <figure class="shot"><img src="notes_graph.png" alt="The graph: notes as bubbles linked by lines, Pomo on SQL basics, and dashed bubbles for notes not written yet" width="1240" height="760" loading="lazy"></figure>
+      <h3>Study notes and a daily note</h3>
+      <p><i>Notes &gt; Note for today's step</i> opens a note for the step you're on (in <i>Study/</i>, linked to its milestone and goal), and <i>Note for</i> your task one for the task (in <i>Tasks/</i>). Pomo also keeps today's focus sessions and parked thoughts in a daily note in <i>Daily/</i>, between two comment lines it never strays outside of, so the rest of the note is yours. Turn it off with <i>Daily note</i> in the notes window.</p>
+      <p>Deleting a note moves it to the <i>.trash</i> folder inside your notes folder, so it can come back.</p>
+    </section>
+
+    <section id="stickies" data-title="Sticky notes">
+      <h2>Sticky notes</h2>
+      <p>Little notes for your screen. The sticky-note button on the timer (beside Pomo on the island, on the orb's rim) makes one by your mouse, and once you have some it also shows or hides them all; so does <i>Sticky notes</i> in the right-click menu. The <b>+</b> on a note makes another beside it.</p>
+      <figure class="shot"><img src="stickies.png" alt="Sticky notes in a light and a dark theme, with checklists, one with a reminder at 6:00 PM and one ringing now" width="760" height="580" loading="lazy"></figure>
+      <ul>
+        <li><b>Anywhere.</b> Drag one by its top strip, resize it from the corner, and pin it above other windows if you like.</li>
+        <li><b>In your theme.</b> Each takes your theme's focus, break or long-break color, or plain paper, and changes with your theme.</li>
+        <li><b>Bullets, checklists and strikethrough.</b> Type <code>- </code> for bullets or <code>[] </code> for a checklist, or use the buttons along the bottom: bullets (Ctrl+Shift+L), checklist (Ctrl+Shift+C), strikethrough (Ctrl+T) and bold (Ctrl+B). Click a box, or press Ctrl+Enter, to tick it.</li>
+        <li><b>Reminders.</b> The bell sets one: in 15 minutes, in an hour, this evening at 6 PM, tomorrow morning at 9, or a day and time you pick. When it's time, the note jumps to the front and bounces, Pomo hops and says what it's about, and you get a ding and a Windows notification. It bounces again a minute later, twice, until you click it. If the PC was off, it goes off as a missed reminder when Pomo starts.</li>
+        <li><b>Still there after a restart.</b> Each note is saved as you type (and again as Windows shuts down), and they all come back where you left them whenever Pomo starts. With your first sticky note, Pomo offers to start with Windows.</li>
+        <li><b>Put away, not lost.</b> × hides a note; <i>Show all</i> brings them back. The bin deletes it, after asking if it has anything in it.</li>
+      </ul>
+    </section>
+
     <section id="rewards" data-title="Garden, quests, room">
       <h2>Garden, quests and Pomo's room</h2>
       <h3>Focus garden</h3>
@@ -512,7 +546,7 @@
         </table>
       </div>
       <h3 id="privacy">Your data</h3>
-      <p>Everything lives in <code>%APPDATA%\Pomo</code>: your settings (with quests, badges, your room, your path and your habits), your history (sessions, ratings, agent activity, parked thoughts, your study log, review cards, urges ridden out and the habits you ticked), the prepared focus sounds, a downloaded update until it's installed, and your API keys, encrypted. Window titles are never written to disk, and voice recordings only pass through a temporary file that's deleted right away. To check for updates, Pomo asks GitHub's public API every hour; nothing about you is sent with it.</p>
+      <p>Everything lives in <code>%APPDATA%\Pomo</code>: your settings (with quests, badges, your room, your path and your habits), your history (sessions, ratings, agent activity, parked thoughts, your study log, review cards, urges ridden out and the habits you ticked), the prepared focus sounds, a downloaded update until it's installed, your sticky notes, and your API keys, encrypted. Your notes are Markdown files in your notes folder (<i>Documents\Pomo Notes</i> unless you chose another). Window titles are never written to disk, and voice recordings only pass through a temporary file that's deleted right away. To check for updates, Pomo asks GitHub's public API every hour; nothing about you is sent with it.</p>
     </section>
 
     <section id="developers" data-title="For developers">
