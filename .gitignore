@@ -17,6 +17,8 @@ ENV/
 build/
 dist/
 *.spec
+# Intel's PresentMon: build.bat fetches it (tools/fetch_presentmon.py checks its hash); its licence is committed
+pomodoro/bin/PresentMon.exe
 installer/Output/
 
 # --- Tests / tooling ---

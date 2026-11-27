@@ -760,9 +760,9 @@ class PathMapWindow(QWidget):
         if self._scroll_pending:  # just opened: show the step that just unlocked, or else today's
             self._scroll_pending = False
             target = fresh or next((n for n in self.tree.nodes if n["state"] == "today"), None)
-            if target is not None:
-                QTimer.singleShot(0, lambda: self.tree_scroll.ensureVisible(int(target["pos"].x()),
-                                                                            int(target["pos"].y()), 0, 230))
+            if target is not None:  # tied to the scroll area: if the window goes first, this never runs
+                QTimer.singleShot(0, self.tree_scroll, lambda: self.tree_scroll.ensureVisible(
+                    int(target["pos"].x()), int(target["pos"].y()), 0, 230))
         self.map.load(path, s.path_map)
         self._show_node()
         self._show_map_info()

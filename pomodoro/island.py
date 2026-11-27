@@ -28,6 +28,8 @@ from .theme import FONT_FAMILY, mode_color
 
 SLIVER = (110.0, 8.0, 4.0)       # width, height, bottom corner radius
 COMPACT = (212.0, 38.0, 19.0)
+GAMING = (352.0, 38.0, 19.0)     # the pill in gaming mode: wide enough for FPS, GPU and CPU
+PANEL_OPEN_DELAY_MS = 260        # a moment's rest on the pill before the panel drops down (not just passing by)
 EXPANDED = (392.0, 136.0, 28.0)
 RANK_H = 40.0                    # the habit rank row of the open island, while you track habits
 MUSIC_H = 46.0                   # the now-playing row the open island grows while music plays or is paused
@@ -110,6 +112,7 @@ class IslandWidget(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setMouseTracking(True)
+        self.setAcceptDrops(True)
         self.setWindowTitle("Pomo island")
         ew, eh, _ = EXPANDED
         self.setFixedSize(int(ew * 1.08 + 2 * (FLARE + PAD)), int((eh + RANK_H + MUSIC_H) * 1.1 + PAD))
@@ -172,8 +175,20 @@ class IslandWidget(QWidget):
 
     def apply_settings(self) -> None:
         self._pomo_on = bool(self.ctrl.settings.show_buddy)
+        self._open_timer.setInterval(PANEL_OPEN_DELAY_MS if self.ctrl.settings.panel_on else OPEN_DELAY_MS)
         self._update_targets()
         self.update()
+
+    def _gaming(self) -> bool:
+        gaming = getattr(self.ctrl, "gaming", None)
+        return gaming is not None and gaming.active
+
+    def pill_rect_global(self) -> QRect:
+        """The compact pill, in screen coordinates: the panel drops down from here."""
+        p, _ = self._presence, self._expand
+        bw, bh, _br = (_lerp(a, b, p) for a, b in zip(SLIVER, GAMING if self._gaming() else COMPACT))
+        local = QRectF((self.width() - bw) / 2, 0.0, bw, max(bh, 12.0)).toRect()
+        return QRect(self.mapToGlobal(local.topLeft()), local.size())
 
     def place(self) -> None:
         geo = QGuiApplication.primaryScreen().availableGeometry()
@@ -196,7 +211,8 @@ class IslandWidget(QWidget):
         s, e = self.ctrl.settings, self.engine
         hub = getattr(self.ctrl, "agents", None)
         agents_active = hub is not None and hub.signal() is not None
-        tucked = s.island_autohide and e.state is State.IDLE and self.pomo.reaction is None and not agents_active
+        tucked = (s.island_autohide and e.state is State.IDLE and self.pomo.reaction is None and not agents_active
+                  and not self._gaming())
         presence = 0.0 if tucked else 1.0
         approval_waiting = hub is not None and bool(hub.pending)
         expand = 1.0 if (self._hover or self._menu_open or self._editing or approval_waiting
@@ -218,6 +234,9 @@ class IslandWidget(QWidget):
         self.update()
 
     def _set_hover(self, hover: bool) -> None:
+        if hover and self.ctrl.settings.panel_on and not self._editing:
+            self.ctrl.open_panel(attached="island")  # the panel drops down instead of the island opening up
+            return
         if hover != self._hover:
             self._hover = hover
             if not hover:
@@ -279,7 +298,7 @@ class IslandWidget(QWidget):
     # --------------------------------------------------------------- geometry
     def _pill(self) -> tuple[QRectF, float]:
         p, e = self._presence, self._expand
-        bw, bh, br = (_lerp(a, b, p) for a, b in zip(SLIVER, COMPACT))
+        bw, bh, br = (_lerp(a, b, p) for a, b in zip(SLIVER, GAMING if self._gaming() else COMPACT))
         ew, _, er = EXPANDED
         w, h, r = _lerp(bw, ew, e), _lerp(bh, self._expanded_h(), e), _lerp(br, er, e)
         return QRectF((self.width() - w) / 2, 0.0, w, h), r
@@ -447,7 +466,12 @@ class IslandWidget(QWidget):
             p.drawRoundedRect(QRectF(rect.center().x() - 17, rect.bottom() - 4.5, 34, 2.5), 1.25, 1.25)
         if compact_alpha > 0.01:
             p.setOpacity(compact_alpha)
-            self._paint_compact(p, rect, accent)
+            if self._gaming():
+                from .gaming import paint_pill
+
+                paint_pill(p, rect, t, self.ctrl.gaming.reading, FONT_FAMILY, 46 if self._pomo_on else 18)
+            else:
+                self._paint_compact(p, rect, accent)
         if full_alpha > 0.01:
             p.setOpacity(full_alpha)
             self._paint_expanded(p, accent)
@@ -792,7 +816,10 @@ class IslandWidget(QWidget):
             self.interacted.emit()
             self.pomo.poke()
         elif pressed == "pill" and self._inside(pos) and self._expand < 0.5:
-            self.pin(4.0)  # a click opens it too, for touch screens
+            if self.ctrl.settings.panel_on:
+                self.ctrl.open_panel(attached="island")
+            else:
+                self.pin(4.0)  # a click opens it too, for touch screens
         elif pressed == self._button_at(pos):
             self._trigger(pressed)
 
@@ -805,6 +832,21 @@ class IslandWidget(QWidget):
             self.interacted.emit()
         else:
             self.mousePressEvent(event)
+
+    def dragEnterEvent(self, event) -> None:
+        """Files dragged onto the island: the panel drops down on the Shelf, ready for them."""
+        if self.ctrl.settings.panel_on and event.mimeData() is not None and event.mimeData().hasUrls():
+            self.ctrl.open_panel(tab="shelf", attached="island")
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event) -> None:
+        panel = self.ctrl.panel
+        if panel is not None and panel.page("shelf") is not None:
+            panel.page("shelf").dropEvent(event)
+        else:
+            event.ignore()
 
     def wheelEvent(self, event) -> None:
         if self._editing:

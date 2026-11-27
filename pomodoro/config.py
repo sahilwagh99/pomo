@@ -250,6 +250,20 @@ class Settings:
     notes_daily: bool = True  # Pomo keeps today's sessions and parked thoughts in a daily note
     sticky_startup_offered: bool = False  # asked once, with the first sticky note, to start with Windows
 
+    # The panel (see panel.py): the big expanded view, with tabs and cards
+    panel_on: bool = True        # off: the island opens up the classic way, and clicking the orb does nothing
+    panel_tab: str = "home"      # the tab it opens on
+    clipboard_on: bool = True    # remember what you copy (in memory only, never on disk) for the Clipboard tab
+    shelf_items: list[str] = field(default_factory=list)    # files you dropped on the Shelf (their paths)
+    launcher_apps: list[str] = field(default_factory=list)  # apps pinned to the Launcher (.exe, .lnk or .url paths)
+    weather_place: dict = field(default_factory=dict)       # {"name", "lat", "lon"}: {} = no weather
+
+    # Gaming mode (see gaming.py): when a game is in front, the timer turns into a telemetry readout
+    gaming_on: bool = True       # notice games and switch to gaming mode by itself
+    gaming_games: list[str] = field(default_factory=list)   # exe names you said are games
+    gaming_not_games: list[str] = field(default_factory=list)  # exe names you said aren't
+    gaming_fps_asked: bool = False  # the one-time FPS permission was offered
+
     # Mini games
     stack_best: int = 0      # Mochi Stack: the tallest tower
     memory_best: int = 0     # Memory Match: fewest moves (0 = not played yet)

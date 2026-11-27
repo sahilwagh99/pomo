@@ -28,11 +28,14 @@ set "APP_VERSION="
 for /f "delims=" %%v in ('%PY% tools\prepare_build.py') do set "APP_VERSION=%%v"
 if "%APP_VERSION%"=="" goto :error
 
+rem Intel's PresentMon counts a game's frames for gaming mode: fetched once and checked against its hash
+%PY% tools\fetch_presentmon.py || goto :error
+
 rem --noupx: UPX-packed files lose the signatures Qt, Python and Microsoft put on theirs
 echo [4/6] Building Pomo %APP_VERSION%...
 %PY% -m PyInstaller --noconfirm --clean --onedir --windowed --noupx --name Pomo ^
     --icon assets\pomo.ico --version-file build\version_info.txt ^
-    --add-data "pomodoro\sounds;pomodoro\sounds" main.py || goto :error
+    --add-data "pomodoro\sounds;pomodoro\sounds" --add-data "pomodoro\bin;pomodoro\bin" main.py || goto :error
 
 rem Smart App Control blocks unsigned binaries it doesn't know, so sign every one that isn't signed yet
 rem (see tools\sign.py), then have Inno Setup sign the installer and its uninstaller with the same tool.

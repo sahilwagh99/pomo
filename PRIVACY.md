@@ -1,6 +1,6 @@
 # Pomo privacy policy
 
-*Last updated: November 26, 2026*
+*Last updated: November 28, 2026*
 
 Pomo is a Pomodoro timer for Windows, made by an independent developer. This policy covers Pomo from the Microsoft Store and from GitHub.
 
@@ -8,7 +8,7 @@ Pomo is a Pomodoro timer for Windows, made by an independent developer. This pol
 
 - Pomo has **no account, no servers of its own, no analytics and no ads**. Nobody, including the developer, receives anything about you or how you use Pomo.
 - Everything Pomo keeps stays **on your PC**.
-- Something leaves your PC only when you use a feature that needs it: the AI features (sent to the AI provider *you* chose, with *your* key), speech recognition by OpenAI or Gemini if you pick one, and the update check in the GitHub version.
+- Something leaves your PC only when you use a feature that needs it: the AI features (sent to the AI provider *you* chose, with *your* key), speech recognition by OpenAI or Gemini if you pick one, the weather once you set a city, and the update check in the GitHub version.
 
 ## What Pomo keeps on your PC
 
@@ -38,6 +38,10 @@ Without a key, nothing is sent anywhere.
 
 The microphone is used only while you hold the talk shortcut or the mic button. In *Settings > AI* you choose who turns your voice into text: **This PC** keeps it on your PC; **OpenAI** or **Gemini** sends the recording to that provider with your key. Replies are read aloud by a Windows voice on your PC.
 
+### Weather (only once you set a city)
+
+The panel can show the weather from [Open-Meteo](https://open-meteo.com), a free service with no account. Nothing is sent until you type your city in the Calendar tab. Then Pomo sends the name you typed to Open-Meteo's place search once, and your city's latitude and longitude to its forecast service about every half hour while the panel shows the weather. Choose *No weather* to stop.
+
 ### Update checks (GitHub version only)
 
 The version from GitHub asks GitHub's public API for the latest release about once an hour, and downloads the installer when there's a new one. Nothing about you is sent with it. The Microsoft Store version never does this: the Store updates it.
@@ -49,6 +53,14 @@ Links you click (such as *Get a key* or *What's new*) open in your web browser.
 ## Things Pomo reads on your PC
 
 To work, Pomo reads a few things on your PC and keeps them there: which app is in front (for the check-in, app lock and Ultra focus), the song your media player reports (for the music controls), the project open in your editor (to name sessions), and the events your coding agents send it through the hooks you connect in *Settings > Agents*. None of it is sent anywhere, except as part of the AI summary described above when you ask Pomo something.
+
+The panel adds a few more, all kept on your PC:
+
+- **What you copy**, for the Clipboard tab: the last few texts and pictures, in memory only. They're never written to disk and are gone when Pomo quits. Anything a password manager marks private is skipped, and you can turn this off in *Settings > General*.
+- **Your recent documents**, for the Docs tab: read from Windows' own list of recent files when you open the tab.
+- **The Shelf's files and the Launcher's apps**: only their paths, in Pomo's settings.
+- **Your PC's sound, brightness and Bluetooth devices**, for the System tab, read and changed only when you use it.
+- **Gaming mode's readings**: which app is in front, CPU and GPU use and temperatures, memory and the game's frame rate, read on your PC and never saved or sent. For FPS, Pomo reads RivaTuner's figures if it runs, or uses Intel's PresentMon if you click *Turn on FPS*; that asks Windows (with one administrator prompt) to add you to its *Performance Log Users* group, which lets programs you run read graphics timing events.
 
 ## Children
 

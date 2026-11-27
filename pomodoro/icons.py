@@ -223,7 +223,215 @@ def draw_glyph(p: QPainter, name: str, c: QPointF, size: float, color: QColor) -
         d = s * 0.26
         p.drawLine(QPointF(c.x() - d, c.y() - d), QPointF(c.x() + d, c.y() + d))
         p.drawLine(QPointF(c.x() - d, c.y() + d), QPointF(c.x() + d, c.y() - d))
+    else:
+        _draw_panel_glyph(p, name, c, s, color, stroke)
     p.restore()
+
+
+def _draw_panel_glyph(p: QPainter, name: str, c: QPointF, s: float, color: QColor, stroke: float) -> None:
+    """The panel's glyphs: its tabs, quick actions and system controls."""
+    x, y = c.x(), c.y()
+    p.setPen(_pen(color, stroke))
+    if name == "home":
+        roof = QPainterPath(QPointF(x - s * 0.36, y - s * 0.02))
+        roof.lineTo(x, y - s * 0.36)
+        roof.lineTo(x + s * 0.36, y - s * 0.02)
+        p.drawPath(roof)
+        p.drawRoundedRect(QRectF(x - s * 0.26, y - s * 0.1, s * 0.52, s * 0.44), s * 0.05, s * 0.05)
+        p.drawLine(QPointF(x, y + s * 0.34), QPointF(x, y + s * 0.14))
+    elif name == "clock":
+        r = s * 0.36
+        p.drawEllipse(c, r, r)
+        p.drawLine(c, QPointF(x, y - r * 0.6))
+        p.drawLine(c, QPointF(x + r * 0.45, y + r * 0.2))
+        p.drawLine(QPointF(x - s * 0.08, y - r - s * 0.08), QPointF(x + s * 0.08, y - r - s * 0.08))
+    elif name == "agent":  # a terminal: the coding agents
+        p.drawRoundedRect(QRectF(x - s * 0.38, y - s * 0.3, s * 0.76, s * 0.6), s * 0.09, s * 0.09)
+        p.drawPolyline([QPointF(x - s * 0.22, y - s * 0.1), QPointF(x - s * 0.08, y + s * 0.02),
+                        QPointF(x - s * 0.22, y + s * 0.14)])
+        p.drawLine(QPointF(x + s * 0.0, y + s * 0.14), QPointF(x + s * 0.2, y + s * 0.14))
+    elif name == "habit":  # a ticked circle
+        r = s * 0.36
+        p.drawEllipse(c, r, r)
+        p.drawPolyline([QPointF(x - s * 0.16, y), QPointF(x - s * 0.04, y + s * 0.13), QPointF(x + s * 0.18, y - s * 0.13)])
+    elif name == "clipboard":
+        p.drawRoundedRect(QRectF(x - s * 0.28, y - s * 0.3, s * 0.56, s * 0.66), s * 0.07, s * 0.07)
+        p.drawRoundedRect(QRectF(x - s * 0.13, y - s * 0.38, s * 0.26, s * 0.14), s * 0.04, s * 0.04)
+        for dy in (0.02, 0.17):
+            p.drawLine(QPointF(x - s * 0.14, y + dy * s), QPointF(x + s * 0.14, y + dy * s))
+    elif name == "shelf":  # a tray with something in it
+        tray = QPainterPath(QPointF(x - s * 0.38, y - s * 0.02))
+        tray.lineTo(x - s * 0.38, y + s * 0.3)
+        tray.lineTo(x + s * 0.38, y + s * 0.3)
+        tray.lineTo(x + s * 0.38, y - s * 0.02)
+        p.drawPath(tray)
+        p.drawLine(QPointF(x - s * 0.38, y - s * 0.02), QPointF(x - s * 0.14, y - s * 0.02))
+        p.drawLine(QPointF(x + s * 0.14, y - s * 0.02), QPointF(x + s * 0.38, y - s * 0.02))
+        p.drawLine(QPointF(x - s * 0.14, y - s * 0.02), QPointF(x - s * 0.1, y + s * 0.1))
+        p.drawLine(QPointF(x + s * 0.14, y - s * 0.02), QPointF(x + s * 0.1, y + s * 0.1))
+        p.drawLine(QPointF(x - s * 0.1, y + s * 0.1), QPointF(x + s * 0.1, y + s * 0.1))
+        p.drawLine(QPointF(x, y - s * 0.36), QPointF(x, y + s * 0.0))
+        p.drawPolyline([QPointF(x - s * 0.1, y - s * 0.1), QPointF(x, y), QPointF(x + s * 0.1, y - s * 0.1)])
+    elif name == "grid":  # the launcher
+        for dx in (-0.17, 0.17):
+            for dy in (-0.17, 0.17):
+                p.drawRoundedRect(QRectF(x + dx * s - s * 0.12, y + dy * s - s * 0.12, s * 0.24, s * 0.24),
+                                  s * 0.06, s * 0.06)
+    elif name == "doc":
+        page = QPainterPath(QPointF(x - s * 0.26, y - s * 0.36))
+        page.lineTo(x + s * 0.1, y - s * 0.36)
+        page.lineTo(x + s * 0.26, y - s * 0.2)
+        page.lineTo(x + s * 0.26, y + s * 0.36)
+        page.lineTo(x - s * 0.26, y + s * 0.36)
+        page.closeSubpath()
+        p.drawPath(page)
+        p.drawPolyline([QPointF(x + s * 0.1, y - s * 0.36), QPointF(x + s * 0.1, y - s * 0.2),
+                        QPointF(x + s * 0.26, y - s * 0.2)])
+    elif name == "calendar":
+        box = QRectF(x - s * 0.34, y - s * 0.28, s * 0.68, s * 0.62)
+        p.drawRoundedRect(box, s * 0.08, s * 0.08)
+        p.drawLine(QPointF(box.left(), y - s * 0.1), QPointF(box.right(), y - s * 0.1))
+        for dx in (-0.16, 0.16):
+            p.drawLine(QPointF(x + dx * s, y - s * 0.38), QPointF(x + dx * s, y - s * 0.2))
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        for dx in (-0.16, 0.0, 0.16):
+            p.drawEllipse(QPointF(x + dx * s, y + s * 0.1), s * 0.04, s * 0.04)
+    elif name == "sliders":  # system controls
+        for dy, knob in ((-0.2, 0.12), (0.0, -0.14), (0.2, 0.05)):
+            p.drawLine(QPointF(x - s * 0.36, y + dy * s), QPointF(x + s * 0.36, y + dy * s))
+            p.setBrush(color)
+            p.drawEllipse(QPointF(x + knob * s, y + dy * s), s * 0.06, s * 0.06)
+    elif name == "gamepad":
+        pad = QPainterPath()
+        pad.addRoundedRect(QRectF(x - s * 0.4, y - s * 0.2, s * 0.8, s * 0.42), s * 0.2, s * 0.2)
+        p.drawPath(pad)
+        p.drawLine(QPointF(x - s * 0.26, y), QPointF(x - s * 0.1, y))
+        p.drawLine(QPointF(x - s * 0.18, y - s * 0.08), QPointF(x - s * 0.18, y + s * 0.08))
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        p.drawEllipse(QPointF(x + s * 0.14, y - s * 0.04), s * 0.045, s * 0.045)
+        p.drawEllipse(QPointF(x + s * 0.24, y + s * 0.06), s * 0.045, s * 0.045)
+    elif name == "dots":
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        for dx in (-0.24, 0.0, 0.24):
+            p.drawEllipse(QPointF(x + dx * s, y), s * 0.06, s * 0.06)
+    elif name == "pin":
+        p.drawEllipse(QPointF(x, y - s * 0.14), s * 0.16, s * 0.16)
+        p.drawLine(QPointF(x, y + s * 0.02), QPointF(x, y + s * 0.38))
+        p.drawLine(QPointF(x - s * 0.24, y + s * 0.02), QPointF(x + s * 0.24, y + s * 0.02))
+    elif name == "pin_on":
+        p.setBrush(color)
+        p.drawEllipse(QPointF(x, y - s * 0.14), s * 0.16, s * 0.16)
+        p.drawLine(QPointF(x, y + s * 0.02), QPointF(x, y + s * 0.38))
+        p.drawLine(QPointF(x - s * 0.24, y + s * 0.02), QPointF(x + s * 0.24, y + s * 0.02))
+    elif name == "popout":
+        box = QPainterPath(QPointF(x + s * 0.02, y - s * 0.3))
+        box.lineTo(x - s * 0.3, y - s * 0.3)
+        box.lineTo(x - s * 0.3, y + s * 0.3)
+        box.lineTo(x + s * 0.3, y + s * 0.3)
+        box.lineTo(x + s * 0.3, y - s * 0.02)
+        p.drawPath(box)
+        p.drawLine(QPointF(x - s * 0.02, y + s * 0.02), QPointF(x + s * 0.34, y - s * 0.34))
+        p.drawPolyline([QPointF(x + s * 0.12, y - s * 0.34), QPointF(x + s * 0.34, y - s * 0.34),
+                        QPointF(x + s * 0.34, y - s * 0.12)])
+    elif name == "lock":
+        p.drawRoundedRect(QRectF(x - s * 0.26, y - s * 0.04, s * 0.52, s * 0.4), s * 0.07, s * 0.07)
+        p.drawArc(QRectF(x - s * 0.16, y - s * 0.36, s * 0.32, s * 0.6), 0, 180 * 16)
+    elif name == "crop":  # take a screenshot
+        p.drawPolyline([QPointF(x - s * 0.24, y - s * 0.38), QPointF(x - s * 0.24, y + s * 0.24),
+                        QPointF(x + s * 0.38, y + s * 0.24)])
+        p.drawPolyline([QPointF(x - s * 0.38, y - s * 0.24), QPointF(x + s * 0.24, y - s * 0.24),
+                        QPointF(x + s * 0.24, y + s * 0.38)])
+    elif name == "bluetooth":
+        p.drawPolyline([QPointF(x - s * 0.18, y - s * 0.16), QPointF(x + s * 0.18, y + s * 0.16),
+                        QPointF(x, y + s * 0.34), QPointF(x, y - s * 0.34), QPointF(x + s * 0.18, y - s * 0.16),
+                        QPointF(x - s * 0.18, y + s * 0.16)])
+    elif name == "sun":  # brightness
+        p.drawEllipse(c, s * 0.15, s * 0.15)
+        for k in range(8):
+            a = math.radians(k * 45)
+            p.drawLine(QPointF(x + math.cos(a) * s * 0.26, y + math.sin(a) * s * 0.26),
+                       QPointF(x + math.cos(a) * s * 0.38, y + math.sin(a) * s * 0.38))
+    elif name == "refresh":
+        r = s * 0.3
+        p.drawArc(QRectF(x - r, y - r, 2 * r, 2 * r), 40 * 16, 280 * 16)
+        tip = QPointF(x + r * math.cos(math.radians(40)), y - r * math.sin(math.radians(40)))
+        p.drawPolyline([QPointF(tip.x() - s * 0.16, tip.y() - s * 0.02), tip, QPointF(tip.x() + s * 0.02, tip.y() + s * 0.16)])
+    elif name == "plus":
+        p.drawLine(QPointF(x - s * 0.3, y), QPointF(x + s * 0.3, y))
+        p.drawLine(QPointF(x, y - s * 0.3), QPointF(x, y + s * 0.3))
+    elif name == "search":
+        p.drawEllipse(QPointF(x - s * 0.06, y - s * 0.06), s * 0.24, s * 0.24)
+        p.drawLine(QPointF(x + s * 0.12, y + s * 0.12), QPointF(x + s * 0.34, y + s * 0.34))
+    elif name == "folder":
+        path = QPainterPath(QPointF(x - s * 0.38, y + s * 0.3))
+        for dx, dy in ((-0.38, -0.28), (-0.1, -0.28), (0.0, -0.18), (0.38, -0.18), (0.38, 0.3)):
+            path.lineTo(x + dx * s, y + dy * s)
+        path.closeSubpath()
+        p.drawPath(path)
+    elif name == "trash":
+        p.drawLine(QPointF(x - s * 0.32, y - s * 0.24), QPointF(x + s * 0.32, y - s * 0.24))
+        p.drawLine(QPointF(x - s * 0.1, y - s * 0.34), QPointF(x + s * 0.1, y - s * 0.34))
+        can = QPainterPath(QPointF(x - s * 0.24, y - s * 0.24))
+        can.lineTo(x - s * 0.19, y + s * 0.36)
+        can.lineTo(x + s * 0.19, y + s * 0.36)
+        can.lineTo(x + s * 0.24, y - s * 0.24)
+        p.drawPath(can)
+    elif name == "monitor":
+        p.drawRoundedRect(QRectF(x - s * 0.38, y - s * 0.3, s * 0.76, s * 0.48), s * 0.06, s * 0.06)
+        p.drawLine(QPointF(x, y + s * 0.18), QPointF(x, y + s * 0.32))
+        p.drawLine(QPointF(x - s * 0.16, y + s * 0.34), QPointF(x + s * 0.16, y + s * 0.34))
+    elif name == "chip":  # a processor
+        p.drawRoundedRect(QRectF(x - s * 0.22, y - s * 0.22, s * 0.44, s * 0.44), s * 0.05, s * 0.05)
+        for k in (-0.1, 0.1):
+            for a, b, cc, d in ((k, -0.22, k, -0.36), (k, 0.22, k, 0.36), (-0.22, k, -0.36, k), (0.22, k, 0.36, k)):
+                p.drawLine(QPointF(x + a * s, y + b * s), QPointF(x + cc * s, y + d * s))
+    elif name == "thermo":
+        p.drawRoundedRect(QRectF(x - s * 0.08, y - s * 0.38, s * 0.16, s * 0.5), s * 0.08, s * 0.08)
+        p.setBrush(color)
+        p.drawEllipse(QPointF(x, y + s * 0.22), s * 0.14, s * 0.14)
+    elif name in ("cloud", "cloud_sun", "rain", "snow", "storm", "fog"):
+        if name == "cloud_sun":
+            p.drawEllipse(QPointF(x + s * 0.12, y - s * 0.14), s * 0.14, s * 0.14)
+            for k in range(5):
+                a = math.radians(-100 + k * 45)
+                p.drawLine(QPointF(x + s * 0.12 + math.cos(a) * s * 0.21, y - s * 0.14 + math.sin(a) * s * 0.21),
+                           QPointF(x + s * 0.12 + math.cos(a) * s * 0.29, y - s * 0.14 + math.sin(a) * s * 0.29))
+        cy = y - s * 0.02 if name in ("rain", "snow", "storm") else y + s * 0.06
+        cloud = QPainterPath()
+        cloud.addRoundedRect(QRectF(x - s * 0.36, cy - s * 0.02, s * 0.72, s * 0.22), s * 0.11, s * 0.11)
+        cloud.addEllipse(QPointF(x - s * 0.12, cy - s * 0.04), s * 0.15, s * 0.15)
+        cloud.addEllipse(QPointF(x + s * 0.1, cy - s * 0.08), s * 0.19, s * 0.19)
+        p.setBrush(QColor(0, 0, 0, 0))
+        p.drawPath(cloud.simplified())
+        if name == "rain":
+            for dx in (-0.18, 0.0, 0.18):
+                p.drawLine(QPointF(x + dx * s, y + s * 0.26), QPointF(x + dx * s - s * 0.05, y + s * 0.38))
+        elif name == "snow":
+            p.setPen(Qt.NoPen)
+            p.setBrush(color)
+            for dx in (-0.18, 0.0, 0.18):
+                p.drawEllipse(QPointF(x + dx * s, y + s * 0.32), s * 0.045, s * 0.045)
+        elif name == "storm":
+            p.drawPolyline([QPointF(x + s * 0.04, y + s * 0.2), QPointF(x - s * 0.06, y + s * 0.32),
+                            QPointF(x + s * 0.04, y + s * 0.32), QPointF(x - s * 0.06, y + s * 0.44)])
+        elif name == "fog":
+            for dy in (0.3, 0.42):
+                p.drawLine(QPointF(x - s * 0.3, y + dy * s), QPointF(x + s * 0.3, y + dy * s))
+    elif name == "moon":
+        moon = QPainterPath()
+        moon.addEllipse(QPointF(x, y), s * 0.32, s * 0.32)
+        bite = QPainterPath()
+        bite.addEllipse(QPointF(x + s * 0.16, y - s * 0.12), s * 0.28, s * 0.28)
+        p.drawPath(moon.subtracted(bite))
+    elif name == "mic_off":
+        w, h = s * 0.26, s * 0.42
+        p.drawRoundedRect(QRectF(x - w / 2, y - s * 0.4, w, h), w / 2, w / 2)
+        p.drawArc(QRectF(x - s * 0.24, y - s * 0.2, s * 0.48, s * 0.42), 200 * 16, 140 * 16)
+        p.drawLine(QPointF(x, y + s * 0.22), QPointF(x, y + s * 0.36))
+        p.drawLine(QPointF(x - s * 0.36, y - s * 0.36), QPointF(x + s * 0.36, y + s * 0.36))
 
 
 def render_pomo_icon(size: int) -> QPixmap:
