@@ -265,7 +265,7 @@ class NotesPage(Page):
         self.add(recent, 1)
         sticky = Card(ctrl, "Sticky notes", 300)
         sticky.action("plus", "New sticky note", lambda: ctrl.stickies.new_note())
-        self.show_btn = sticky.action("popout", "Show them all", lambda: (ctrl.stickies.show_all(), self.refresh()))
+        self.show_btn = sticky.action("popout", "Show them all", lambda: (ctrl.panel_aside(), ctrl.stickies.show_all()))
         self.stickies = QListWidget()
         self.stickies.itemClicked.connect(self._show_sticky)
         sticky.body.addWidget(self.stickies, 1)
@@ -279,6 +279,7 @@ class NotesPage(Page):
     def _show_sticky(self, item: QListWidgetItem) -> None:
         index = item.data(Qt.UserRole)
         if isinstance(index, int) and index < self.ctrl.stickies.count():
+            self.ctrl.panel_aside()
             self.ctrl.stickies.notes[index].show_note()
 
     def refresh(self) -> None:

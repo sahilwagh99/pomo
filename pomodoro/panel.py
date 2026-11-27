@@ -12,8 +12,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QCursor, QFont, QFontMetricsF, QGuiApplication, QPainter, QPainterPath, QPen
+from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtGui import (
+    QColor,
+    QCursor,
+    QFont,
+    QFontMetricsF,
+    QGuiApplication,
+    QPainter,
+    QPainterPath,
+    QPen,
+)
 from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
@@ -42,6 +51,8 @@ CLOSE_AFTER_S = 0.45  # how long the mouse may be away before the panel closes
 RADIUS = 26
 FLARE = 12            # the concave shoulders where the dropped-down panel meets the top of the screen
 TAB_W = 60
+GROW_MS = 380     # the panel growing out of the timer
+SHRINK_MS = 190   # ...and tucking back into it
 CLOCK_SAMPLE = "Wed, 30 Sep   12:00:00 AM"  # the widest the header's clock gets
 
 
@@ -251,7 +262,20 @@ class Panel(QWidget):
         self._current = ""
 
         self.root = QVBoxLayout(self)
-        self.root.setSpacing(10)
+        self.root.setSpacing(0)
+        # everything inside, in one widget, so it can fade in as the panel grows out of the timer
+        self.content = QWidget()
+        self.content.setAttribute(Qt.WA_TranslucentBackground)
+        inner = QVBoxLayout(self.content)
+        inner.setContentsMargins(0, 0, 0, 0)
+        inner.setSpacing(10)
+        self.root.addWidget(self.content)
+        self._still = None                 # a picture of the cards, while the panel grows or shrinks
+        self._morph = 1.0                  # 0: the size of the timer it grows from, 1: open
+        self._closing = False
+        self._grow = QVariantAnimation(self)
+        self._grow.valueChanged.connect(self._set_morph)
+        self._grow.finished.connect(self._grown)
         head = QHBoxLayout()
         head.setSpacing(2)
         self.tab_group = QButtonGroup(self)
@@ -278,9 +302,9 @@ class Panel(QWidget):
         act.setContentsMargins(6, 3, 6, 3)
         act.setSpacing(2)
         self.ultra_btn = IconButton(ctrl, "bolt", "Ultra focus", 32)
-        self.ultra_btn.clicked.connect(ctrl.toggle_ultra)
+        self.ultra_btn.clicked.connect(lambda: (self.close_panel(animate=False), ctrl.toggle_ultra()))
         sticky = IconButton(ctrl, "sticky", "New sticky note", 32)
-        sticky.clicked.connect(lambda: ctrl.stickies.new_note())
+        sticky.clicked.connect(lambda: (self.close_panel(animate=False), ctrl.stickies.new_note()))
         self.pin_btn = IconButton(ctrl, "pin", "Keep the panel open", 32)
         self.pin_btn.clicked.connect(self.toggle_pin)
         dash = IconButton(ctrl, "chart", "Dashboard", 32)
@@ -290,9 +314,9 @@ class Panel(QWidget):
         for b in (self.ultra_btn, sticky, self.pin_btn, dash, gear):
             act.addWidget(b)
         head.addWidget(self.actions)
-        self.root.addLayout(head)
+        inner.addLayout(head)
         self.stack = QStackedWidget()
-        self.root.addWidget(self.stack, 1)
+        inner.addWidget(self.stack, 1)
 
         self._poll = QTimer(self)
         self._poll.setInterval(140)
@@ -359,12 +383,13 @@ class Panel(QWidget):
         return r.adjusted(SHADOW, SHADOW, -SHADOW, -SHADOW)
 
     def _shape(self) -> QPainterPath:
-        card = self._card_rect()
+        card, radius = self._grown_rect()
         path = QPainterPath()
         if self.attached != "island":
-            path.addRoundedRect(card, RADIUS, RADIUS)
+            path.addRoundedRect(card, radius, radius)
             return path
-        f, r = FLARE, RADIUS
+        f = FLARE * min(1.0, max(0.0, self._morph)) + 8 * (1 - min(1.0, max(0.0, self._morph)))
+        r = min(radius, (card.height() - f) / 2, card.width() / 2)
         x0, x1, top, bottom = card.left() + f, card.right() - f, card.top(), card.bottom()
         path.moveTo(x0 - f, top)
         path.quadTo(x0, top, x0, top + f)
@@ -377,18 +402,69 @@ class Panel(QWidget):
         path.closeSubpath()
         return path
 
+    def _grown_rect(self) -> tuple[QRectF, float]:
+        """The panel's outline part way between the timer it grows from (morph 0) and fully open (1).
+
+        The spring overshoots a little past 1, so the panel swells a touch before settling.
+        """
+        full = self._card_rect()
+        start = QRectF(self.mapFromGlobal(self.anchor.topLeft()), self.anchor.size()) if self.anchor.isValid() \
+            else QRectF(full.center().x() - 100, full.top(), 200, 38)
+        if self.attached == "island":
+            start.moveTop(full.top())  # the pill hangs from the top edge, like the panel
+        m = max(0.0, min(1.06, self._morph))
+
+        def mix(a: float, b: float) -> float:
+            return a + (b - a) * m
+
+        rect = QRectF(QPointF(mix(start.left(), full.left()), mix(start.top(), full.top())),
+                      QPointF(mix(start.right(), full.right()), mix(start.bottom(), full.bottom())))
+        start_radius = min(start.width(), start.height()) / 2
+        return rect, mix(start_radius, RADIUS)
+
+    def _set_morph(self, value) -> None:
+        self._morph = float(value)
+        self.update()
+
+    def _freeze(self) -> None:
+        """While it grows or shrinks, the cards are a picture drawn inside the outline (never past it)."""
+        self.root.activate()
+        self._still = self.content.grab()
+        self.content.hide()
+
+    def _thaw(self) -> None:
+        self._still = None
+        self.content.show()
+
+    def _grown(self) -> None:
+        if self._closing:
+            self._closing = False
+            self.hide()
+            self._morph = 1.0
+            self._thaw()
+            self.closed.emit()
+        else:
+            self._thaw()  # open: the real cards again
+
     def paintEvent(self, _event) -> None:
         t = self.ctrl.theme
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         shape = self._shape()
+        lift = max(0.0, min(1.0, self._morph))
         for i in range(SHADOW, 0, -2):
-            p.setPen(QPen(t.shadow(int(t.shadow_alpha * 0.16 * (1 - i / SHADOW) ** 2)), i))
+            p.setPen(QPen(t.shadow(int(t.shadow_alpha * 0.16 * lift * (1 - i / SHADOW) ** 2)), i))
             p.setBrush(Qt.NoBrush)
-            p.drawPath(shape.translated(0, 4))
+            p.drawPath(shape.translated(0, 4 * lift))
         p.setPen(QPen(t.border, 1))
         p.setBrush(QColor(t.surface))
         p.drawPath(shape)
+        still = getattr(self, "_still", None)
+        if still is not None:
+            # the cards fade in once there's room for them, clipped to the outline as it grows
+            p.setClipPath(shape)
+            p.setOpacity(max(0.0, min(1.0, (self._morph - 0.45) / 0.45)))
+            p.drawPixmap(self.content.pos(), still)
         p.end()
 
     def _apply_margins(self) -> None:
@@ -466,28 +542,50 @@ class Panel(QWidget):
         self._tick()
         self.ultra_btn.lit = bool(self.ctrl.settings.ultra_on)
         self.ultra_btn.update()
-        if not self.isVisible():
-            self.setWindowOpacity(0.0)
+        if not self.isVisible() or self._closing:
+            # grow out of the timer: a quick spring that swells a touch past full size, then settles
+            self._closing = False
+            self._grow.stop()
+            start = self._morph if self.isVisible() else 0.0
+            self._set_morph(start)
+            self._grow.setStartValue(start)
+            self._grow.setEndValue(1.0)
+            self._grow.setDuration(GROW_MS)
+            curve = QEasingCurve(QEasingCurve.OutBack)
+            curve.setOvershoot(1.05)
+            self._grow.setEasingCurve(curve)
+            if self._still is None:
+                self._freeze()
             self.show()
-            self._fade = 0.0
-            QTimer.singleShot(0, self._fade_in)
+            self._grow.start()
         self.raise_()
         self._poll.start()
         self._second.start()
 
-    def _fade_in(self) -> None:
-        self._fade = min(1.0, self._fade + 0.25)
-        self.setWindowOpacity(self._fade)
-        if self._fade < 1.0:
-            QTimer.singleShot(16, self._fade_in)
-
-    def close_panel(self) -> None:
+    def close_panel(self, animate: bool = True) -> None:
+        """Shrink back into the timer (or vanish at once, for a window opening where the panel was)."""
         if not self.isVisible():
             return
         self._poll.stop()
         self._second.stop()
-        self.hide()
-        self.closed.emit()
+        self._grow.stop()
+        if not animate:
+            self._closing = False
+            self.hide()
+            self._set_morph(1.0)
+            self._thaw()
+            self.closed.emit()
+            return
+        if self._closing:
+            return
+        self._closing = True
+        if self._still is None:
+            self._freeze()
+        self._grow.setStartValue(self._morph)
+        self._grow.setEndValue(0.0)
+        self._grow.setDuration(SHRINK_MS)
+        self._grow.setEasingCurve(QEasingCurve(QEasingCurve.InCubic))
+        self._grow.start()
 
     def toggle_pin(self) -> None:
         self.pinned = not self.pinned
