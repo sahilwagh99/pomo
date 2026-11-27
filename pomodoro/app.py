@@ -116,6 +116,22 @@ class PomoApp(QObject):
         self._vault: notes.Vault | None = None
         self.stickies = StickyBoard(self, data_dir / "stickies.json")
         self.stickies.created.connect(self._offer_sticky_startup)
+        # the panel (made when first opened), and what its tabs keep going in the background
+        from .gaming import GamingMode
+        from .weather import WeatherService
+
+        self.panel = None
+        self.weather = WeatherService(self, self)
+        self.clipboard = None
+        try:
+            from .panel_desk import ClipboardHistory
+
+            self.clipboard = ClipboardHistory(self, self)
+        except ImportError:
+            pass
+        self.gaming = GamingMode(self, self)
+        self.gaming.changed.connect(self._gaming_changed)
+        self.gaming.updated.connect(lambda _reading: self.view.update() if self.gaming.active else None)
         self.pacer = AgentPacer(self, parent=self)
         self.away = AwayWatcher(parent=self)
         self.guard = FocusGuard(self.storage, self.settings, parent=self)
@@ -254,6 +270,7 @@ class PomoApp(QObject):
         QTimer.singleShot(4000, self._maybe_morning_card)  # today's step
         QTimer.singleShot(9000, self._maybe_habit_news)  # how yesterday's habits went
         QTimer.singleShot(600, self.stickies.restore)  # your sticky notes, back where you left them
+        QTimer.singleShot(3000, self.gaming.start)     # watching for games starts once the timer is up
         self.wallpaper.restore()  # Pomo stopped mid-session last time: your own wallpaper back
         if self.settings.ultra_on:  # still Ultra from before: powered up, apps blocked
             self._sync_ultra_look()
@@ -959,6 +976,9 @@ class PomoApp(QObject):
     def current_outfit(self) -> str:
         """What Pomo wears right now: dressed for what you're doing, or your pick when nothing's on."""
         s = self.settings
+        gaming = getattr(self, "gaming", None)  # the timer can ask before gaming mode is set up
+        if s.outfit_follows and gaming is not None and gaming.active:
+            return "headphones"  # gaming: headset on
         if s.outfit_follows:
             for outfit in self._activity_outfits():  # all from the wardrobe or the garden, none quest rewards
                 if garden.is_unlocked(outfit, self.lifetime):
@@ -1192,6 +1212,8 @@ class PomoApp(QObject):
         self.settings.clamp()
         self.save_settings()
         self.toast.dismiss()
+        if self.panel is not None:
+            self.panel.close_panel()
         self._apply_display_mode()
 
     def agent_signal(self) -> str | None:
@@ -1259,6 +1281,8 @@ class PomoApp(QObject):
         self.stickies.retheme()
         if self.notes_window is not None:
             self.notes_window.retheme()
+        if self.panel is not None:
+            self.panel.retheme()
         self.engine.apply_settings()
         self._sync_media()
         self._sync_hotkeys()
@@ -1469,6 +1493,8 @@ class PomoApp(QObject):
         sticky = styled_menu(menu.addMenu(f"Sticky notes ({self.stickies.count()})" if self.stickies.count()
                                           else "Sticky notes"))
         self.fill_sticky_menu(sticky)
+        _action(menu, "Open the panel", self.open_panel)
+        _action(menu, "Gaming mode", self.gaming.toggle, checked=self.gaming.active)
 
         goal = styled_menu(menu.addMenu(f"Daily goal: {self.settings.daily_goal}"))
         for g in GOAL_PRESETS:
@@ -2799,6 +2825,57 @@ class PomoApp(QObject):
         except OSError:
             return
         self.open_notes(path)
+
+    # ------------------------------------------------------------ the panel
+    def open_panel(self, tab: str | None = None, attached: str | None = None) -> None:
+        """The big expanded view: dropped down from the island, or beside the orb."""
+        if self.panel is None:
+            from .panel import Panel
+            from .panel_home import register_all
+
+            register_all(self)
+            self.panel = Panel(self)
+        attached = attached or ("island" if self.view is self.island else "orb")
+        anchor = self.island.pill_rect_global() if attached == "island" else self.orb.circle_rect_global()
+        if tab is None and self.gaming.active:
+            tab = "gaming"
+        self.panel.open_at(anchor, attached, tab)
+
+    def toggle_panel(self) -> None:
+        if self.panel is not None and self.panel.isVisible():
+            self.panel.close_panel()
+        else:
+            self.open_panel()
+
+    def _gaming_changed(self, on: bool) -> None:
+        """Gaming mode started or ended: the timer shows telemetry instead (or the timer again)."""
+        self.island._update_targets()
+        for view in (self.island, self.orb):
+            view.update()
+        if on and self.view.isVisible():
+            self.view.pomo.hop(1.6)  # headset on
+        if self.panel is not None and self.panel.isVisible():
+            self.panel.show_page("gaming" if on else (self.settings.panel_tab or "home"))
+
+    def add_to_daily_note(self, text: str) -> bool:
+        """A quick note from the panel, added to the end of today's daily note with the time."""
+        try:
+            vault = self.notes_vault()
+            path = notes.daily_path(vault, date.today())
+            line = f"- {datetime.now():%H:%M} {text.strip()}"
+
+            def add(old: str) -> str:
+                return f"{old.rstrip()}\n{line}\n" if old.strip() else f"{line}\n"
+
+            if self.notes_window is not None and self.notes_window.is_open(path):
+                self.notes_window.edit_open_note(add)
+            else:
+                vault.write(path, add(vault.read(path) if path.exists() else ""))
+            if self.notes_window is not None:
+                self.notes_window.schedule_refresh()
+            return True
+        except OSError:
+            return False
 
     def sticky_button(self, pos) -> None:
         """The sticky-note button on the timer: a new note, or (once you have some) a little menu."""

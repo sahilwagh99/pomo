@@ -137,6 +137,8 @@
         <li><b>Ultra focus</b>Pomo powers up, and the apps you drag in stay blocked until you power down.</li>
         <li><b>Notes that link up</b>Markdown notes with [[links]], tags, search and a graph, in a folder Obsidian opens too.</li>
         <li><b>Sticky notes</b>Anywhere on your screen, in your theme's colors, with checklists and reminders.</li>
+        <li><b>The panel</b>Rest on the island and a wide panel drops down: timer, notes, music, agents, habits, calendar and weather, system controls, gaming, clipboard, shelf, launcher and recent documents.</li>
+        <li><b>Gaming mode</b>With a game in front, the timer shows FPS, GPU and CPU instead. No timers while you play.</li>
       </ul>
       <p>Pomo runs on startup if you want it to: one switch in <i>Settings &gt; General</i>.</p>
       <figure class="shot desk small"><img src="popup.png" alt="The card when a focus session ends: what's next, agent news, a new outfit, How was that? with three Pomo faces, and Breathe and Thoughts" width="328" height="288" loading="lazy"></figure>
@@ -354,6 +356,46 @@
       <p>The ladder is inspired by competitive games' ranked medals; the names and the art are Pomo's own.</p>
     </section>
 
+    <section id="panel" data-title="The panel">
+      <h2>The panel</h2>
+      <p>Rest the mouse on the island for a moment, or click it, and a wide panel drops down from the top of the screen like a notch opening up. With the orb, click its face (away from Pomo and the buttons) and the panel opens beside it. It closes when the mouse leaves it, unless you pin it, you're typing in it, or a menu is open; Esc closes it too. Turn it off in <i>Settings &gt; General</i> to have the island open up the classic way.</p>
+      <figure class="shot"><img src="panel.png" alt="The panel dropped down from the island, on Home: the timer with Pomo, the clock with the weather, quick controls for volume, brightness and speakers, and a quick note" width="1232" height="352" loading="lazy"></figure>
+      <p>Along the top: the tabs, the date and time, and quick buttons for Ultra focus, a new sticky note, pinning the panel, the dashboard and settings. Tabs that don't fit sit under <b>More</b>, and the panel opens on the tab you used last.</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Tab</th><th>What's on it</th></tr>
+          <tr><td>Home</td><td>The timer with Pomo, the clock and today's weather, quick controls (volume, brightness, speakers, lock, Ultra focus, mic, screenshot, a sticky note, focus sounds) and a quick note</td></tr>
+          <tr><td>Timer</td><td>The timer, focus or a break, +1 and +5 minutes, <i>just 10 minutes</i>, your plan and today's pomodoros</td></tr>
+          <tr><td>Notes</td><td>A quick note (Ctrl+Enter adds it to today's daily note, or make it a sticky note), recent notes and your sticky notes</td></tr>
+          <tr><td>Music</td><td>What's playing, with its cover and controls, and the focus sounds</td></tr>
+          <tr><td>Agents</td><td>Your coding agents, working, waiting or done, and the changes waiting for your review</td></tr>
+          <tr><td>Habits</td><td>Your rank, today's step and today's habits to tick</td></tr>
+          <tr><td>Calendar</td><td>Your month, each day tinted by how much you focused; a day's sessions, reminders and daily note; and the weather for your city</td></tr>
+          <tr><td>Gaming</td><td>Live FPS, GPU, CPU and memory with the last minute charted</td></tr>
+          <tr><td>System</td><td>Volume and mute, which speakers or headphones play, brightness, Bluetooth devices, lock, screenshot and mic mute</td></tr>
+          <tr><td>Clipboard</td><td>What you've copied lately, text and pictures: click one to copy it again, pin the ones you keep using. In memory only, never saved, and skipped for password managers</td></tr>
+          <tr><td>Shelf</td><td>Files and folders you drop on it, kept handy: drag them back out into any app, or open them. Dragging files onto the timer opens the Shelf for them</td></tr>
+          <tr><td>Launcher</td><td>Apps you pin by dropping their shortcuts on it, one click to start</td></tr>
+          <tr><td>Docs</td><td>Your recent documents, newest first, with a filter</td></tr>
+        </table>
+      </div>
+      <p><b>Weather</b> comes from <a href="https://open-meteo.com">Open-Meteo</a>, free and with no account. Nothing is asked until you type your city in the Calendar tab; then Pomo looks the city up once, and fetches its weather about every half hour.</p>
+    </section>
+
+    <section id="gaming" data-title="Gaming mode">
+      <h2>Gaming mode</h2>
+      <p>When a game has been in front for a few seconds, the timer turns into what matters while you play. The island's pill reads like <i>144 FPS · GPU 87% 71° · CPU 42% 68°</i>; the orb shows FPS big in the middle, its ring filled to how busy the GPU is, and GPU and CPU below. Temperatures worth a glance turn red. There are no timers, Pomo puts his headset on, and the panel opens on the Gaming tab.</p>
+      <figure class="shot"><img src="gaming_timer.png" alt="Gaming mode on the island and the orb in a light and a dark theme: 144 FPS, GPU 87% at 82 degrees in red, CPU 42% at 68 degrees" width="1100" height="520" loading="lazy"></figure>
+      <ul>
+        <li><b>Which games:</b> apps from Steam, Epic, Riot, GOG, Xbox, EA, Ubisoft and Battle.net folders, and anything running fullscreen that works the GPU hard. Browsers, video players, Office and the like never count. <i>Not a game</i> in the Gaming tab remembers an app that isn't one; <i>Gaming mode now</i> (or <i>Gaming mode</i> in the right-click menu) turns it on by hand.</li>
+        <li><b>Never during a focus session:</b> a game then is a distraction, and the check-in and app lock look after it. Gaming mode ends a little while after you leave the game, so a quick alt-tab doesn't end it.</li>
+        <li><b>What it reads, without admin rights:</b> CPU and GPU use, memory and graphics memory from Windows, and the GPU temperature where the driver shares it (most dedicated NVIDIA and AMD cards). Windows doesn't share the CPU temperature with apps on most PCs, but Pomo reads it from HWiNFO when that runs with <i>Shared Memory Support</i> on.</li>
+        <li><b>FPS:</b> with RivaTuner Statistics Server running (it comes with MSI Afterburner), Pomo reads FPS from it. Otherwise click <b>Turn on FPS</b> in the Gaming tab: Pomo uses Intel's PresentMon (MIT licence, included), which needs Windows to let you read graphics events. That takes one administrator prompt, adding you to Windows' <i>Performance Log Users</i> group, and a sign-out. Pomo never asks for it on its own.</li>
+      </ul>
+      <figure class="shot"><img src="gaming.png" alt="The Gaming tab: FPS, GPU, CPU and memory with the last minute charted under each, and the game" width="1232" height="352" loading="lazy"></figure>
+      <p>All of it stays on your PC. Turn gaming mode off with <i>Switch to gaming mode when I play</i> in <i>Settings &gt; General</i>, or the switch on the Gaming tab.</p>
+    </section>
+
     <section id="notes" data-title="Notes">
       <h2>Notes</h2>
       <p>A place to write down what you learn, linked like a little wiki. Open it with the notebook button along the top of the timer, or from the right-click menu (<i>Notes</i>).</p>
@@ -542,11 +584,11 @@
           <tr><td>Agents</td><td>Connect Claude Code, Codex CLI and Gemini CLI; reviews; approvals and wait times; finish notifications; answering questions; replies; break suggestions</td></tr>
           <tr><td>AI</td><td>Provider, model and keys for Ask Pomo; the day review; who hears you when you talk; reading replies aloud and the voice</td></tr>
           <tr><td>Shortcuts</td><td>Global shortcuts on or off, and each key combination</td></tr>
-          <tr><td>General</td><td>Run on startup, updates, the taskbar button, focus sounds, music controls, the data folder, CSV export, clear history</td></tr>
+          <tr><td>General</td><td>Run on startup, updates, the taskbar button, the panel, remembering what you copy, gaming mode, focus sounds, music controls, the data folder, CSV export, clear history</td></tr>
         </table>
       </div>
       <h3 id="privacy">Your data</h3>
-      <p>Everything lives in <code>%APPDATA%\Pomo</code>: your settings (with quests, badges, your room, your path and your habits), your history (sessions, ratings, agent activity, parked thoughts, your study log, review cards, urges ridden out and the habits you ticked), the prepared focus sounds, a downloaded update until it's installed, your sticky notes, and your API keys, encrypted. Your notes are Markdown files in your notes folder (<i>Documents\Pomo Notes</i> unless you chose another). Window titles are never written to disk, and voice recordings only pass through a temporary file that's deleted right away. To check for updates, Pomo asks GitHub's public API every hour; nothing about you is sent with it.</p>
+      <p>Everything lives in <code>%APPDATA%\Pomo</code>: your settings (with quests, badges, your room, your path and your habits), your history (sessions, ratings, agent activity, parked thoughts, your study log, review cards, urges ridden out and the habits you ticked), the prepared focus sounds, a downloaded update until it's installed, your sticky notes, and your API keys, encrypted. Your notes are Markdown files in your notes folder (<i>Documents\Pomo Notes</i> unless you chose another). Window titles and the Clipboard tab's history are never written to disk, gaming mode's readings stay on your PC, and voice recordings only pass through a temporary file that's deleted right away. To check for updates, Pomo asks GitHub's public API every hour; nothing about you is sent with it.</p>
     </section>
 
     <section id="developers" data-title="For developers">

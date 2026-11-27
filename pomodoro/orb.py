@@ -74,7 +74,7 @@ TIPS = {
     "ultra": "Ultra focus: block your distractions, and Pomo powers up",
     "settings": "Settings",
     "pomo": "Pomo, your focus buddy. Poke him!",
-    "time": "Double-click to type a time, scroll to adjust,\nright-click for more options",
+    "time": "Click for the panel, double-click to type a time,\nscroll to adjust, right-click for more options",
 }
 
 
@@ -191,6 +191,10 @@ class OrbWidget(QWidget):
         self._press_global: QPoint | None = None
         self._press_origin = QPoint()
         self._dragging = False
+        # a click on the face opens the panel, once it's clear it isn't the start of a double-click
+        self._panel_timer = QTimer(self)
+        self._panel_timer.setSingleShot(True)
+        self._panel_timer.timeout.connect(lambda: self.ctrl.open_panel(attached="orb"))
         self._wheel_acc = 0
         self._editing = False
         self._opacity = 1.0
@@ -205,6 +209,7 @@ class OrbWidget(QWidget):
 
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setMouseTracking(True)
+        self.setAcceptDrops(True)  # files dragged onto the orb open the panel's Shelf
         self.setFocusPolicy(Qt.ClickFocus)
         self.setWindowTitle("Pomo")
 
@@ -440,8 +445,20 @@ class OrbWidget(QWidget):
         c, k = self._center(), self._k()
         return QRectF(c.x() - 64 * k, c.y() - 27 * k, 128 * k, 48 * k)
 
+    def _gaming(self) -> bool:
+        gaming = getattr(self.ctrl, "gaming", None)
+        return gaming is not None and gaming.active
+
     def _button_geometry(self) -> dict[str, tuple[QPointF, float]]:
         c, k = self._center(), self._k()
+        if self._gaming():  # no timer while you play: only the top row
+            return {
+                "dashboard": (QPointF(c.x() - 50 * k, c.y() - 55 * k), 10.5 * k),
+                "chat": (QPointF(c.x() - 25 * k, c.y() - 55 * k), 10.5 * k),
+                "notes": (QPointF(c.x(), c.y() - 55 * k), 10.5 * k),
+                "style": (QPointF(c.x() + 25 * k, c.y() - 55 * k), 10.5 * k),
+                "settings": (QPointF(c.x() + 50 * k, c.y() - 55 * k), 10.5 * k),
+            }
         return {
             "dashboard": (QPointF(c.x() - 50 * k, c.y() - 55 * k), 10.5 * k),
             "chat": (QPointF(c.x() - 25 * k, c.y() - 55 * k), 10.5 * k),
@@ -629,12 +646,18 @@ class OrbWidget(QWidget):
         p.setBrush(Qt.NoBrush)
         p.setPen(QPen(track, ring_w, Qt.SolidLine, Qt.FlatCap))
         p.drawEllipse(ring)
-        frac = e.fraction_left
+        gaming = self._gaming()
+        if gaming:  # the ring shows how busy the GPU is
+            from .gaming import ring_fraction
+
+            frac = ring_fraction(self.ctrl.gaming.reading)
+        else:
+            frac = e.fraction_left
         if frac > 0.0005:
             start = 90 - (1 - frac) * 360
             p.setPen(QPen(accent, ring_w, Qt.SolidLine, Qt.RoundCap))
             p.drawArc(ring, round(start * 16), round(-frac * 360 * 16))
-            if e.state in (State.RUNNING, State.PAUSED):
+            if e.state in (State.RUNNING, State.PAUSED) and not gaming:
                 a = math.radians(start)
                 head = QPointF(c.x() + rr * math.cos(a), c.y() - rr * math.sin(a))
                 p.setPen(Qt.NoPen)
@@ -647,6 +670,15 @@ class OrbWidget(QWidget):
                 ra = R + (ARC_GAP + ARC_W / 2) * k
                 medals.paint_arc(p, QRectF(c.x() - ra, c.y() - ra, 2 * ra, 2 * ra), 270 - ARC_SPAN / 2, ARC_SPAN,
                                  ARC_W * k, standing, t.dark, QColor(t.danger))
+        if reaches_face and gaming:
+            from .gaming import paint_orb_face
+
+            paint_orb_face(p, c, k, t, self.ctrl.gaming.reading, FONT_FAMILY, accent,
+                           label_opacity=self._opacity * (1.0 - self._hover))
+            if self._hover > 0.01:
+                p.setOpacity(self._opacity * self._hover)
+                self._paint_controls(p, k, accent)
+        elif reaches_face:
             self._paint_label(p, c, k, accent)
             if not self._editing:
                 self._paint_time(p, k)
@@ -928,12 +960,18 @@ class OrbWidget(QWidget):
             self._trigger("pomo")
         elif self._pressed and self._pressed == self._button_at(pos):
             self._trigger(self._pressed)
+        elif (self._pressed is None and self._press_global is not None and self._in_circle(pos)
+              and self.ctrl.settings.panel_on and not self._editing):
+            from PySide6.QtWidgets import QApplication
+
+            self._panel_timer.start(QApplication.doubleClickInterval())
         self._pressed = None
         self._press_global = None
 
     def mouseDoubleClickEvent(self, event) -> None:
         if event.button() != Qt.LeftButton:
             return
+        self._panel_timer.stop()  # a double-click, not a click: no panel
         pos = event.position()
         if self._button_at(pos) is not None:
             # the second click of a fast double-click still counts as a click
@@ -943,6 +981,21 @@ class OrbWidget(QWidget):
             self.interacted.emit()
         elif self._time_rect().contains(pos):
             self.begin_edit()
+
+    def dragEnterEvent(self, event) -> None:
+        """Files dragged onto the orb: the panel opens beside it on the Shelf, ready for them."""
+        if self.ctrl.settings.panel_on and event.mimeData() is not None and event.mimeData().hasUrls():
+            self.ctrl.open_panel(tab="shelf", attached="orb")
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event) -> None:
+        panel = self.ctrl.panel
+        if panel is not None and panel.page("shelf") is not None:
+            panel.page("shelf").dropEvent(event)
+        else:
+            event.ignore()
 
     def wheelEvent(self, event) -> None:
         if self._editing:

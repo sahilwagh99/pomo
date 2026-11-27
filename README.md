@@ -37,6 +37,8 @@ Pomo used to be called FocusOrb. Run `Pomo-Setup.exe` and it removes FocusOrb fo
 - **Pomo, your focus buddy.** A soft matcha mochi who lives on your timer, follows your cursor and reacts to everything (see [Meet Pomo](#meet-pomo)).
 - **Two timer styles, one click apart.** A slim island at the top of the screen (the default), or a round orb you can drag anywhere. The style button on the timer switches between them.
 - **Buttons right on the timer.** Ask Pomo, the dashboard, notes, sticky notes, the timer style and settings are on the timer itself. No right-click needed.
+- **The panel.** Rest on the island (or click the orb) and a wide panel drops down, with tabs for the timer, notes, music, your coding agents, habits, a calendar with the weather, system controls, gaming, clipboard history, a shelf for files, an app launcher and your recent documents.
+- **Gaming mode.** With a game in front, the timer turns into a readout of FPS, GPU and CPU use and temperatures. No timers while you play.
 - **Editable time.** Double-click the time and type `30`, `45:00` or `1:30:00`, or scroll over it to add or remove minutes.
 - **Pomodoro turns.** Dots show your place in the cycle before the long break, and *3/8 today* tracks your daily goal.
 - **Alerts when a session ends:** a Windows notification, a sound (four built in), a pop-up card with *Start break* / *Skip* and a one-tap *How was that?*, and a soft glow on the timer.
@@ -363,6 +365,47 @@ Little notes for your screen. The sticky-note button on the timer (beside Pomo o
 
 <div align="center"><img src="docs/stickies.png" alt="Sticky notes in a light and a dark theme, with checklists, one with a reminder at 6:00 PM and one ringing now" width="620"></div>
 
+## The panel
+
+Rest the mouse on the island for a moment, or click it, and a wide panel drops down from the top of the screen like a notch opening up. With the orb, click its face (away from Pomo and the buttons) and the panel opens beside it. It closes when the mouse leaves it, unless you pin it, you're typing in it, or a menu is open; Esc closes it too. Turn it off in *Settings > General* to have the island open up the classic way.
+
+<div align="center"><img src="docs/panel.png" alt="The panel dropped down from the island, on Home: the timer with Pomo, the clock with the weather, quick controls for volume, brightness and speakers, and a quick note" width="100%"></div>
+
+Along the top: the tabs, the date and time, and quick buttons for Ultra focus, a new sticky note, pinning the panel, the dashboard and settings. Tabs that don't fit sit under **More**, and the panel opens on the tab you used last.
+
+| Tab | What's on it |
+|---|---|
+| Home | The timer with Pomo, the clock and today's weather, quick controls (volume, brightness, speakers, lock, Ultra focus, mic, screenshot, a sticky note, focus sounds) and a quick note |
+| Timer | The timer, focus, short break or long break, +1 and +5 minutes, *just 10 minutes*, your plan and today's pomodoros |
+| Notes | A quick note (Ctrl+Enter adds it to today's daily note, or make it a sticky note), recent notes and your sticky notes |
+| Music | What's playing, with its cover and controls, and the focus sounds |
+| Agents | Your coding agents, working, waiting or done, and the changes waiting for your review |
+| Habits | Your rank, today's step and today's habits to tick |
+| Calendar | Your month, each day tinted by how much you focused; a day's sessions and reminders, and its daily note; and the weather for your city |
+| Gaming | Live FPS, GPU, CPU and memory with the last minute charted (see [Gaming mode](#gaming-mode)) |
+| System | Volume and mute, which speakers or headphones play, brightness, Bluetooth devices, lock, screenshot and mic mute |
+| Clipboard | What you've copied lately, text and pictures: click one to copy it again, pin the ones you keep using. Kept in memory only, never saved, and skipped for password managers |
+| Shelf | Files and folders you drop on it, kept handy: drag them back out into any app, or open them. Dragging files onto the timer opens the Shelf for them |
+| Launcher | Apps you pin by dropping their shortcuts on it, one click to start |
+| Docs | Your recent documents, newest first, with a filter |
+
+**Weather** comes from [Open-Meteo](https://open-meteo.com), free and with no account. Nothing is asked until you type your city in the Calendar tab; then Pomo looks the city up once, and fetches its weather about every half hour.
+
+## Gaming mode
+
+When a game has been in front for a few seconds, the timer turns into what matters while you play. The island's pill reads like *144 FPS · GPU 87% 71° · CPU 42% 68°*; the orb shows FPS big in the middle, its ring filled to how busy the GPU is, and GPU and CPU below. Temperatures worth a glance turn red. There are no timers, Pomo puts his headset on, and the panel opens on the Gaming tab, with the last minute of each reading charted.
+
+- **Which games:** apps from Steam, Epic, Riot, GOG, Xbox, EA, Ubisoft and Battle.net folders, and anything running fullscreen that works the GPU hard. Browsers, video players, Office and the like never count. *Not a game* in the Gaming tab remembers an app that isn't one; *Gaming mode now* (or *Gaming mode* in the right-click menu) turns it on by hand.
+- **Never during a focus session:** a game then is a distraction, and the check-in and app lock look after it. Gaming mode ends a little while after you leave the game, so a quick alt-tab doesn't end it.
+- **What it reads, without admin rights:** CPU and GPU use, memory and graphics memory from Windows, and the GPU temperature where the driver shares it (most dedicated NVIDIA and AMD cards). Windows doesn't share the CPU temperature with apps on most PCs, but Pomo reads it from [HWiNFO](https://www.hwinfo.com) when that runs with *Shared Memory Support* on.
+- **FPS:** with RivaTuner Statistics Server running (it comes with MSI Afterburner), Pomo reads FPS from it. Otherwise click **Turn on FPS** in the Gaming tab: Pomo uses Intel's [PresentMon](https://github.com/GameTechDev/PresentMon) (MIT licence, included), which needs Windows to let you read graphics events. That takes one administrator prompt, adding you to Windows' *Performance Log Users* group, and a sign-out. Pomo never asks for it on its own.
+
+<div align="center"><img src="docs/gaming_timer.png" alt="Gaming mode on the island and the orb in a light and a dark theme: 144 FPS, GPU 87% at 82 degrees in red, CPU 42% at 68 degrees" width="100%"></div>
+
+<div align="center"><img src="docs/gaming.png" alt="The Gaming tab: FPS, GPU, CPU and memory with the last minute charted under each, and the game" width="100%"></div>
+
+All of it stays on your PC. Turn gaming mode off with *Switch to gaming mode when I play* in *Settings > General*, or the switch on the Gaming tab.
+
 ## Focus garden
 
 Every finished pomodoro grows a sakura tree on your dashboard. It goes from a sprout to a grand sakura over your first 250 pomodoros, with one blossom for each pomodoro in the range you're viewing. Milestones unlock new outfits for Pomo: cat ears at 10 pomodoros, a flower crown at 25, a graduation cap at 50 and a wizard hat at 100.
@@ -593,9 +636,9 @@ Open it with the chart button on the timer, from the right-click menu or by doub
 | Agents | Connect or disconnect Claude Code, Codex CLI and Gemini CLI, suggesting reviews of agent changes, answer permission requests in Pomo, how long to wait for your answer, finish notifications, answering Claude's questions, replying when a turn ends (and how long the agent waits), break suggestions for long agent tasks |
 | AI | Provider and model for Ask Pomo, your key for each provider (save, check, remove), load your models, when to offer the day review, who hears you when you talk to Pomo, reading replies aloud and the voice |
 | Shortcuts | Global shortcuts on or off, and each key combination (including the talk shortcut) |
-| General | Run Pomo on startup, updates (on or off, check now, update now), Pomo on the taskbar, focus sounds (which one, volume, only while focusing), music controls, Pomo listening along, music following the timer, move the orb back to its corner, open the data folder, export CSV, clear history |
+| General | Run Pomo on startup, updates (on or off, check now, update now), Pomo on the taskbar, the panel, remembering what you copy, switching to gaming mode, focus sounds (which one, volume, only while focusing), music controls, Pomo listening along, music following the timer, move the orb back to its corner, open the data folder, export CSV, clear history |
 
-Your data lives in `%APPDATA%\Pomo`: `settings.json` (with your quests, badges, your path, its big picture, your XP and reviews waiting), `history.db` (pomodoros with their ratings, agent activity, parked thoughts, your study log, review cards, urges ridden out and, if the check-in is on, minutes per app), `cache\` (the focus sounds once they're made), `updates\` (a downloaded update until it's installed), `wallpaper.json` (only while the focus wallpaper is up: the wallpaper to put back), `stickies.json` (your sticky notes and where they sit) and, if you saved one, `ai_key.bin` (your API key, encrypted). Your notes are Markdown files in your notes folder (*Documents\Pomo Notes* unless you chose another), which stays put if you uninstall Pomo. Window titles (for "Where was I?" and project names) are never written to disk. When you talk to Pomo, the recording and the replies it reads aloud only pass through a temporary file in `cache\`, deleted as soon as Windows is done with it. To check for updates, Pomo asks GitHub's public API for the latest release every hour; nothing about you is sent with it. The Microsoft Store version doesn't: the Store updates it, and Windows keeps its data in Pomo's own app data, removed when you uninstall it. The full privacy policy is in [PRIVACY.md](PRIVACY.md).
+Your data lives in `%APPDATA%\Pomo`: `settings.json` (with your quests, badges, your path, its big picture, your XP and reviews waiting), `history.db` (pomodoros with their ratings, agent activity, parked thoughts, your study log, review cards, urges ridden out and, if the check-in is on, minutes per app), `cache\` (the focus sounds once they're made), `updates\` (a downloaded update until it's installed), `wallpaper.json` (only while the focus wallpaper is up: the wallpaper to put back), `stickies.json` (your sticky notes and where they sit), the Shelf's files, the Launcher's apps and your weather city (in `settings.json`) and, if you saved one, `ai_key.bin` (your API key, encrypted). Your notes are Markdown files in your notes folder (*Documents\Pomo Notes* unless you chose another), which stays put if you uninstall Pomo. Window titles (for "Where was I?" and project names) and the Clipboard tab's history are never written to disk. Gaming mode's readings stay on your PC. When you talk to Pomo, the recording and the replies it reads aloud only pass through a temporary file in `cache\`, deleted as soon as Windows is done with it. To check for updates, Pomo asks GitHub's public API for the latest release every hour; nothing about you is sent with it. The Microsoft Store version doesn't: the Store updates it, and Windows keeps its data in Pomo's own app data, removed when you uninstall it. The full privacy policy is in [PRIVACY.md](PRIVACY.md).
 
 ## For developers
 
@@ -714,6 +757,18 @@ pomodoro/habit_window.py    the habit tracker window and the habit editor
 pomodoro/notes.py           notes on disk: links, tags, backlinks, search, renaming, the daily note
 pomodoro/notes_window.py    the notes window: the Markdown editor, the side panels and the graph
 pomodoro/stickies.py        sticky notes: each little window, and saving them
+pomodoro/panel.py           the panel: its window, tabs, quick actions and the cards pages are built from
+pomodoro/panel_home.py      the Home tab, and the list of tabs
+pomodoro/panel_pages.py     the Timer, Notes, Music, Agents and Habits tabs
+pomodoro/panel_calendar.py  the clock and weather card, and the Calendar tab
+pomodoro/panel_desk.py      the Clipboard, Shelf, Launcher and Docs tabs
+pomodoro/panel_system.py    the System tab and Home's quick controls
+pomodoro/panel_gaming.py    the Gaming tab
+pomodoro/system.py          volume, speakers, mic, brightness, Bluetooth, lock and screenshot (Core Audio, WMI, WinRT)
+pomodoro/weather.py         the weather, from Open-Meteo
+pomodoro/gaming.py          gaming mode: when it's on, and how the timer shows the readings
+pomodoro/gamedetect.py      what's in front, and whether it's a game
+pomodoro/telemetry.py       CPU, GPU, memory, temperatures and FPS (PDH, D3DKMT, RivaTuner, HWiNFO, PresentMon)
 pomodoro/applock.py         app lock: locked apps put away during focus (and during Ultra focus), and the lock card
 pomodoro/ultra.py           Ultra focus drawings: the aura, the spiky golden hair, fire in the eyes, the transformation
 pomodoro/ultra_mode.py      Ultra focus windows: picking apps to block, the transformation on screen, powering down
@@ -735,6 +790,7 @@ installer/Pomo.iss          Inno Setup installer script (also removes FocusOrb w
 tools/prepare_build.py      generates the .exe icon, installer artwork and version info
 tools/sign.py               code-signs the build, the installer and the uninstaller for Smart App Control
 tools/make_msix.py          builds the Microsoft Store package from the build and installer/AppxManifest.xml
+tools/fetch_presentmon.py   downloads Intel's PresentMon for gaming mode's FPS, checking its hash
 PRIVACY.md                  the privacy policy (linked from the Store listing)
 tests/                      unit tests
 ```

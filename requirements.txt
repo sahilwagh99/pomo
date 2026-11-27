@@ -9,3 +9,6 @@ winrt-Windows.Media.Control>=3.2,<4; sys_platform == "win32"
 winrt-Windows.Storage.Streams>=3.2,<4; sys_platform == "win32"
 # Run on startup in the Microsoft Store version (its StartupTask)
 winrt-Windows.ApplicationModel>=3.2,<4; sys_platform == "win32"
+# The panel's System tab: paired Bluetooth devices
+winrt-Windows.Devices.Bluetooth>=3.2,<4; sys_platform == "win32"
+winrt-Windows.Devices.Enumeration>=3.2,<4; sys_platform == "win32"
