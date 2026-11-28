@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
 
-from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import (
     QColor,
     QCursor,
@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
     QButtonGroup,
+    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -638,6 +639,25 @@ class Panel(QWidget):
             if not self.geometry().contains(QCursor.pos()) and not QApplication.activePopupWidget() \
                     and not QApplication.activeModalWidget():
                 self.close_panel()  # clicked somewhere else
+
+    # ------------------------------------------------------------- dialogs
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        QApplication.instance().installEventFilter(self)  # watch for dialogs while open
+
+    def hideEvent(self, event) -> None:
+        super().hideEvent(event)
+        QApplication.instance().removeEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:
+        """Any Pomo dialog appearing while the panel is open: the panel steps aside, or it'd cover it."""
+        if event.type() == QEvent.Show and isinstance(obj, QDialog) and obj.isWindow() and self.isVisible():
+            parent = obj.parentWidget()
+            while parent is not None and parent is not self:
+                parent = parent.parentWidget()
+            if parent is None:  # not one of the panel's own (those would vanish with it)
+                QTimer.singleShot(0, lambda: self.close_panel(animate=False))
+        return False
 
     def keyPressEvent(self, event) -> None:
         if event.key() == Qt.Key_Escape:

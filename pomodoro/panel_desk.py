@@ -855,7 +855,8 @@ class LauncherPage(_DropPage):
     def pick(self) -> None:
         start = Path(os.environ.get("ProgramData", "C:/ProgramData")) / "Microsoft/Windows/Start Menu/Programs"
         # Without DontResolveSymlinks the dialog hands back a shortcut's target, losing its name and icon.
-        paths, _ = QFileDialog.getOpenFileNames(self, "Add apps", str(start),
+        _panel_aside()  # the panel sits above other windows: the file picker would open behind it
+        paths, _ = QFileDialog.getOpenFileNames(None, "Add apps", str(start),
                                                 "Programs and shortcuts (*.exe *.lnk *.url)",
                                                 options=QFileDialog.DontResolveSymlinks)
         if paths:
