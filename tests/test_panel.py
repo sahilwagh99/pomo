@@ -71,6 +71,26 @@ class PanelTests(unittest.TestCase):
         self.panel.show_page("home")
         self.assertEqual(self.ctrl.settings.panel_tab, "home")
         QTest.keyClick(self.panel, Qt.Key_Escape)
+        QTest.qWait(panel.SHRINK_MS + 150)  # it tucks back into the timer first
+        self.assertFalse(self.panel.isVisible())
+
+    def test_grows_out_of_the_timer(self):
+        pill = QRect(500, 0, 200, 38)
+        self.panel.open_at(pill, "island")
+
+        QTest.qWait(panel.GROW_MS + 150)
+        self.assertAlmostEqual(self.panel._morph, 1.0, places=2)
+        full, radius = self.panel._grown_rect()
+        self.assertEqual(full, self.panel._card_rect())
+        self.assertEqual(radius, panel.RADIUS)
+        self.assertIsNone(self.panel._still)  # open: the real cards, not a picture of them
+        self.assertTrue(self.panel.content.isVisible())
+        self.panel._set_morph(0.0)  # at the start it's the pill's size, with the cards not showing yet
+        small, _ = self.panel._grown_rect()
+        self.assertEqual((round(small.width()), round(small.height())), (200, 38))
+
+        self.panel._set_morph(1.0)
+        self.panel.close_panel(animate=False)  # a window opening where it is: gone at once
         self.assertFalse(self.panel.isVisible())
 
     def test_closes_when_the_mouse_leaves_unless_pinned(self):
@@ -86,6 +106,7 @@ class PanelTests(unittest.TestCase):
             self.panel._check_pointer()
             self.panel._outside_since = time.monotonic() - 5
             self.panel._check_pointer()
+        QTest.qWait(panel.SHRINK_MS + 150)
         self.assertFalse(self.panel.isVisible())
 
     def test_beside_the_orb_it_stays_on_screen(self):
@@ -210,3 +231,24 @@ class QuickNoteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StepsAsideTests(unittest.TestCase):
+    def test_windows_and_cards_open_with_the_panel_out_of_the_way(self):
+        hidden = []
+        panel_stub = SimpleNamespace(isVisible=lambda: True, close_panel=lambda animate=True: hidden.append(animate))
+        app = SimpleNamespace(panel=panel_stub)
+        app.panel_aside = lambda: PomoApp.panel_aside(app)
+        PomoApp.panel_aside(app)
+        self.assertEqual(hidden, [False])  # at once, not with the shrink
+        window = mock.MagicMock()
+        PomoApp._show_window(app, window)
+        self.assertEqual(hidden, [False, False])
+        window.show.assert_called_once()
+        with mock.patch("pomodoro.ultra_mode.UltraPicker") as picker:
+            from PySide6.QtWidgets import QDialog
+
+            picker.return_value.exec.return_value = QDialog.Rejected
+            app.settings = SimpleNamespace(ultra_on=False)
+            PomoApp.go_ultra(app)  # the Ultra focus picker no longer opens behind the panel
+        self.assertEqual(hidden, [False, False, False])

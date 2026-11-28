@@ -171,9 +171,11 @@ class GamingPage(Page):
     def _fps_setup(self) -> None:
         from .telemetry import request_fps_permission
 
+        self.ctrl.panel_aside()  # the panel sits above other windows: out of the way of this question
         box = QMessageBox(QMessageBox.Information, "Turn on FPS",
                           "To count a game's frames, Windows needs to let Pomo read its graphics events.",
-                          QMessageBox.Ok | QMessageBox.Cancel, self.window())
+                          QMessageBox.Ok | QMessageBox.Cancel, None)
+        box.setWindowIcon(self.ctrl.icon)
         box.setInformativeText("Windows asks for an administrator's OK once, to add you to its Performance Log "
                                "Users group. Then sign out and back in, and FPS shows up in gaming mode. "
                                "(With RivaTuner or MSI Afterburner running, Pomo shows FPS without this.)")
@@ -183,7 +185,7 @@ class GamingPage(Page):
         self.ctrl.settings.gaming_fps_asked = True
         self.ctrl.save_settings()
         if request_fps_permission():
-            QMessageBox.information(self.window(), "Turn on FPS",
+            QMessageBox.information(None, "Turn on FPS",
                                     "Done. Sign out of Windows and back in, and FPS will show while you play.")
 
     # ------------------------------------------------------------- the game

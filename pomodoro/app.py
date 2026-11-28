@@ -617,8 +617,8 @@ class PomoApp(QObject):
             self.study_log = studylog.StudyLogWindow(self)
         self._show_window(self.study_log)
 
-    @staticmethod
-    def _show_window(window) -> None:
+    def _show_window(self, window) -> None:
+        self.panel_aside()
         window.show()
         window.setWindowState(window.windowState() & ~Qt.WindowMinimized)
         window.raise_()
@@ -844,6 +844,7 @@ class PomoApp(QObject):
 
     def open_urge(self) -> None:
         """Ride out an urge (to play, to scroll): 90 seconds of breathing while it peaks and passes."""
+        self.panel_aside()  # a window opening where the panel is: it steps aside
         if self.urge_card is None:
             from .learn_windows import UrgeCard
             self.urge_card = UrgeCard(self)
@@ -880,6 +881,7 @@ class PomoApp(QObject):
 
     def go_ultra(self) -> None:
         """Ask which apps to block, then Pomo transforms and they stay blocked until you power down."""
+        self.panel_aside()  # a window opening where the panel is: it steps aside
         from PySide6.QtWidgets import QDialog
 
         from .ultra_mode import UltraBurst, UltraPicker
@@ -908,6 +910,7 @@ class PomoApp(QObject):
 
     def leave_ultra(self) -> None:
         """Power down, after a short wait: the apps unlock and Pomo's hair settles."""
+        self.panel_aside()  # a window opening where the panel is: it steps aside
         from PySide6.QtWidgets import QDialog
 
         from .ultra_mode import PowerDown
@@ -1019,6 +1022,7 @@ class PomoApp(QObject):
 
     def open_game(self, key: str | None = None) -> None:
         """The games window: the picker, or straight into one game."""
+        self.panel_aside()  # a window opening where the panel is: it steps aside
         if self.game is None:
             from .game import GameWindow
             self.game = GameWindow(self)
@@ -1180,6 +1184,7 @@ class PomoApp(QObject):
             self._on_track(replace(self.track, playing=not self.track.playing))
 
     def open_music_card(self) -> None:
+        self.panel_aside()  # a window opening where the panel is: it steps aside
         if self.track is None:
             return
         if self.music_card is None:
@@ -1322,6 +1327,7 @@ class PomoApp(QObject):
 
     # --------------------------------------------------------------- windows
     def open_dashboard(self) -> None:
+        self.panel_aside()  # a window opening where the panel is: it steps aside
         if self.dashboard is None:
             from .dashboard import Dashboard
             self.dashboard = Dashboard(self)
@@ -1352,6 +1358,7 @@ class PomoApp(QObject):
         return bool(self.ai_key(key) or providers.env_key(key))
 
     def open_chat(self) -> None:
+        self.panel_aside()  # a window opening where the panel is: it steps aside
         if self.chat is None:
             from .chat import ChatWindow
             self.chat = ChatWindow(self)
@@ -1361,6 +1368,7 @@ class PomoApp(QObject):
         self.chat.activateWindow()
 
     def open_settings(self, tab: str | None = None) -> None:
+        self.panel_aside()  # a window opening where the panel is: it steps aside
         if self.settings_dialog is not None:
             if tab:
                 self.settings_dialog.show_tab(tab)
@@ -1392,6 +1400,7 @@ class PomoApp(QObject):
             self.toast.dismiss()
 
     def edit_task(self) -> None:
+        self.panel_aside()  # a window opening where the panel is: it steps aside
         items = [self.engine.task] if self.engine.task else []
         project = self.tracker.recent_project()
         if project is not None and project.task not in items:
@@ -2841,6 +2850,11 @@ class PomoApp(QObject):
             tab = "gaming"
         self.panel.open_at(anchor, attached, tab)
 
+    def panel_aside(self) -> None:
+        """A window or card is opening: the panel steps aside at once, so it never sits on top of it."""
+        if self.panel is not None and self.panel.isVisible():
+            self.panel.close_panel(animate=False)
+
     def toggle_panel(self) -> None:
         if self.panel is not None and self.panel.isVisible():
             self.panel.close_panel()
@@ -2947,6 +2961,7 @@ class PomoApp(QObject):
         self.open_notes(path)
 
     def open_thoughts(self) -> None:
+        self.panel_aside()  # a window opening where the panel is: it steps aside
         if self.thoughts_window is None:
             from .thoughts import ThoughtsWindow
 
@@ -2956,6 +2971,7 @@ class PomoApp(QObject):
         self.thoughts_window.activateWindow()
 
     def open_breathe(self) -> None:
+        self.panel_aside()  # a window opening where the panel is: it steps aside
         if self.breathe is None:
             from .breathe import BreatheWindow
 

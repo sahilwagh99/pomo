@@ -154,6 +154,9 @@ class ToastCard(QWidget):
         """tag identifies what is shown (e.g. an agent approval); on_dismiss runs if the card
         closes without one of its buttons being clicked (timeout, close button, replaced).
         rate adds "How was that?" with three faces; extras adds a row of small chips (Breathe, Play...)."""
+        aside = getattr(self.ctrl, "panel_aside", None)
+        if aside is not None:
+            aside()  # the card goes where the panel is: the panel steps aside
         self._fire_dismiss()
         self._on_rate = rate
         self._rate_box.setVisible(rate is not None)

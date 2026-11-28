@@ -34,6 +34,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QCheckBox,
     QFileDialog,
     QFileIconProvider,
@@ -117,6 +118,15 @@ def file_mime(paths: list[str]) -> QMimeData:
     return mime
 
 
+def _panel_aside() -> None:
+    """Something is opening in its own window: the panel steps aside, or the window would open behind it."""
+    from .panel import Panel
+
+    for widget in QApplication.topLevelWidgets():
+        if isinstance(widget, Panel) and widget.isVisible():
+            widget.close_panel(animate=False)
+
+
 def open_path(path: str) -> bool:
     """Open a file, folder, app or shortcut the way double-clicking it in Explorer would. False if it can't."""
     try:
@@ -124,14 +134,16 @@ def open_path(path: str) -> bool:
             os.startfile(path, cwd=os.path.dirname(path) or None)  # some apps look for files next to them
         else:
             os.startfile(path)
-        return True
     except OSError:
         return False
+    _panel_aside()
+    return True
 
 
 def show_in_folder(path: str) -> None:
     """Open Explorer at path's folder with it selected."""
     subprocess.Popen(f'explorer /select,"{os.path.normpath(path)}"')
+    _panel_aside()
 
 
 def two_lines(text: str, font: QFont, width: float) -> list[str]:
@@ -843,7 +855,8 @@ class LauncherPage(_DropPage):
     def pick(self) -> None:
         start = Path(os.environ.get("ProgramData", "C:/ProgramData")) / "Microsoft/Windows/Start Menu/Programs"
         # Without DontResolveSymlinks the dialog hands back a shortcut's target, losing its name and icon.
-        paths, _ = QFileDialog.getOpenFileNames(self, "Add apps", str(start),
+        _panel_aside()  # the panel sits above other windows: the file picker would open behind it
+        paths, _ = QFileDialog.getOpenFileNames(None, "Add apps", str(start),
                                                 "Programs and shortcuts (*.exe *.lnk *.url)",
                                                 options=QFileDialog.DontResolveSymlinks)
         if paths:

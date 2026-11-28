@@ -1020,6 +1020,9 @@ class StickyBoard(QObject):
 
     def new_note(self, near: QWidget | None = None) -> StickyNote:
         """A fresh note: next to the one you clicked + on, else by the mouse. Each takes the next color."""
+        aside = getattr(self.ctrl, "panel_aside", None)
+        if aside is not None:
+            aside()  # made from the panel: it steps aside, or the note would land behind it
         color = COLORS[len(self.notes) % 3]
         w, h = DEFAULT_SIZE
         if near is not None:
